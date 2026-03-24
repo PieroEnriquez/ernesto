@@ -7,6 +7,7 @@
 
 import { SearchSegment } from '../skill';
 import { searchMcpResources } from './client';
+import type { McpResourceSearchResult } from './schema';
 import type { Ernesto } from '../Ernesto';
 import debug from 'debug';
 
@@ -29,6 +30,7 @@ export interface ResourceSearchResult {
     uri: string;
     description: string;
     segment: string;
+    domain?: string;
 }
 
 export interface ResourceSearchOptions {
@@ -83,4 +85,50 @@ export async function searchResources(ernesto: Ernesto, options: ResourceSearchO
     }
 
     return results;
+}
+
+/**
+ * Options for cross-domain resource search
+ */
+export interface CrossDomainSearchOptions {
+    query: string;
+    /** Max results per domain (via Typesense group_by) */
+    groupLimit?: number;
+    /** Total result limit */
+    limit?: number;
+    scopes?: string[];
+}
+
+/**
+ * Search resources across all domains with balanced results.
+ *
+ * Uses Typesense group_by=domain to ensure each domain gets at most
+ * `groupLimit` results, preventing a single domain from hogging all slots.
+ * Single query instead of N per-domain queries.
+ */
+export async function searchResourcesCrossDomain(
+    ernesto: Ernesto,
+    options: CrossDomainSearchOptions,
+): Promise<ResourceSearchResult[]> {
+    const { query, groupLimit = 3, limit = 50, scopes } = options;
+
+    try {
+        const rawResults: McpResourceSearchResult[] = await searchMcpResources(ernesto, query, {
+            limit,
+            mode: 'semantic',
+            scopes,
+            groupBy: 'domain',
+            groupLimit,
+        });
+
+        return rawResults.map((r) => ({
+            uri: r.uri,
+            description: r.description || '',
+            segment: 'resources',
+            domain: r.domain,
+        }));
+    } catch (error) {
+        log('Cross-domain search failed', { query, error: error.message });
+        return [];
+    }
 }

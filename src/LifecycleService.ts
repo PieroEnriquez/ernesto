@@ -138,6 +138,11 @@ export class LifecycleService {
             await deleteSourceDocuments(this.ernesto as any, sourceId);
             await this.ernesto.indexResources(sourceId, skillName, extractor, resources);
 
+            // v2: Also write resources as files to master FS
+            await this.ernesto.writeResourcesToFS(skillName, resources).catch(err => {
+                log('Failed to write resources to FS (non-fatal)', { skillName, error: err });
+            });
+
             return {
                 success: true,
                 resourceCount: resources.length,

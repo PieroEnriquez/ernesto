@@ -80,22 +80,31 @@ export async function clearAllResources(ernesto: Ernesto): Promise<void> {
 }
 
 /**
+ * Options for searchMcpResources
+ */
+export interface SearchMcpResourcesOptions {
+    domain?: string;
+    limit?: number;
+    mode?: 'semantic' | 'keyword' | 'hybrid';
+    queryBy?: string;
+    weights?: string;
+    filterBy?: string;
+    scopes?: string[];
+    /** Typesense group_by field for balanced cross-domain results */
+    groupBy?: string;
+    /** Max results per group when groupBy is set */
+    groupLimit?: number;
+}
+
+/**
  * Search for MCP resources
  */
 export async function searchMcpResources(
     ernesto: Ernesto,
     query: string,
-    options: {
-        domain?: string;
-        limit?: number;
-        mode?: 'semantic' | 'keyword' | 'hybrid';
-        queryBy?: string;
-        weights?: string;
-        filterBy?: string;
-        scopes?: string[];
-    } = {},
+    options: SearchMcpResourcesOptions = {},
 ): Promise<McpResourceSearchResult[]> {
-    const { domain, limit = 10, mode = 'hybrid', queryBy = 'content,name,description', weights, filterBy, scopes } = options;
+    const { domain, limit = 10, mode = 'hybrid', queryBy = 'content,name,description', weights, filterBy, scopes, groupBy, groupLimit } = options;
 
     try {
         // Build filter
@@ -136,6 +145,14 @@ export async function searchMcpResources(
         // Default weights: content-first (4,2,1 for content,name,description)
         searchParams.query_by_weights = weights || '4,2,1';
 
+        // Apply grouping for balanced cross-domain results
+        if (groupBy) {
+            (searchParams as any).group_by = groupBy;
+            if (groupLimit) {
+                (searchParams as any).group_limit = groupLimit;
+            }
+        }
+
         if (mode === 'keyword') {
             // Keyword mode: Prioritize exact matches heavily
             searchParams.prioritize_exact_match = true;
@@ -155,6 +172,11 @@ export async function searchMcpResources(
         }
 
         const result = await ernesto.typesense.collections<McpResourceDocument>(MCP_RESOURCES_COLLECTION).documents().search(searchParams);
+
+        // Handle grouped results (group_by mode)
+        if (groupBy && (result as any).grouped_hits) {
+            return flattenGroupedHits((result as any).grouped_hits, userScopes);
+        }
 
         if (!result.hits || result.hits.length === 0) {
             return [];
@@ -204,6 +226,45 @@ export async function searchMcpResources(
         log('Failed to search MCP resources', { error, query, options });
         return [];
     }
+}
+
+/**
+ * Flatten Typesense grouped_hits into McpResourceSearchResult[],
+ * applying scope post-filtering on each hit.
+ */
+function flattenGroupedHits(groupedHits: any[], userScopes: string[]): McpResourceSearchResult[] {
+    const results: McpResourceSearchResult[] = [];
+
+    for (const group of groupedHits) {
+        const hits = group.hits || [];
+        for (const hit of hits) {
+            const doc = hit.document;
+            const docScopes = doc.scopes || [];
+
+            // Scope post-filter
+            if (docScopes.length > 0 && !docScopes.every((scope: string) => userScopes.includes(scope))) {
+                continue;
+            }
+
+            const highlights = hit.highlights;
+            const descHighlight = highlights?.find((h: any) => h.field === 'description');
+            const contentHighlight = highlights?.find((h: any) => h.field === 'content');
+
+            results.push({
+                uri: doc.uri,
+                domain: doc.domain,
+                name: doc.name,
+                description: doc.description,
+                content_size: doc.content_size,
+                child_count: doc.child_count,
+                relevance: Number(hit.text_match_info?.score) || 0,
+                descriptionSnippet: descHighlight?.snippet,
+                contentSnippet: contentHighlight?.snippet,
+            });
+        }
+    }
+
+    return results;
 }
 
 /**

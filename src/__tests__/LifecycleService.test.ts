@@ -22,6 +22,7 @@ function createMockErnesto(overrides: Record<string, any> = {}) {
             getAllSources: vi.fn().mockReturnValue([]),
         },
         indexResources: vi.fn().mockResolvedValue(undefined),
+        writeResourcesToFS: vi.fn().mockResolvedValue(undefined),
         ...overrides,
     } as any;
 }

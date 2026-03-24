@@ -7,36 +7,24 @@ import { Ernesto } from '../src/Ernesto';
 const ernesto = new Ernesto({
     skills: [],
     typesense: new Client({
-        nodes: [
-            {
-                host: 'localhost',
-                port: 8108,
-                protocol: 'http',
-            },
-        ],
+        nodes: [{ host: 'localhost', port: 8108, protocol: 'http' }],
         apiKey: process.env.TYPESENSE_API_KEY!,
     }),
 });
 
 const app = express();
-
 app.use(express.json());
 
 app.post('/mcp', async (req, res) => {
-    const server = new McpServer({
-        name: 'ernesto-example',
-        version: '0.0.1',
+    // Create a session — this is the v2 way
+    const session = await ernesto.createSession({
+        id: '123',
+        scopes: ['public'],
     });
 
-    ernesto.attachToMcpServer(server, {
-        user: {
-            id: '123',
-        },
-        scopes: ['public'],
-        requestId: '123',
-        ernesto,
-        timestamp: Date.now(),
-    });
+    // Create MCP server and attach session tools (open/run/write/settle)
+    const server = new McpServer({ name: 'ernesto-example', version: '2.0.0' });
+    session.attachToMcpServer(server);
 
     const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined, // Stateless mode
@@ -47,7 +35,6 @@ app.post('/mcp', async (req, res) => {
     });
 
     await server.connect(transport);
-
     await transport.handleRequest(req, res, req.body);
 });
 

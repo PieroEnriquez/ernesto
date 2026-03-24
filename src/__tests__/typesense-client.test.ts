@@ -429,6 +429,97 @@ describe('getDocumentByUri', () => {
     });
 });
 
+describe('searchMcpResources with group_by', () => {
+    it('passes group_by and group_limit to search params', async () => {
+        const { ernesto, mocks } = createMockErnesto();
+        mocks.search.mockResolvedValue({ hits: [], found: 0 });
+
+        await searchMcpResources(ernesto, 'test', { groupBy: 'domain', groupLimit: 3 });
+
+        const params = mocks.search.mock.calls[0][0];
+        expect(params.group_by).toBe('domain');
+        expect(params.group_limit).toBe(3);
+    });
+
+    it('flattens grouped_hits into results', async () => {
+        const { ernesto, mocks } = createMockErnesto();
+        mocks.search.mockResolvedValue({
+            grouped_hits: [
+                {
+                    group_key: ['code'],
+                    hits: [
+                        {
+                            document: { uri: 'code://prs/1', domain: 'code', name: 'PR 1', description: 'Fix bug', content_size: 100, child_count: 0, scopes: [] },
+                            text_match_info: { score: 42 },
+                            highlights: [],
+                        },
+                    ],
+                },
+                {
+                    group_key: ['teams'],
+                    hits: [
+                        {
+                            document: { uri: 'teams://tasks/1', domain: 'teams', name: 'Task 1', description: 'Feature', content_size: 50, child_count: 0, scopes: [] },
+                            text_match_info: { score: 30 },
+                            highlights: [],
+                        },
+                    ],
+                },
+            ],
+            found: 2,
+        });
+
+        const results = await searchMcpResources(ernesto, 'test', { groupBy: 'domain', groupLimit: 3 });
+        expect(results).toHaveLength(2);
+        expect(results[0].domain).toBe('code');
+        expect(results[1].domain).toBe('teams');
+    });
+
+    it('applies scope post-filtering on grouped results', async () => {
+        const { ernesto, mocks } = createMockErnesto();
+        mocks.search.mockResolvedValue({
+            grouped_hits: [
+                {
+                    group_key: ['code'],
+                    hits: [
+                        {
+                            document: { uri: 'code://1', domain: 'code', name: 'Public', description: '', content_size: 0, child_count: 0, scopes: [] },
+                            text_match_info: { score: 10 },
+                            highlights: [],
+                        },
+                        {
+                            document: { uri: 'code://2', domain: 'code', name: 'Admin', description: '', content_size: 0, child_count: 0, scopes: ['admin'] },
+                            text_match_info: { score: 10 },
+                            highlights: [],
+                        },
+                    ],
+                },
+            ],
+            found: 2,
+        });
+
+        const results = await searchMcpResources(ernesto, 'test', { groupBy: 'domain', groupLimit: 3, scopes: ['read'] });
+        expect(results).toHaveLength(1);
+        expect(results[0].uri).toBe('code://1');
+    });
+
+    it('falls back to regular hits when no grouped_hits', async () => {
+        const { ernesto, mocks } = createMockErnesto();
+        mocks.search.mockResolvedValue({
+            hits: [{
+                document: { uri: 'test://1', domain: 'test', name: 'Test', description: '', content_size: 0, child_count: 0, scopes: [] },
+                text_match_info: { score: 10 },
+                highlights: [],
+            }],
+            found: 1,
+        });
+
+        const results = await searchMcpResources(ernesto, 'test', { groupBy: 'domain', groupLimit: 3 });
+        expect(results).toHaveLength(1);
+        expect(results[0].uri).toBe('test://1');
+    });
+});
+
 describe('exportSourceDocuments', () => {
     it('paginates through all documents for a source', async () => {
         const { ernesto, mocks } = createMockErnesto();

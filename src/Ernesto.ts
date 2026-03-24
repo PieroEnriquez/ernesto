@@ -1,11 +1,17 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+/**
+ * Ernesto — Filesystem-Based Agent Intelligence
+ *
+ * Skills, resources, and workspaces are all folders with files.
+ * The Ernesto class manages:
+ * - Master FS: shared reference filesystem (skills + resources + workspaces)
+ * - Sessions: per-user filesystem with scoped symlinks + progressive disclosure
+ * - Content pipelines: index to Typesense AND write to master FS as files
+ */
+
 import { Skill } from './skill';
 import { SkillRegistry, SkillSnapshot } from './skill-registry';
-import { ToolContext } from './skill';
-import { getVisibleSkills } from './skill-visibility';
 import { Soul } from './soul';
 import { HeartbeatConfig } from './heartbeat';
-import { SystemPromptBuilder, createDefaultPromptBuilder, RenderedPromptSection } from './system-prompt';
 import debug from 'debug';
 import { ContentPipeline } from './pipelines';
 import { ResourceNode, DEFAULT_CACHE_TTL_MS, PipelineConfig } from './types';
@@ -13,20 +19,47 @@ import { deleteSourceDocuments, getSourceFreshness, indexMcpResources } from './
 import { McpResourceDocument } from './typesense/schema';
 import { Client as TypesenseClient } from 'typesense';
 import { LifecycleService } from './LifecycleService';
-import { InstructionRegistry } from './instructions/registry';
-import { buildInstructionContext } from './instructions/context';
 import { truncateText, flattenResources } from './utils';
+import { Session, SessionUser, WorkspaceProvider } from './Session';
+import { formatZodSchemaForAgent } from './schema-formatter';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import * as crypto from 'crypto';
+import { tmpdir } from 'os';
 
 const log = debug('Ernesto');
+
+const DEFAULT_MASTER_FS = path.join(tmpdir(), 'ernesto', 'ref');
+const DEFAULT_SESSIONS_DIR = path.join(tmpdir(), 'ernesto', 'sessions');
+
+/**
+ * Workspace operations provider — implemented by backend, injected at construction.
+ */
+export type { WorkspaceProvider } from './Session';
+
+/**
+ * Extended workspace operations (list + checkout + create) for master FS materialization.
+ */
+export interface FullWorkspaceProvider extends WorkspaceProvider {
+    list(): Promise<string[]>;
+    checkout(branch: string, targetPath: string): Promise<void>;
+    create(name: string, description: string): Promise<void>;
+}
 
 interface ErnestoOptions {
     skills?: Skill[];
     skillRegistry?: SkillRegistry;
     typesense: TypesenseClient;
-    instructionRegistry?: InstructionRegistry;
     soul?: Soul;
     heartbeat?: HeartbeatConfig;
-    systemPrompt?: string | SystemPromptBuilder;
+    /** Workspace git operations (setup, settle, list, checkout, create) */
+    workspaceOps?: FullWorkspaceProvider;
+    /** Override master FS path (default: $TMPDIR/ernesto/ref) */
+    masterFsPath?: string;
+    /** Override sessions directory (default: $TMPDIR/ernesto/sessions) */
+    sessionsPath?: string;
+    /** Path to script templates for session FS (open.sh, run.sh, settle.sh) */
+    scriptsPath?: string;
 }
 
 /**
@@ -40,27 +73,31 @@ export interface ErnestoSnapshot {
 }
 
 /**
- * Ernesto - OpenClaw for Organizations
+ * Ernesto — filesystem-based agent intelligence system.
+ *
+ * Replaces ask/get with a filesystem. Skills = SKILL.md + .sh scripts.
+ * Resources = files. Workspaces = git checkouts. Everything grepable.
  */
 export class Ernesto {
-    // ─── Core Registry ──────────────────────────────────────────────────
+    // ─── Core ────────────────────────────────────────────────────────────
     readonly skillRegistry: SkillRegistry;
-
-    // ─── Infrastructure ─────────────────────────────────────────────────
     readonly typesense: TypesenseClient;
-    readonly instructionRegistry: InstructionRegistry | null;
     readonly lifecycle = new LifecycleService(this);
 
-    // ─── OpenClaw Primitives ────────────────────────────────────────────
+    // ─── OpenClaw Primitives ─────────────────────────────────────────────
     private _soul: Soul | null = null;
     private _heartbeat: HeartbeatConfig | null = null;
-    private _systemPromptBuilder: SystemPromptBuilder;
+
+    // ─── Filesystem session system ───────────────────────────────────────
+    private _masterFSReady = false;
+    private _workspaceOps?: FullWorkspaceProvider;
+    readonly masterFsPath: string;
+    readonly sessionsPath: string;
+    private _scriptsPath?: string;
 
     constructor(opts: ErnestoOptions) {
         this.typesense = opts.typesense;
-        this.instructionRegistry = opts.instructionRegistry ?? null;
 
-        // Skill registry: use injected registry or create a new one
         if (opts.skillRegistry) {
             this.skillRegistry = opts.skillRegistry;
         } else {
@@ -70,20 +107,16 @@ export class Ernesto {
             }
         }
 
-        // OpenClaw primitives
         this._soul = opts.soul ?? null;
         this._heartbeat = opts.heartbeat ?? null;
-        this._systemPromptBuilder = opts.systemPrompt instanceof SystemPromptBuilder
-            ? opts.systemPrompt
-            : createDefaultPromptBuilder();
-
-        if (typeof opts.systemPrompt === 'string') {
-            this._systemPromptBuilder.addSection('custom', opts.systemPrompt, 50);
-        }
+        this.masterFsPath = opts.masterFsPath ?? DEFAULT_MASTER_FS;
+        this.sessionsPath = opts.sessionsPath ?? DEFAULT_SESSIONS_DIR;
+        this._workspaceOps = opts.workspaceOps;
+        this._scriptsPath = opts.scriptsPath;
     }
 
     // ============================================================
-    // PUBLIC ACCESSORS (OpenClaw-compatible surface)
+    // PUBLIC ACCESSORS
     // ============================================================
 
     get skills(): SkillRegistry {
@@ -98,49 +131,6 @@ export class Ernesto {
         return this._heartbeat;
     }
 
-    get systemPrompt(): string {
-        return this._systemPromptBuilder.build({
-            skills: this.skillRegistry.getAll(),
-            soul: this._soul ?? undefined,
-        });
-    }
-
-    /**
-     * Build a system prompt filtered to the skills visible in the given context.
-     */
-    buildFilteredSystemPrompt(ctx: ToolContext): string {
-        const skills = getVisibleSkills(ctx);
-        return this._systemPromptBuilder.build({
-            skills,
-            soul: ctx.soul ?? this._soul ?? undefined,
-        });
-    }
-
-    /**
-     * Build individual rendered sections filtered to visible skills.
-     * Used to snapshot the prompt composition at session creation time.
-     */
-    buildFilteredSystemPromptSections(ctx: ToolContext): RenderedPromptSection[] {
-        const skills = getVisibleSkills(ctx);
-        return this._systemPromptBuilder.buildSections({
-            skills,
-            soul: ctx.soul ?? this._soul ?? undefined,
-        });
-    }
-
-    // ============================================================
-    // PUBLIC API
-    // ============================================================
-
-    public async attachToMcpServer(server: McpServer, context: ToolContext): Promise<void> {
-        const { attachErnestoTools } = await import('./ernesto-tools');
-        await attachErnestoTools(this, server, context);
-    }
-
-    public async buildInstructionContext() {
-        return buildInstructionContext(this);
-    }
-
     public toJSON(): ErnestoSnapshot {
         return {
             skills: this.skillRegistry.toJSON(),
@@ -149,6 +139,10 @@ export class Ernesto {
             heartbeat: this._heartbeat,
         };
     }
+
+    // ============================================================
+    // CONTENT PIPELINE INITIALIZATION
+    // ============================================================
 
     public async initialize(): Promise<void> {
         const startTime = Date.now();
@@ -182,10 +176,6 @@ export class Ernesto {
         });
     }
 
-    // ============================================================
-    // PRIVATE: SOURCE INITIALIZATION
-    // ============================================================
-
     private async initializeSource(skillName: string, extractor: PipelineConfig): Promise<{ wasFresh: boolean }> {
         const pipeline = new ContentPipeline({
             source: extractor.source,
@@ -199,10 +189,7 @@ export class Ernesto {
         if (!isLocal) {
             const freshness = await getSourceFreshness(this, sourceId);
             if (freshness && freshness.ageMs < ttlMs) {
-                log('Source fresh, skipping', {
-                    sourceId,
-                    ageMinutes: Math.round(freshness.ageMs / 60000),
-                });
+                log('Source fresh, skipping', { sourceId, ageMinutes: Math.round(freshness.ageMs / 60000) });
                 return { wasFresh: true };
             }
         }
@@ -218,7 +205,6 @@ export class Ernesto {
         extractor: PipelineConfig,
     ): Promise<void> {
         const resources = await pipeline.fetchResources();
-
         if (resources.length === 0) {
             log('No resources from source', { sourceId });
             return;
@@ -227,11 +213,12 @@ export class Ernesto {
         await deleteSourceDocuments(this, sourceId);
         await this.indexResources(sourceId, skillName, extractor, resources);
 
-        log('Indexed source', {
-            sourceId,
-            skillName,
-            resourceCount: resources.length,
+        // Also write resources as files to master FS
+        await this.writeResourcesToFS(skillName, resources).catch(err => {
+            log('Failed to write resources to FS (non-fatal)', { skillName, error: err });
         });
+
+        log('Indexed source', { sourceId, skillName, resourceCount: resources.length });
     }
 
     public async indexResources(
@@ -248,10 +235,9 @@ export class Ernesto {
         const flatResources = flattenResources(resources);
 
         const documents: McpResourceDocument[] = flatResources.map((resource) => {
-            const path = resource.path.startsWith('/') ? resource.path.slice(1) : resource.path;
-            const uri = `${skillName}://resources/${path}`;
+            const resourcePath = resource.path.startsWith('/') ? resource.path.slice(1) : resource.path;
+            const uri = `${skillName}://resources/${resourcePath}`;
             const description = truncateText(resource.description || resource.content);
-
             const resourceScopes = resource.metadata?.scopes;
             const finalScopes = resourceScopes !== undefined ? resourceScopes : mergedScopes;
 
@@ -259,7 +245,7 @@ export class Ernesto {
                 id: Buffer.from(uri).toString('base64'),
                 uri,
                 domain: skillName,
-                path,
+                path: resourcePath,
                 source_id: sourceId,
                 name: resource.name,
                 content: resource.content,
@@ -269,7 +255,7 @@ export class Ernesto {
                 content_size: resource.content.length,
                 child_count: resource.children?.length || 0,
                 resource_type: resource.metadata?.resource_type || 'resource',
-                path_segment: path.split('/')[0] || '',
+                path_segment: resourcePath.split('/')[0] || '',
                 quality_score: resource.metadata?.quality_score ?? 50,
                 indexed_at: Date.now(),
             };
@@ -277,4 +263,197 @@ export class Ernesto {
 
         await indexMcpResources(this, documents);
     }
+
+    // ============================================================
+    // FILESYSTEM SESSION SYSTEM
+    // ============================================================
+
+    /**
+     * Ensure the master reference FS is materialized.
+     * Idempotent — writes skills, resources, and workspaces to disk once.
+     */
+    async ensureMasterFS(): Promise<void> {
+        if (this._masterFSReady) return;
+        await this.materializeSkills();
+        await this.materializeResources();
+        await this.materializeWorkspaces();
+        this._masterFSReady = true;
+        log('Master FS materialized', { path: this.masterFsPath });
+    }
+
+    /**
+     * Create a new session for a user.
+     * Builds scoped symlinks + scripts, returns a Session.
+     */
+    async createSession(user: SessionUser, opts?: { workspace?: string }): Promise<Session> {
+        await this.ensureMasterFS();
+        const id = crypto.randomUUID();
+        const sessionPath = path.join(this.sessionsPath, id);
+        await this.buildSessionFS(sessionPath, user);
+
+        if (opts?.workspace && this._workspaceOps) {
+            await this._workspaceOps.setup(opts.workspace, path.join(sessionPath, 'workspace'));
+        }
+
+        return new Session(this, id, sessionPath, user, this._workspaceOps);
+    }
+
+    // ─── Master FS: Skills ──────────────────────────────────────────
+
+    private async materializeSkills(): Promise<void> {
+        for (const skill of this.skillRegistry.getAll()) {
+            const dir = path.join(this.masterFsPath, 'skills', skill.slug);
+            const refs = path.join(dir, 'references');
+            await fs.mkdir(refs, { recursive: true });
+
+            const instruction = typeof skill.instruction === 'function'
+                ? await skill.instruction({ ernesto: this })
+                : skill.instruction;
+
+            const toolDocs = skill.tools.map(t => {
+                const params = t.inputSchema ? formatZodSchemaForAgent(t.inputSchema) : '';
+                return `- **${t.name}**: ${t.description}${params ? `\n  Parameters: ${params}` : ''}`;
+            }).join('\n');
+
+            await fs.writeFile(
+                path.join(dir, 'SKILL.md'),
+                `${instruction}\n\n## Tools\n\n${toolDocs}\n`,
+            );
+
+            for (const tool of skill.tools) {
+                await fs.writeFile(
+                    path.join(refs, `${tool.name}.sh`),
+                    generateToolScript(skill.slug, tool),
+                    { mode: 0o755 },
+                );
+            }
+        }
+
+        log('Skills materialized', {
+            count: this.skillRegistry.getAll().length,
+            path: path.join(this.masterFsPath, 'skills'),
+        });
+    }
+
+    // ─── Master FS: Workspaces ──────────────────────────────────────
+
+    private async materializeWorkspaces(): Promise<void> {
+        if (!this._workspaceOps) {
+            log('No workspace provider — skipping workspace materialization');
+            return;
+        }
+
+        const wsBase = path.join(this.masterFsPath, 'workspaces');
+        await fs.mkdir(wsBase, { recursive: true });
+
+        const branches = await this._workspaceOps.list();
+        for (const branch of branches) {
+            if (branch === 'main' || branch === 'master') continue;
+            const wsDir = path.join(wsBase, branch);
+            try {
+                await this._workspaceOps.checkout(branch, wsDir);
+            } catch (err) {
+                log('Failed to checkout workspace branch', { branch, error: err });
+            }
+        }
+
+        log('Workspaces materialized', { count: branches.length, path: wsBase });
+    }
+
+    // ─── Master FS: Resources ───────────────────────────────────────
+
+    private async materializeResources(): Promise<void> {
+        await fs.mkdir(path.join(this.masterFsPath, 'resources'), { recursive: true });
+    }
+
+    /**
+     * Write content pipeline resources as files to the master FS.
+     */
+    async writeResourcesToFS(skillName: string, resources: ResourceNode[]): Promise<void> {
+        const baseDir = path.join(this.masterFsPath, 'resources', skillName);
+        const flat = flattenResources(resources);
+
+        for (const resource of flat) {
+            const resourcePath = resource.path.startsWith('/') ? resource.path.slice(1) : resource.path;
+            const filePath = path.join(baseDir, `${resourcePath}.md`);
+            await fs.mkdir(path.dirname(filePath), { recursive: true });
+            await fs.writeFile(filePath, resource.content, 'utf-8');
+        }
+    }
+
+    // ─── Session FS ─────────────────────────────────────────────────
+
+    private async buildSessionFS(sessionPath: string, user: SessionUser): Promise<void> {
+        for (const skill of this.accessibleSkills(user)) {
+            const skillDir = path.join(sessionPath, 'skills', skill.slug);
+            await fs.mkdir(skillDir, { recursive: true });
+            await fs.symlink(
+                path.join(this.masterFsPath, 'skills', skill.slug, 'SKILL.md'),
+                path.join(skillDir, 'SKILL.md'),
+            ).catch(() => {});
+        }
+
+        await fs.mkdir(path.join(sessionPath, 'resources'), { recursive: true });
+        const domains = await fs.readdir(path.join(this.masterFsPath, 'resources')).catch(() => [] as string[]);
+        for (const domain of domains) {
+            await fs.symlink(
+                path.join(this.masterFsPath, 'resources', domain),
+                path.join(sessionPath, 'resources', domain),
+            ).catch(() => {});
+        }
+
+        const wsBase = path.join(this.masterFsPath, 'workspaces');
+        await fs.mkdir(path.join(sessionPath, 'workspaces'), { recursive: true });
+        const workspaces = await fs.readdir(wsBase).catch(() => [] as string[]);
+        for (const ws of workspaces) {
+            await fs.symlink(
+                path.join(wsBase, ws),
+                path.join(sessionPath, 'workspaces', ws),
+            ).catch(() => {});
+        }
+
+        if (this._scriptsPath) {
+            for (const script of ['open.sh', 'run.sh', 'settle.sh']) {
+                const src = path.join(this._scriptsPath, script);
+                const dest = path.join(sessionPath, script);
+                try {
+                    await fs.copyFile(src, dest);
+                    await fs.chmod(dest, 0o755);
+                } catch (err) {
+                    log('Failed to copy script', { script, error: err });
+                }
+            }
+        }
+
+        await fs.writeFile(path.join(sessionPath, '.session'), crypto.randomUUID());
+    }
+
+    private accessibleSkills(user: SessionUser): Skill[] {
+        return this.skillRegistry.getAll().filter(s => {
+            if (s.enabled === false) return false;
+            if (!s.requiredScopes?.length) return true;
+            return s.requiredScopes.every(sc => user.scopes?.includes(sc));
+        });
+    }
+}
+
+// ─── Tool Script Generator ──────────────────────────────────────────────
+
+function generateToolScript(skill: string, tool: { name: string; description: string }): string {
+    return `#!/usr/bin/env bash
+# ${tool.name} — ${skill}
+# ${tool.description}
+#
+# Run with no args to see parameter docs.
+#
+set -euo pipefail
+ERNESTO_URL="\${ERNESTO_URL:-http://localhost:3002}"
+PARAMS="\${1:-}"
+[ -z "\$PARAMS" ] && { sed -n '/^#[^!]/p' "\$0"; exit 0; }
+curl -sf \\
+  -H "Authorization: Bearer \${ERNESTO_TOKEN}" \\
+  -H "Content-Type: application/json" \\
+  -X POST -d "\$PARAMS" \\
+  "\$ERNESTO_URL/ernesto/http/tools/${skill}/${tool.name}" | jq .
+`;
 }

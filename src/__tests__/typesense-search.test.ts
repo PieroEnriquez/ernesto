@@ -4,7 +4,7 @@ vi.mock('../typesense/client', () => ({
     searchMcpResources: vi.fn(),
 }));
 
-import { searchResources } from '../typesense/search';
+import { searchResources, searchResourcesCrossDomain } from '../typesense/search';
 import { searchMcpResources } from '../typesense/client';
 
 const mockSearchMcpResources = vi.mocked(searchMcpResources);
@@ -108,5 +108,73 @@ describe('searchResources', () => {
 
         const results = await searchResources(mockErnesto, { query: 'test', domain: 'test' });
         expect(results[0].description).toBe('');
+    });
+});
+
+describe('searchResourcesCrossDomain', () => {
+    const mockErnesto = {} as any;
+
+    beforeEach(() => {
+        mockSearchMcpResources.mockReset();
+        mockSearchMcpResources.mockResolvedValue([]);
+    });
+
+    it('calls searchMcpResources with groupBy and groupLimit', async () => {
+        await searchResourcesCrossDomain(mockErnesto, { query: 'test', groupLimit: 3 });
+
+        expect(mockSearchMcpResources).toHaveBeenCalledWith(
+            mockErnesto,
+            'test',
+            expect.objectContaining({
+                groupBy: 'domain',
+                groupLimit: 3,
+                mode: 'semantic',
+            }),
+        );
+    });
+
+    it('returns ResourceSearchResult with domain field', async () => {
+        mockSearchMcpResources.mockResolvedValue([
+            { uri: 'code://prs/1', description: 'Fix bug', domain: 'code', name: 'PR 1', content_size: 100, child_count: 0, relevance: 42 },
+            { uri: 'teams://tasks/1', description: 'Feature task', domain: 'teams', name: 'Task 1', content_size: 50, child_count: 0, relevance: 30 },
+        ]);
+
+        const results = await searchResourcesCrossDomain(mockErnesto, { query: 'test' });
+
+        expect(results).toHaveLength(2);
+        expect(results[0]).toEqual({
+            uri: 'code://prs/1',
+            description: 'Fix bug',
+            segment: 'resources',
+            domain: 'code',
+        });
+        expect(results[1].domain).toBe('teams');
+    });
+
+    it('passes scopes to searchMcpResources', async () => {
+        await searchResourcesCrossDomain(mockErnesto, { query: 'test', scopes: ['admin'] });
+
+        expect(mockSearchMcpResources).toHaveBeenCalledWith(
+            mockErnesto,
+            'test',
+            expect.objectContaining({ scopes: ['admin'] }),
+        );
+    });
+
+    it('uses default groupLimit of 3', async () => {
+        await searchResourcesCrossDomain(mockErnesto, { query: 'test' });
+
+        expect(mockSearchMcpResources).toHaveBeenCalledWith(
+            mockErnesto,
+            'test',
+            expect.objectContaining({ groupLimit: 3 }),
+        );
+    });
+
+    it('returns empty array on error', async () => {
+        mockSearchMcpResources.mockRejectedValue(new Error('connection failed'));
+
+        const results = await searchResourcesCrossDomain(mockErnesto, { query: 'test' });
+        expect(results).toEqual([]);
     });
 });
