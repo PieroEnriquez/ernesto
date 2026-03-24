@@ -1,12 +1,8 @@
-// Library entry point — Ernesto v2 (filesystem-based)
+// Library entry point
 
 // ─── Core ────────────────────────────────────────────────────────────────
 export { Ernesto } from './Ernesto';
-export type { ErnestoSnapshot, WorkspaceProvider, FullWorkspaceProvider } from './Ernesto';
-
-// ─── Session ─────────────────────────────────────────────────────────────
-export { Session } from './Session';
-export type { SessionUser, SettleResult } from './Session';
+export type { ErnestoSnapshot } from './Ernesto';
 
 // ─── Skills (OpenClaw primitives) ────────────────────────────────────────
 export { createSkill, createTool, defineSuggestions, toolResult, toolResultWithSuggestions } from './skill';
@@ -16,6 +12,7 @@ export type {
     DomainSearchConfig, SearchSegment,
 } from './skill';
 export { SkillRegistry } from './skill-registry';
+export { getVisibleSkills } from './skill-visibility';
 export type { SkillSnapshot, ToolRef, SkillSourceInfo } from './skill-registry';
 export { skillToMarkdown, skillFromMarkdown } from './skill-io';
 
@@ -26,26 +23,29 @@ export type { Soul } from './soul';
 // ─── Heartbeat ───────────────────────────────────────────────────────────
 export type { HeartbeatConfig, TimeWindow } from './heartbeat';
 
+// ─── System Prompt ───────────────────────────────────────────────────────
+export { SystemPromptBuilder, createDefaultPromptBuilder, buildSkillCatalog } from './system-prompt';
+export type { PromptContext, RenderedPromptSection } from './system-prompt';
+
+// ─── Tools ───────────────────────────────────────────────────────────────
+export { createAskTool } from './tools/ask';
+export type { AskToolOptions } from './tools/ask';
+export { createRunTool } from './tools/run';
+
+// ─── Instructions (legacy — use SystemPromptBuilder for new code) ────────
+export { InstructionRegistry } from './instructions/registry';
+export type { InstructionTemplate, InstructionContent, InstructionContext } from './instructions/types';
+
 // ─── Pipelines ───────────────────────────────────────────────────────────
 export { generateSourceId, ContentPipeline } from './pipelines';
 
 // ─── Typesense ───────────────────────────────────────────────────────────
 export { searchMcpResources, exportSourceDocuments, getSourceFreshness, getMcpResourceStats } from './typesense/client';
-export type { SearchMcpResourcesOptions } from './typesense/client';
 export type { McpResourceSearchResult } from './typesense/schema';
-export { searchResourcesCrossDomain } from './typesense/search';
-export type { CrossDomainSearchOptions, ResourceSearchResult } from './typesense/search';
 
 // ─── Types ───────────────────────────────────────────────────────────────
 export { DEFAULT_CACHE_TTL_MS } from './types';
 export type { ResourceNode, RawContent, ContentFormat, ContentSource, PipelineConfig, RawDocument } from './types';
 
-// ─── Components (json-render generative UI) ─────────────────────────────
-export { ernestoSchema, baseCatalog, getCatalog } from './components';
-export type { ErnestoCatalog, Channel as UIChannel, UISpec, UIElement } from './components';
-
 // ─── Lifecycle ───────────────────────────────────────────────────────────
 export { LifecycleService } from './LifecycleService';
-
-// ─── Schema Formatter ────────────────────────────────────────────────────
-export { formatZodSchemaForAgent } from './schema-formatter';
