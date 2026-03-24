@@ -318,13 +318,17 @@ export class Session {
             lines.push('', '## Active Workspace', 'Mounted at `workspace/` (writable).');
         }
 
-        lines.push('', '## Usage');
-        lines.push('1. `open("skills/{name}/SKILL.md")` — activate a skill');
-        lines.push('2. `open("workspaces/{name}/WORKSPACE.md")` — activate a workspace');
-        lines.push('3. `run("{name}", "{tool}", {params})` — execute a tool');
-        lines.push('4. Edit workspace files with `write("workspace/path", content)`');
-        lines.push('5. `settle("message")` — commit + push');
-        lines.push('6. Search everything with grep across the session directory');
+        lines.push('', '## How to use');
+        lines.push('');
+        lines.push('**IMPORTANT: You have native Read/Glob/Grep tools.** Resources are pre-indexed files — read them directly instead of running tools.');
+        lines.push('');
+        lines.push('1. **Search first:** `Grep("keyword", path: "resources/")` — searches all indexed content (Slack, PRs, docs)');
+        lines.push('2. **Read files:** `Read("resources/slack-activity/general.md")` — read any resource directly');
+        lines.push('3. **Activate skills:** `open("skills/{name}/SKILL.md")` — unlocks tools for that skill');
+        lines.push('4. **Run tools:** `run("{skill}", "{tool}", {params})` — for LIVE data (logs, queries, API calls)');
+        lines.push('5. **Workspaces:** `open("workspaces/{name}/WORKSPACE.md")` → edit with Write → `settle("message")`');
+        lines.push('');
+        lines.push('Use `run()` only when you need live/real-time data. For anything already indexed in resources/, use Read/Grep — it\'s instant.');
 
         return lines.join('\n');
     }
