@@ -31,6 +31,7 @@ const log = debug('Ernesto');
 
 const DEFAULT_MASTER_FS = path.join(tmpdir(), 'ernesto', 'ref');
 const DEFAULT_SESSIONS_DIR = path.join(tmpdir(), 'ernesto', 'sessions');
+const DEFAULT_USERS_DIR = path.join(tmpdir(), 'ernesto', 'users');
 
 /**
  * Workspace operations provider — implemented by backend, injected at construction.
@@ -58,6 +59,8 @@ interface ErnestoOptions {
     masterFsPath?: string;
     /** Override sessions directory (default: $TMPDIR/ernesto/sessions) */
     sessionsPath?: string;
+    /** Override per-user workspace directory (default: $TMPDIR/ernesto/users) */
+    usersPath?: string;
     /** Path to script templates for session FS (open.sh, run.sh, settle.sh) */
     scriptsPath?: string;
 }
@@ -93,6 +96,7 @@ export class Ernesto {
     private _workspaceOps?: FullWorkspaceProvider;
     readonly masterFsPath: string;
     readonly sessionsPath: string;
+    readonly usersPath: string;
     private _scriptsPath?: string;
 
     constructor(opts: ErnestoOptions) {
@@ -111,6 +115,7 @@ export class Ernesto {
         this._heartbeat = opts.heartbeat ?? null;
         this.masterFsPath = opts.masterFsPath ?? DEFAULT_MASTER_FS;
         this.sessionsPath = opts.sessionsPath ?? DEFAULT_SESSIONS_DIR;
+        this.usersPath = opts.usersPath ?? DEFAULT_USERS_DIR;
         this._workspaceOps = opts.workspaceOps;
         this._scriptsPath = opts.scriptsPath;
     }
@@ -283,19 +288,40 @@ export class Ernesto {
 
     /**
      * Create a new session for a user.
-     * Builds scoped symlinks + scripts, returns a Session.
+     *
+     * Uses a **per-user workspace** — a persistent directory that survives across
+     * sessions. Skills are symlinked once at the root; sub-workspaces live under
+     * `workspaces/` as nested directories (each backed by a git branch).
+     *
+     * Falls back to a per-session ephemeral FS when no user ID is available.
      */
     async createSession(user: SessionUser, opts?: { workspace?: string }): Promise<Session> {
         await this.ensureMasterFS();
         const id = crypto.randomUUID();
-        const sessionPath = path.join(this.sessionsPath, id);
-        await this.buildSessionFS(sessionPath, user);
+
+        let sessionPath: string;
+        if (user.id) {
+            // Per-user workspace — persistent, shared across sessions
+            sessionPath = this.getUserWorkspacePath(user.id);
+            await this.ensureUserWorkspace(sessionPath, user);
+        } else {
+            // Fallback: ephemeral per-session FS
+            sessionPath = path.join(this.sessionsPath, id);
+            await this.buildSessionFS(sessionPath, user);
+        }
 
         if (opts?.workspace && this._workspaceOps) {
             await this._workspaceOps.setup(opts.workspace, path.join(sessionPath, 'workspace'));
         }
 
         return new Session(this, id, sessionPath, user, this._workspaceOps);
+    }
+
+    /**
+     * Get the filesystem path for a user's workspace.
+     */
+    getUserWorkspacePath(userId: string): string {
+        return path.join(this.usersPath, userId);
     }
 
     // ─── Master FS: Skills ──────────────────────────────────────────
@@ -381,7 +407,65 @@ export class Ernesto {
         }
     }
 
-    // ─── Session FS ─────────────────────────────────────────────────
+    // ─── User Workspace ───────────────────────────────────────────────
+
+    /**
+     * Ensure a per-user workspace exists and is up to date.
+     * Idempotent — safe to call on every session start.
+     *
+     * Creates:
+     *   {userPath}/
+     *   ├── skills/          ← symlinks to master FS (all accessible, scope-filtered)
+     *   ├── workspaces/      ← sub-workspace stubs and expanded clones
+     *   └── WORKSPACE.md     ← root workspace instruction (auto-generated)
+     */
+    private async ensureUserWorkspace(userPath: string, user: SessionUser): Promise<void> {
+        await fs.mkdir(path.join(userPath, 'skills'), { recursive: true });
+        await fs.mkdir(path.join(userPath, 'workspaces'), { recursive: true });
+
+        // Symlink accessible skills (idempotent — skip existing)
+        for (const skill of this.accessibleSkills(user)) {
+            const skillDir = path.join(userPath, 'skills', skill.slug);
+            const skillMdLink = path.join(skillDir, 'SKILL.md');
+            // Skip if symlink already exists
+            if (await fs.stat(skillMdLink).catch(() => null)) continue;
+            await fs.mkdir(skillDir, { recursive: true });
+            await fs.symlink(
+                path.join(this.masterFsPath, 'skills', skill.slug, 'SKILL.md'),
+                skillMdLink,
+            ).catch(() => {});
+        }
+
+        // Symlink resources from master FS (idempotent)
+        const resDir = path.join(userPath, 'resources');
+        await fs.mkdir(resDir, { recursive: true });
+        const domains = await fs.readdir(path.join(this.masterFsPath, 'resources')).catch(() => [] as string[]);
+        for (const domain of domains) {
+            const link = path.join(resDir, domain);
+            if (await fs.stat(link).catch(() => null)) continue;
+            await fs.symlink(
+                path.join(this.masterFsPath, 'resources', domain),
+                link,
+            ).catch(() => {});
+        }
+
+        // Copy script templates if configured
+        if (this._scriptsPath) {
+            for (const script of ['open.sh', 'run.sh', 'settle.sh']) {
+                const dest = path.join(userPath, script);
+                if (await fs.stat(dest).catch(() => null)) continue;
+                const src = path.join(this._scriptsPath, script);
+                try {
+                    await fs.copyFile(src, dest);
+                    await fs.chmod(dest, 0o755);
+                } catch {}
+            }
+        }
+
+        log('User workspace ready', { userId: user.id, path: userPath });
+    }
+
+    // ─── Session FS (legacy — fallback for sessions without user ID) ────
 
     private async buildSessionFS(sessionPath: string, user: SessionUser): Promise<void> {
         for (const skill of this.accessibleSkills(user)) {

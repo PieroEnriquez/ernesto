@@ -94,10 +94,13 @@ export class Session {
             await this.activateSkill(slug);
         }
 
-        // Progressive disclosure: workspace activation
-        const wsMatch = filePath.match(/^workspaces\/([^/]+)\/WORKSPACE\.md$/);
+        // Progressive disclosure: workspace activation (supports nested workspaces)
+        const wsMatch = filePath.match(/^workspaces\/(.+?)\/WORKSPACE\.md$/);
         if (wsMatch) {
-            const wsName = wsMatch[1];
+            // Extract the deepest workspace name from the path
+            // e.g. "workspaces/payments/workspaces/brusd/WORKSPACE.md" → "brusd"
+            const segments = wsMatch[1].split('/');
+            const wsName = segments[segments.length - 1];
             await this.activateWorkspace(wsName);
         }
 
@@ -196,14 +199,14 @@ export class Session {
 
         // Tier 2 agents have no native Write — they need this to edit workspace files
         server.registerTool('write', {
-            description: 'Write a file to the active workspace. Only files under workspace/ can be written.',
+            description: 'Write a file to the active workspace. Only files under workspace/ or workspaces/ can be written.',
             inputSchema: z.object({
-                path: z.string().describe('Path within workspace/ (e.g. "workspace/context/notes.md")'),
+                path: z.string().describe('Path within workspace/ or workspaces/ (e.g. "workspace/context/notes.md")'),
                 content: z.string().describe('File content to write'),
             }),
         }, async ({ path: p, content }) => {
-            if (!p.startsWith('workspace/')) {
-                return { content: [{ type: 'text' as const, text: 'Write restricted to workspace/' }] };
+            if (!p.startsWith('workspace/') && !p.startsWith('workspaces/')) {
+                return { content: [{ type: 'text' as const, text: 'Write restricted to workspace/ or workspaces/' }] };
             }
             const resolved = self.resolve(p);
             await fs.mkdir(path.dirname(resolved), { recursive: true });
@@ -296,26 +299,29 @@ export class Session {
             for (const d of domains.sort()) lines.push(`- ${d}/`);
         }
 
-        // Workspaces (browsable, read-only)
+        // Workspaces (tree of sub-workspaces)
         const wsDir = path.join(this.path, 'workspaces');
         const workspaces = await fs.readdir(wsDir).catch(() => [] as string[]);
         if (workspaces.length) {
             lines.push('', '## Workspaces');
             for (const ws of workspaces.sort()) {
                 const wsMd = path.join(wsDir, ws, 'WORKSPACE.md');
+                const metaFile = path.join(wsDir, ws, '.meta');
                 let summary = '';
-                try {
-                    const content = await fs.readFile(wsMd, 'utf-8');
-                    summary = content.split('\n')[0].replace(/^#+ */, '');
-                } catch {}
-                lines.push(`- **${ws}** — ${summary}`);
+                const hasWsMd = await fs.stat(wsMd).catch(() => null);
+                if (hasWsMd) {
+                    try {
+                        const content = await fs.readFile(wsMd, 'utf-8');
+                        summary = content.split('\n')[0].replace(/^#+ */, '');
+                    } catch {}
+                    lines.push(`- **${ws}** — ${summary} [expanded]`);
+                } else {
+                    try {
+                        summary = (await fs.readFile(metaFile, 'utf-8')).trim();
+                    } catch {}
+                    lines.push(`- **${ws}** — ${summary || '(not expanded)'}`);
+                }
             }
-        }
-
-        // Active workspace
-        const hasActive = await fs.stat(path.join(this.path, 'workspace', 'WORKSPACE.md')).catch(() => null);
-        if (hasActive) {
-            lines.push('', '## Active Workspace', 'Mounted at `workspace/` (writable).');
         }
 
         lines.push('', '## How to use');
