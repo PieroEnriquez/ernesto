@@ -73,9 +73,6 @@ export class ContentPipeline {
                 }
             }
 
-            // Attach sourceId to all resources for freshness tracking
-            this.attachSourceId(allResources);
-
             return allResources;
         } catch (error) {
             log('Fetch failed', {
@@ -120,23 +117,6 @@ export class ContentPipeline {
             }
         }
         return null;
-    }
-
-    /**
-     * Attach sourceId to all resources (including nested children)
-     * This enables per-source freshness tracking in Typesense
-     */
-    private attachSourceId(resources: ResourceNode[]): void {
-        for (const resource of resources) {
-            resource.metadata = {
-                ...resource.metadata,
-                sourceId: this.sourceId,
-            };
-
-            if (resource.children && resource.children.length > 0) {
-                this.attachSourceId(resource.children);
-            }
-        }
     }
 
     /**

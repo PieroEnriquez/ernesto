@@ -6,22 +6,9 @@
  */
 
 import { Skill, SkillTool } from './skill';
-import { generateSourceId } from './pipelines';
-import { DEFAULT_CACHE_TTL_MS, PipelineConfig } from './types';
 import debug from 'debug';
 
 const log = debug('ernesto:skill-registry');
-
-/**
- * Source info for freshness tracking
- */
-export interface SkillSourceInfo {
-    sourceId: string;
-    skill: string;
-    sourceName: string;
-    isLocal: boolean;
-    cacheTtlMs: number;
-}
 
 /**
  * Serializable skill snapshot for dashboard
@@ -131,50 +118,6 @@ export class SkillRegistry {
         if (!tool) return undefined;
 
         return { id: identifier, skill: skillName, tool };
-    }
-
-    /**
-     * Get all sources across all skills (for freshness tracking)
-     */
-    getAllSources(): SkillSourceInfo[] {
-        const result: SkillSourceInfo[] = [];
-
-        for (const skill of this.skills.values()) {
-            if (!skill.resources) continue;
-
-            for (const extractor of skill.resources) {
-                const sourceId = generateSourceId(extractor.source.name, extractor.basePath || '');
-                const isLocal = extractor.source.name.startsWith('local:');
-
-                result.push({
-                    sourceId,
-                    skill: skill.name,
-                    sourceName: extractor.source.name,
-                    isLocal,
-                    cacheTtlMs: extractor.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS,
-                });
-            }
-        }
-
-        return result;
-    }
-
-    /**
-     * Find a source by ID
-     */
-    findSource(sourceId: string): { skillName: string; extractor: PipelineConfig } | null {
-        for (const skill of this.skills.values()) {
-            if (!skill.resources) continue;
-
-            for (const extractor of skill.resources) {
-                const id = generateSourceId(extractor.source.name, extractor.basePath || '');
-                if (id === sourceId) {
-                    return { skillName: skill.name, extractor };
-                }
-            }
-        }
-
-        return null;
     }
 
     /**

@@ -1,12 +1,12 @@
 /**
- * Session — Filesystem-based agent session
+ * Session — Agent Interaction Surface
  *
- * Each session is a folder with symlinks to the master FS.
- * Progressive disclosure: reading SKILL.md symlinks references/ (activates tools),
- * reading WORKSPACE.md mounts a writable git clone at workspace/.
+ * Each session gives an agent access to workspaces and tools.
+ * Four operations: open, run, write, settle.
  *
- * Tier 1 (bash agents): Use open.sh, run.sh, settle.sh scripts directly.
- * Tier 2 (MCP agents): Use this class via open(), run(), write(), settle() MCP tools.
+ * Tier 1 (MCP agents): Use this class via attachToMcpServer().
+ * Tier 2 (bash agents): Use workspace tools/*.sh scripts directly.
+ * Tier 3 (programmatic): Use SkillRegistry.resolveTool() directly.
  */
 
 import { z } from 'zod';
@@ -52,6 +52,7 @@ export class Session {
     readonly user: SessionUser;
     private ernesto: Ernesto;
     private workspaceOps?: WorkspaceProvider;
+    private setupWorkspaces = new Set<string>();
 
     constructor(
         ernesto: Ernesto,
@@ -68,8 +69,7 @@ export class Session {
     }
 
     // ─── open ──────────────────────────────────────────────
-    // Browse, read, and activate skills/workspaces.
-    // Same logic as open.sh, but in TypeScript for Tier 2 agents.
+    // Browse workspaces and read files.
 
     async open(filePath?: string): Promise<string> {
         if (!filePath) return this.overview();
@@ -85,46 +85,43 @@ export class Session {
             ).join('\n');
         }
 
-        const content = await fs.readFile(resolved, 'utf-8');
-
-        // Progressive disclosure: skill activation
-        const skillMatch = filePath.match(/^skills\/([^/]+)\/SKILL\.md$/);
-        if (skillMatch) {
-            const slug = skillMatch[1];
-            await this.activateSkill(slug);
+        // Workspace auto-setup: expanded workspace (has .git) → refresh on first access
+        let setupPreamble = '';
+        const wsName = this.extractWorkspaceName(filePath);
+        if (wsName && !this.setupWorkspaces.has(wsName)) {
+            const wsRootPath = this.resolveWorkspaceRoot(filePath);
+            if (wsRootPath) {
+                const hasGit = await fs.stat(path.join(wsRootPath, '.git')).catch(() => null);
+                if (hasGit) {
+                    this.setupWorkspaces.add(wsName);
+                    try {
+                        const result = await this.runInternal('workspaces', 'setup', { workspace: wsName });
+                        if (result?.content && !result.content.startsWith('Tool not found')) {
+                            setupPreamble = result.content
+                                + '\n\n> **Hint:** If you have native file tools (Read/Glob/Grep), use them at the workspace path above — faster than open().\n\n---\n\n';
+                        }
+                    } catch {
+                        // Setup failed — continue with file content anyway
+                    }
+                }
+            }
         }
 
-        // Progressive disclosure: workspace activation (supports nested workspaces)
+        // Workspace activation: clone into workspace/ on WORKSPACE.md read
         const wsMatch = filePath.match(/^workspaces\/(.+?)\/WORKSPACE\.md$/);
         if (wsMatch) {
-            // Extract the deepest workspace name from the path
-            // e.g. "workspaces/payments/workspaces/brusd/WORKSPACE.md" → "brusd"
             const segments = wsMatch[1].split('/');
-            const wsName = segments[segments.length - 1];
-            await this.activateWorkspace(wsName);
+            await this.activateWorkspace(segments[segments.length - 1]);
         }
 
-        return content;
+        const content = await fs.readFile(resolved, 'utf-8');
+        return setupPreamble + content;
     }
 
     // ─── run ───────────────────────────────────────────────
-    // Execute a skill tool. Skill must be activated first.
+    // Execute a skill tool. No activation gate — resolve, check scopes, execute.
 
     async run(skill: string, tool: string, params?: Record<string, unknown>): Promise<ToolResult> {
-        // Check activation: does references/ exist in session FS?
-        const refsDir = path.join(this.path, 'skills', skill, 'references');
-        const activated = await fs.stat(refsDir).catch(() => null);
-
-        if (!activated) {
-            const hasSkill = await fs.stat(
-                path.join(this.path, 'skills', skill, 'SKILL.md')
-            ).catch(() => null);
-            if (hasSkill) {
-                return { content: `Skill '${skill}' not activated. Read it first: open("skills/${skill}/SKILL.md")` };
-            }
-            return { content: `Skill not found: ${skill}` };
-        }
-
         const ref = this.ernesto.skills.resolveTool(`${skill}:${tool}`);
         if (!ref) return { content: `Tool not found: ${skill}:${tool}` };
 
@@ -144,7 +141,6 @@ export class Session {
     }
 
     // ─── settle ────────────────────────────────────────────
-    // Commit and push workspace changes.
 
     async settle(message: string): Promise<SettleResult> {
         if (!this.workspaceOps) {
@@ -165,7 +161,6 @@ export class Session {
     }
 
     // ─── MCP registration ──────────────────────────────────
-    // Attach 4 tools to an MCP server for Tier 2 agents.
 
     attachToMcpServer(server: McpServer): void {
         const self = this;
@@ -173,8 +168,7 @@ export class Session {
         server.registerTool('open', {
             description: [
                 'Browse or read from your Ernesto session.',
-                'No path = overview of skills, resources, workspaces.',
-                'Reading a SKILL.md activates that skill\'s tools.',
+                'No path = overview of workspaces.',
                 'Reading a WORKSPACE.md mounts it for editing.',
                 'For general file reading, use native Read/Glob/Grep tools instead — they are faster.',
             ].join(' '),
@@ -186,7 +180,7 @@ export class Session {
         }));
 
         server.registerTool('run', {
-            description: 'Execute a skill tool. Skill must be activated first (read its SKILL.md via open).',
+            description: 'Execute a skill tool.',
             inputSchema: z.object({
                 skill: z.string().describe('Skill name (e.g. "app-logs", "redshift")'),
                 tool: z.string().describe('Tool name within the skill'),
@@ -197,11 +191,10 @@ export class Session {
             return { content: [{ type: 'text' as const, text: result.content }] };
         });
 
-        // Tier 2 agents have no native Write — they need this to edit workspace files
         server.registerTool('write', {
             description: 'Write a file to the active workspace. Only files under workspace/ or workspaces/ can be written.',
             inputSchema: z.object({
-                path: z.string().describe('Path within workspace/ or workspaces/ (e.g. "workspace/context/notes.md")'),
+                path: z.string().describe('Path within workspace/ or workspaces/'),
                 content: z.string().describe('File content to write'),
             }),
         }, async ({ path: p, content }) => {
@@ -228,33 +221,49 @@ export class Session {
         });
     }
 
-    // ─── Private: Activation ───────────────────────────────
+    // ─── Private ───────────────────────────────────────────
 
-    private async activateSkill(slug: string): Promise<void> {
-        const refsLink = path.join(this.path, 'skills', slug, 'references');
-        if (await fs.stat(refsLink).catch(() => null)) return; // Already active
-
-        const skillMdPath = path.join(this.path, 'skills', slug, 'SKILL.md');
-        const skillMdTarget = await fs.readlink(skillMdPath).catch(() => null);
-        if (!skillMdTarget) return;
-
-        const masterSkillDir = path.dirname(skillMdTarget);
-        const masterRefs = path.join(masterSkillDir, 'references');
-        if (await fs.stat(masterRefs).catch(() => null)) {
-            await fs.symlink(masterRefs, refsLink).catch(() => {});
+    private extractWorkspaceName(filePath: string): string | null {
+        if (!filePath.startsWith('workspaces/')) return null;
+        const parts = filePath.split('/');
+        let wsName: string | null = null;
+        for (let i = 0; i < parts.length - 1; i++) {
+            if (parts[i] === 'workspaces' && i + 1 < parts.length && parts[i + 1] !== 'workspaces') {
+                wsName = parts[i + 1];
+            }
         }
+        return wsName;
+    }
+
+    private resolveWorkspaceRoot(filePath: string): string | null {
+        const parts = filePath.split('/');
+        let lastWsIndex = -1;
+        for (let i = 0; i < parts.length - 1; i++) {
+            if (parts[i] === 'workspaces' && i + 1 < parts.length && parts[i + 1] !== 'workspaces') {
+                lastWsIndex = i + 1;
+            }
+        }
+        if (lastWsIndex === -1) return null;
+        return this.resolve(parts.slice(0, lastWsIndex + 1).join('/'));
+    }
+
+    private async runInternal(skill: string, tool: string, params?: Record<string, unknown>): Promise<ToolResult> {
+        const ref = this.ernesto.skills.resolveTool(`${skill}:${tool}`);
+        if (!ref) return { content: `Tool not found: ${skill}:${tool}` };
+
+        const validated = ref.tool.inputSchema
+            ? ref.tool.inputSchema.parse(params ?? {})
+            : params ?? {};
+        return ref.tool.execute(validated, this.ctx());
     }
 
     private async activateWorkspace(wsName: string): Promise<void> {
         const wsActive = path.join(this.path, 'workspace');
-        if (await fs.stat(wsActive).catch(() => null)) return; // Already has active workspace
-
+        if (await fs.stat(wsActive).catch(() => null)) return;
         if (this.workspaceOps) {
             await this.workspaceOps.setup(wsName, wsActive);
         }
     }
-
-    // ─── Private: Path resolution ──────────────────────────
 
     private resolve(filePath: string): string {
         const resolved = path.resolve(this.path, filePath);
@@ -263,8 +272,6 @@ export class Session {
         }
         return resolved;
     }
-
-    // ─── Private: Tool context ─────────────────────────────
 
     private ctx(): ToolContext {
         return {
@@ -275,35 +282,13 @@ export class Session {
         };
     }
 
-    // ─── Private: Overview ─────────────────────────────────
-
     private async overview(): Promise<string> {
         const lines: string[] = ['# Ernesto Session', ''];
 
-        // Skills
-        const skillsDir = path.join(this.path, 'skills');
-        const slugs = await fs.readdir(skillsDir).catch(() => [] as string[]);
-        lines.push(`## Skills (${slugs.length})`);
-        for (const slug of slugs.sort()) {
-            const hasRefs = await fs.stat(path.join(skillsDir, slug, 'references')).catch(() => null);
-            const skill = this.ernesto.skills.get(slug);
-            const desc = skill?.description ?? '';
-            lines.push(`- **${slug}**${hasRefs ? ' [active]' : ''} — ${desc}`);
-        }
-
-        // Resources
-        const resDir = path.join(this.path, 'resources');
-        const domains = await fs.readdir(resDir).catch(() => [] as string[]);
-        if (domains.length) {
-            lines.push('', '## Resources');
-            for (const d of domains.sort()) lines.push(`- ${d}/`);
-        }
-
-        // Workspaces (tree of sub-workspaces)
         const wsDir = path.join(this.path, 'workspaces');
         const workspaces = await fs.readdir(wsDir).catch(() => [] as string[]);
         if (workspaces.length) {
-            lines.push('', '## Workspaces');
+            lines.push('## Workspaces');
             for (const ws of workspaces.sort()) {
                 const wsMd = path.join(wsDir, ws, 'WORKSPACE.md');
                 const metaFile = path.join(wsDir, ws, '.meta');
@@ -326,15 +311,10 @@ export class Session {
 
         lines.push('', '## How to use');
         lines.push('');
-        lines.push('**IMPORTANT: You have native Read/Glob/Grep tools.** Resources are pre-indexed files — read them directly instead of running tools.');
-        lines.push('');
-        lines.push('1. **Search first:** `Grep("keyword", path: "resources/")` — searches all indexed content (Slack, PRs, docs)');
-        lines.push('2. **Read files:** `Read("resources/slack-activity/general.md")` — read any resource directly');
-        lines.push('3. **Activate skills:** `open("skills/{name}/SKILL.md")` — unlocks tools for that skill');
-        lines.push('4. **Run tools:** `run("{skill}", "{tool}", {params})` — for LIVE data (logs, queries, API calls)');
-        lines.push('5. **Workspaces:** `open("workspaces/{name}/WORKSPACE.md")` → edit with Write → `settle("message")`');
-        lines.push('');
-        lines.push('Use `run()` only when you need live/real-time data. For anything already indexed in resources/, use Read/Grep — it\'s instant.');
+        lines.push('1. **Browse workspaces:** `open("workspaces/")` — see available domains and projects');
+        lines.push('2. **Expand workspace:** `open("workspaces/{name}/WORKSPACE.md")` — clone and activate');
+        lines.push('3. **Run tools:** `run("{skill}", "{tool}", {params})` — execute domain tools');
+        lines.push('4. **Edit & save:** Write files → `settle("description of changes")`');
 
         return lines.join('\n');
     }

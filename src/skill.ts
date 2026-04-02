@@ -111,30 +111,6 @@ export interface SkillTool<TInput = unknown> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SEARCH CONFIG
-// ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * Search segment for organizing results by category
- */
-export interface SearchSegment {
-    name: string;
-    filter: string;
-    limit: number;
-    description?: string;
-    priority: number;
-}
-
-/**
- * Domain-specific search configuration
- */
-export interface DomainSearchConfig {
-    queryBy?: string;
-    weights?: string;
-    segments?: SearchSegment[];
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
 // SKILL
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -171,11 +147,8 @@ export interface Skill {
     /** Tools available in this skill */
     tools: SkillTool<any>[];
 
-    /** Knowledge extractors (indexed to Typesense as resources) */
+    /** Knowledge extractors (content sources for this skill) */
     resources?: PipelineConfig[];
-
-    /** Search configuration for this skill's resources */
-    searchConfig?: DomainSearchConfig;
 
     /** Required scopes — applied to all tools in this skill */
     requiredScopes?: string[];
@@ -208,7 +181,6 @@ export function createSkill(config: {
     instruction: string | ((ctx: SkillContext) => Promise<string>);
     tools: SkillTool<any>[];
     resources?: PipelineConfig[];
-    searchConfig?: DomainSearchConfig;
     requiredScopes?: string[];
     triggers?: string[];
     icon?: string;
@@ -223,7 +195,6 @@ export function createSkill(config: {
         tools: config.tools,
         ...(config.version !== undefined && { version: config.version }),
         ...(config.resources && { resources: config.resources }),
-        ...(config.searchConfig && { searchConfig: config.searchConfig }),
         ...(config.requiredScopes && { requiredScopes: config.requiredScopes }),
         ...(config.triggers && { triggers: config.triggers }),
         ...(config.icon !== undefined && { icon: config.icon }),
