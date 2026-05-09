@@ -40,3 +40,21 @@ export type { ResourceNode, RawContent, ContentFormat, ContentSource, PipelineCo
 // ─── Utilities ───────────────────────────────────────────────────────────
 export { formatZodSchemaForAgent } from './schema-formatter';
 export { truncateText, flattenResources } from './utils';
+
+// ─── Workdir kernel (new) ────────────────────────────────────────────────
+export {
+    runGit, makeInMemoryWorkdirLock,
+    makeInMemoryFsAdapter, makeInMemoryMasterFs,
+    makeNodeFsAdapter, makeVolumeMasterFs,
+    bootWorkdir, rehydrateWorkdir,
+    commitTurn, materializeFile, settleFromWorktree,
+} from './workdir';
+export type {
+    FsAdapter, MasterFsAdapter, MasterFsResolution,
+    Workdir, WorkdirInput, WorkdirLock, WorkdirTier,
+    LayoutEntry, BootInput, BootResult,
+    CommitTurnInput, CommitTurnResult,
+    MaterializeResult,
+    SettleInput, SettleResult as WorkdirSettleResult,
+    LintFn, LintInput, LintError, PushToMainFn,
+} from './workdir';
