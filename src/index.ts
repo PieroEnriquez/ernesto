@@ -44,6 +44,7 @@ export { truncateText, flattenResources } from './utils';
 // ─── Workdir kernel (new) ────────────────────────────────────────────────
 export {
     runGit, makeInMemoryWorkdirLock,
+    makeRedisWorkdirLock, WorkdirLockAcquireTimeout,
     makeInMemoryFsAdapter, makeInMemoryMasterFs,
     makeNodeFsAdapter, makeVolumeMasterFs,
     bootWorkdir, rehydrateWorkdir,
@@ -57,4 +58,5 @@ export type {
     MaterializeResult,
     SettleInput, SettleResult as WorkdirSettleResult,
     LintFn, LintInput, LintError, PushToMainFn,
+    RedisLockClient,
 } from './workdir';

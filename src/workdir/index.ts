@@ -5,7 +5,8 @@ export type {
 } from './types';
 
 export { runGit } from './run-git';
-export { makeInMemoryWorkdirLock } from './lock';
+export { makeInMemoryWorkdirLock, makeRedisWorkdirLock, WorkdirLockAcquireTimeout } from './lock';
+export type { RedisLockClient } from './lock';
 export { makeInMemoryFsAdapter, makeInMemoryMasterFs } from './in-memory-adapters';
 export { makeNodeFsAdapter, makeVolumeMasterFs } from './node-adapters';
 export { bootWorkdir, rehydrateWorkdir } from './boot';
