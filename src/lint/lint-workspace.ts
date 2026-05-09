@@ -1,65 +1,81 @@
 /**
- * Tier-A `lintWorkspace` — the single settle gate.
+ * Workspace settle gate.
  *
- * Enforces the workspace invariants from `domains/workspaces/README.md`
- * §22 (settle gate), §12 (governance), and §20 (lifecycle):
+ * Enforces the invariants from `domains/workspaces/README.md` §3 (folder
+ * shape), §12 (governance — read/write/admin scopes), §20 (lifecycle),
+ * and §22 (settle gate).
  *
- *   1. `out_of_scope_path`              — every touched path lives under
- *                                         `workspaces/{w}/` for a declared
- *                                         `w` in `workspaces[]`.
- *   2. `workspace_md_missing`           — every touched workspace has a
- *                                         `WORKSPACE.md` post-stage.
- *   3. `missing_frontmatter`            — modified `WORKSPACE.md` starts
- *      / `invalid_frontmatter`            with valid YAML frontmatter
- *                                         carrying `name:` and
- *                                         `description:`.
- *   4. `private_without_admins`         — `visibility: private` requires a
- *                                         non-empty `admins:` list.
- *   5. `forbidden_workspace_name`       — new workspaces must match
- *                                         `^[a-z][a-z0-9-]{0,39}$`. Names
- *                                         starting with `_` are reserved.
- *   6. `forbidden_generated_path`       — `workspaces/{w}/{routes,extracted}/`
- *                                         is derived; agents must not write.
- *   7. `forbidden_workspace_md_delete`  — `WORKSPACE.md` is the workspace's
- *                                         contract; never delete it.
- *   8. `archived_workspace_edit`        — workspaces with `archived: true`
- *                                         only accept the unarchive flip.
- *   9. `file_too_large`                 — any file > 1 MiB → fail.
- *  10. `platform_requires_agent_ops`    — `workspaces/_platform/**` writes
- *                                         require `ernesto:agent-ops`. The
- *                                         default scope-less lint fails
- *                                         conservatively (it cannot prove
- *                                         the principal holds the scope).
- *  11. `visibility_denied`              — §12 visibility rule. The
- *                                         principal's scope set must satisfy
- *                                         each touched workspace's
- *                                         `visibility:` (or be in
- *                                         `admins:` of `{w}`, or hold
- *                                         `ernesto:agent-ops`).
+ * Rules:
+ *
+ *   out_of_scope_path             — every touched path lives under
+ *                                   `workspaces/{w}/` for a declared `w`.
+ *   workspace_md_missing          — every touched workspace has a
+ *                                   `WORKSPACE.md` post-stage.
+ *   missing_frontmatter           — modified `WORKSPACE.md` starts with a
+ *      / invalid_frontmatter        valid YAML mapping that declares
+ *                                   `name`, `description`, and `admin`.
+ *   forbidden_workspace_name      — new workspaces match
+ *                                   `^[a-z][a-z0-9-]{0,39}$`. Reserved
+ *                                   `_`-prefix: only `_platform` allowed.
+ *   forbidden_generated_path      — `workspaces/{w}/{routes,extracted}/` is
+ *                                   derived; agents must not write.
+ *   forbidden_workspace_md_delete — `WORKSPACE.md` is the contract; never
+ *                                   delete it.
+ *   archived_workspace_edit       — workspaces with `archived: true` only
+ *                                   accept the unarchive flip.
+ *   file_too_large                — any file > 1 MiB → fail.
+ *   merge_markers                 — leftover git conflict markers from a
+ *                                   stash pop or rebase.
+ *   attachments_hand_edit         — `attachments.yaml` is route-only; any
+ *                                   user-initiated edit is rejected.
+ *                                   `_platform://attach` (write) and
+ *                                   `_platform://detach` (admin) are the
+ *                                   only paths.
+ *   read_denied                   — diff touches `workspaces/{w}/**` and
+ *                                   the principal lacks `{w}`'s `read:`
+ *                                   scope (default: everyone). `write:`,
+ *                                   `admin:`, and `ernesto:agent-ops` all
+ *                                   satisfy.
+ *   write_denied                  — diff modifies prose (anything other
+ *                                   than WORKSPACE.md frontmatter or
+ *                                   attachments.yaml) without `write:`.
+ *                                   `write:` defaults to `read:`. `admin:`
+ *                                   and `ernesto:agent-ops` satisfy.
+ *   admin_denied                  — diff modifies a system path
+ *                                   (WORKSPACE.md frontmatter — change
+ *                                   detected vs HEAD; new WORKSPACE.md
+ *                                   creation; any change to read/write/
+ *                                   admin) without `admin:` (or
+ *                                   `ernesto:agent-ops`).
  *
  * Two surfaces:
- *   • `lintWorkspace` (default) — no principal info; runs every rule that
- *     does not depend on the live principal. The `_platform` rule fails
- *     conservatively because the lint cannot prove agent-ops; the §12
- *     visibility rule is skipped.
- *   • `makeLintWorkspace(principal)` — closes over the principal's scopes
- *     (and email, used for `admins:` matching). Enforces every rule.
+ *   • `lintWorkspace` (default) — no principal info. Skips read/write/
+ *     admin checks but enforces every shape and content rule, plus
+ *     `attachments_hand_edit` and `merge_markers`.
+ *   • `makeLintWorkspace(principal)` — closes over the principal's live
+ *     scope set. Enforces every rule.
  */
 
 import { readFile, stat } from 'fs/promises';
 import * as path from 'path';
 import yaml from 'js-yaml';
 import type { LintFn, LintError } from '../workdir/settle';
+import { runGit } from '../workdir/run-git';
 
 const GENERATED_SUBDIRS = ['routes', 'extracted'] as const;
 const MAX_FILE_BYTES = 1024 * 1024;
 const WORKSPACE_NAME_REGEX = /^[a-z][a-z0-9-]{0,39}$/;
 const PLATFORM_WORKSPACE = '_platform';
 const AGENT_OPS_SCOPE = 'ernesto:agent-ops';
+const ATTACHMENTS_FILE = 'attachments.yaml';
+
+// ─── Diff parser ──────────────────────────────────────────────────────────
 
 interface DiffEntry {
     fromPath?: string;
     toPath?: string;
+    /** Body of the modified file post-change (added lines), reconstructed
+     *  from the diff. Only used by the archived-unarchive flip check. */
     addedHead: string;
     isDelete: boolean;
 }
@@ -100,16 +116,13 @@ function parseDiff(diff: string): DiffEntry[] {
             i++;
         }
 
-        entries.push({
-            fromPath,
-            toPath,
-            isDelete,
-            addedHead: addedLines.join('\n'),
-        });
+        entries.push({ fromPath, toPath, isDelete, addedHead: addedLines.join('\n') });
     }
 
     return entries;
 }
+
+// ─── Path classifiers ─────────────────────────────────────────────────────
 
 function workspaceOf(p: string): string | undefined {
     const m = /^workspaces\/([^/]+)(?:\/.*)?$/.exec(p);
@@ -126,12 +139,20 @@ function isWorkspaceMd(p: string, w: string): boolean {
     return p === `workspaces/${w}/WORKSPACE.md`;
 }
 
+function isAttachmentsYaml(p: string, w: string): boolean {
+    return p === `workspaces/${w}/${ATTACHMENTS_FILE}`;
+}
+
+// ─── Frontmatter ──────────────────────────────────────────────────────────
+
 interface Frontmatter {
     name?: unknown;
     description?: unknown;
-    visibility?: unknown;
-    admins?: unknown;
+    read?: unknown;
+    write?: unknown;
+    admin?: unknown;
     archived?: unknown;
+    tags?: unknown;
     [k: string]: unknown;
 }
 
@@ -147,9 +168,7 @@ function parseFrontmatter(body: string): FrontmatterResult {
 
     const rest = trimmed.slice(startMatch[0].length);
     const endMatch = /\n---\s*(?:\n|$)/.exec(rest);
-    if (!endMatch) {
-        return { ok: false, reason: 'invalid', detail: 'unterminated frontmatter block' };
-    }
+    if (!endMatch) return { ok: false, reason: 'invalid', detail: 'unterminated frontmatter block' };
     const yamlBody = rest.slice(0, endMatch.index);
 
     let parsed: unknown;
@@ -167,29 +186,43 @@ function parseFrontmatter(body: string): FrontmatterResult {
     return { ok: true, data: parsed as Frontmatter };
 }
 
-async function readWorkspaceMd(
+async function readWorkspaceMdFromDisk(
     workingTreeRoot: string,
     workspace: string,
 ): Promise<{ exists: boolean; frontmatter?: Frontmatter }> {
     const file = path.join(workingTreeRoot, 'workspaces', workspace, 'WORKSPACE.md');
-    let body: string;
     try {
-        body = await readFile(file, 'utf8');
+        const body = await readFile(file, 'utf8');
+        const fm = parseFrontmatter(body);
+        return { exists: true, frontmatter: fm.ok ? fm.data : undefined };
     } catch {
         return { exists: false };
     }
-    const fm = parseFrontmatter(body);
-    return { exists: true, frontmatter: fm.ok ? fm.data : undefined };
 }
 
 /**
- * Detect leftover git conflict markers. Matches the same shape `git diff
- * --check` flags: a line starting with seven `<`, followed by a `=======`
- * separator, followed by a closing `>>>>>>> ` line. Diff3-style markers
- * (with `||||||| ` ancestor block) are also caught. Avoids false positives
- * on prose using `=======` as a markdown-ish thematic break by requiring
- * the full triplet.
+ * Read the pre-stage `WORKSPACE.md` from `git show HEAD:...`. Returns
+ * `{ exists: false }` if the file didn't exist at HEAD (workspace is
+ * being created in this commit) or if git isn't available (test fixture
+ * without a repo — falls back to "treat as new", which gates harder).
  */
+async function readOldFrontmatter(
+    workingTreeRoot: string,
+    workspace: string,
+): Promise<{ exists: boolean; frontmatter?: Frontmatter }> {
+    try {
+        const content = await runGit(workingTreeRoot, [
+            'show', `HEAD:workspaces/${workspace}/WORKSPACE.md`,
+        ]);
+        const fm = parseFrontmatter(content);
+        return { exists: true, frontmatter: fm.ok ? fm.data : undefined };
+    } catch {
+        return { exists: false };
+    }
+}
+
+// ─── Conflict markers ─────────────────────────────────────────────────────
+
 function hasConflictMarkers(content: string): boolean {
     const lines = content.split('\n');
     let sawOpen = false;
@@ -202,52 +235,85 @@ function hasConflictMarkers(content: string): boolean {
     return false;
 }
 
-function asStringList(v: unknown): string[] | undefined {
-    if (Array.isArray(v) && v.every(x => typeof x === 'string')) return v as string[];
-    return undefined;
-}
-
-function parseVisibility(v: unknown): 'public' | 'private' | string[] | undefined {
-    if (v === undefined) return 'public';
-    if (typeof v !== 'string') return undefined;
-    const trimmed = v.trim();
-    if (trimmed === '' || trimmed === 'public') return 'public';
-    if (trimmed === 'private') return 'private';
-    const slugs = trimmed.split(',').map(s => s.trim()).filter(s => s.length > 0);
-    return slugs.length > 0 ? slugs : undefined;
-}
+// ─── Scopes ───────────────────────────────────────────────────────────────
 
 export interface LintPrincipal {
-    /** Live scope set. */
+    /** Live scope set, resolved at request time by the deployer. */
     scopes: ReadonlySet<string>;
-    /** Email used for `admins:` membership matching (case-insensitive). */
+    /** Email — kept for audit-log purposes; not used in scope resolution. */
     email?: string;
 }
 
+function asStr(v: unknown): string | undefined {
+    return typeof v === 'string' && v.trim() !== '' ? v : undefined;
+}
+
+function readScopeOf(fm: Frontmatter): string | undefined { return asStr(fm.read); }
+function writeScopeOf(fm: Frontmatter): string | undefined { return asStr(fm.write); }
+function adminScopeOf(fm: Frontmatter): string | undefined { return asStr(fm.admin); }
+
+function hasAgentOps(p: LintPrincipal | undefined): boolean {
+    return !!p && p.scopes.has(AGENT_OPS_SCOPE);
+}
+
+/** Read access. Default (no `read:`): everyone. `write`/`admin`/agent-ops bypass. */
+function canRead(fm: Frontmatter, p: LintPrincipal | undefined): boolean {
+    if (hasAgentOps(p)) return true;
+    const r = readScopeOf(fm);
+    if (r === undefined) return true;
+    if (!p) return false;
+    if (p.scopes.has(r)) return true;
+    const w = writeScopeOf(fm);
+    if (w !== undefined && p.scopes.has(w)) return true;
+    const a = adminScopeOf(fm);
+    if (a !== undefined && p.scopes.has(a)) return true;
+    return false;
+}
+
+/** Write access. Default: same as read. `admin`/agent-ops bypass. */
+function canWrite(fm: Frontmatter, p: LintPrincipal | undefined): boolean {
+    if (hasAgentOps(p)) return true;
+    const w = writeScopeOf(fm);
+    const r = readScopeOf(fm);
+    if (w === undefined && r === undefined) return true;
+    if (!p) return false;
+    const effectiveWrite = w ?? r;
+    if (effectiveWrite !== undefined && p.scopes.has(effectiveWrite)) return true;
+    const a = adminScopeOf(fm);
+    if (a !== undefined && p.scopes.has(a)) return true;
+    return false;
+}
+
+/** Admin access. No default — `admin:` is required. agent-ops bypass. */
+function canAdmin(fm: Frontmatter, p: LintPrincipal | undefined): boolean {
+    if (hasAgentOps(p)) return true;
+    if (!p) return false;
+    const a = adminScopeOf(fm);
+    return a !== undefined && p.scopes.has(a);
+}
+
+/** Compare two frontmatter objects after canonicalizing key order. */
+function frontmatterDiffers(a: Frontmatter | undefined, b: Frontmatter | undefined): boolean {
+    return JSON.stringify(canonicalize(a ?? {})) !== JSON.stringify(canonicalize(b ?? {}));
+}
+
+function canonicalize(o: unknown): unknown {
+    if (o === null || typeof o !== 'object') return o;
+    if (Array.isArray(o)) return o.map(canonicalize);
+    const sorted: Record<string, unknown> = {};
+    for (const k of Object.keys(o as Record<string, unknown>).sort()) {
+        sorted[k] = canonicalize((o as Record<string, unknown>)[k]);
+    }
+    return sorted;
+}
+
+// ─── Main lint function ───────────────────────────────────────────────────
+
 interface BuildOptions {
-    /** When provided, enforces every rule including §12 + `_platform`.
-     *  When omitted, the lint runs in scope-less mode: §12 is skipped and
-     *  `_platform` writes fail conservatively. */
+    /** When provided, enforces read/write/admin checks. When omitted, the
+     *  lint runs in scope-less mode: those rules are skipped but every
+     *  shape/content rule still runs. */
     principal?: LintPrincipal;
-}
-
-function principalIsAdminOf(admins: string[] | undefined, email?: string): boolean {
-    if (!admins || !email) return false;
-    const target = email.toLowerCase();
-    return admins.some(a => a.toLowerCase() === target);
-}
-
-function principalSatisfiesVisibility(
-    visibility: 'public' | 'private' | string[],
-    admins: string[] | undefined,
-    principal: LintPrincipal | undefined,
-): boolean {
-    if (visibility === 'public') return true;
-    if (!principal) return false;
-    if (principal.scopes.has(AGENT_OPS_SCOPE)) return true;
-    if (principalIsAdminOf(admins, principal.email)) return true;
-    if (visibility === 'private') return false;
-    return visibility.some(slug => principal.scopes.has(slug));
 }
 
 function build({ principal }: BuildOptions): LintFn {
@@ -263,7 +329,7 @@ function build({ principal }: BuildOptions): LintFn {
             if (e.toPath) touchedPaths.add(e.toPath);
         }
 
-        // Rule 1: out_of_scope_path
+        // out_of_scope_path
         for (const p of touchedPaths) {
             const insideAny = allowedPrefixes.some(pref =>
                 p === pref.slice(0, -1) || p.startsWith(pref),
@@ -277,7 +343,7 @@ function build({ principal }: BuildOptions): LintFn {
             }
         }
 
-        // Rule 6: forbidden_generated_path
+        // forbidden_generated_path
         for (const p of touchedPaths) {
             if (isGeneratedPath(p)) {
                 errors.push({
@@ -289,7 +355,7 @@ function build({ principal }: BuildOptions): LintFn {
             }
         }
 
-        // Rule 7: forbidden_workspace_md_delete
+        // forbidden_workspace_md_delete
         for (const e of entries) {
             if (!e.isDelete) continue;
             const p = e.fromPath;
@@ -305,27 +371,20 @@ function build({ principal }: BuildOptions): LintFn {
             }
         }
 
-        // Rule 10: platform_requires_agent_ops
-        const platformPrefix = `workspaces/${PLATFORM_WORKSPACE}/`;
-        const touchesPlatform = [...touchedPaths].some(p =>
-            p === platformPrefix.slice(0, -1) || p.startsWith(platformPrefix),
-        );
-        if (touchesPlatform) {
-            const allowed = principal?.scopes.has(AGENT_OPS_SCOPE) ?? false;
-            if (!allowed) {
+        // attachments_hand_edit — always reject any touch (add, modify, delete).
+        for (const p of touchedPaths) {
+            const w = workspaceOf(p);
+            if (w && isAttachmentsYaml(p, w)) {
                 errors.push({
-                    code: 'platform_requires_agent_ops',
-                    workspace: PLATFORM_WORKSPACE,
-                    message: principal
-                        ? `Edits under workspaces/_platform/** require the '${AGENT_OPS_SCOPE}' scope; principal does not hold it`
-                        : `Edits under workspaces/_platform/** require the '${AGENT_OPS_SCOPE}' scope; scope-less lint cannot grant it`,
+                    code: 'attachments_hand_edit',
+                    workspace: w,
+                    path: p,
+                    message: `attachments.yaml is route-only; use _platform://attach (write) or _platform://detach (admin) — hand-edits are rejected`,
                 });
             }
         }
 
-        // Rule 5 (subset on creation): forbidden_workspace_name
-        // A new workspace is signalled by an addition of WORKSPACE.md whose
-        // fromPath is undefined.
+        // forbidden_workspace_name (new workspace creation only)
         for (const e of entries) {
             if (e.fromPath !== undefined) continue;
             if (!e.toPath) continue;
@@ -349,10 +408,7 @@ function build({ principal }: BuildOptions): LintFn {
             }
         }
 
-        // Rules 3 + 4: WORKSPACE.md frontmatter shape — read post-stage from
-        // disk so partial edits (which don't include the leading `---` block
-        // in the diff's `+` lines) validate against the full file rather than
-        // the inserted hunk.
+        // missing_frontmatter / invalid_frontmatter — reads post-stage from disk
         const touchedWorkspaceMds = new Set<string>();
         for (const e of entries) {
             const target = e.toPath;
@@ -367,25 +423,19 @@ function build({ principal }: BuildOptions): LintFn {
             try {
                 fileBody = await readFile(path.join(workingTreeRoot, target), 'utf8');
             } catch {
-                // File should exist post-stage; if it doesn't, the missing
-                // rule below (workspace_md_missing) will surface that.
                 continue;
             }
             const fm = parseFrontmatter(fileBody);
             if (!fm.ok && fm.reason === 'missing') {
                 errors.push({
-                    code: 'missing_frontmatter',
-                    workspace: w,
-                    path: target,
+                    code: 'missing_frontmatter', workspace: w, path: target,
                     message: `WORKSPACE.md for '${w}' is missing YAML frontmatter (must start with '---')`,
                 });
                 continue;
             }
             if (!fm.ok && fm.reason === 'invalid') {
                 errors.push({
-                    code: 'invalid_frontmatter',
-                    workspace: w,
-                    path: target,
+                    code: 'invalid_frontmatter', workspace: w, path: target,
                     message: `WORKSPACE.md for '${w}' has invalid frontmatter: ${fm.detail}`,
                 });
                 continue;
@@ -393,44 +443,30 @@ function build({ principal }: BuildOptions): LintFn {
             const data = fm.data;
             if (typeof data.name !== 'string' || data.name.trim() === '') {
                 errors.push({
-                    code: 'invalid_frontmatter',
-                    workspace: w,
-                    path: target,
+                    code: 'invalid_frontmatter', workspace: w, path: target,
                     message: `WORKSPACE.md for '${w}' frontmatter must declare a non-empty 'name'`,
                 });
             } else if (data.name !== w) {
                 errors.push({
-                    code: 'invalid_frontmatter',
-                    workspace: w,
-                    path: target,
+                    code: 'invalid_frontmatter', workspace: w, path: target,
                     message: `WORKSPACE.md frontmatter 'name: ${data.name}' does not match directory name '${w}'`,
                 });
             }
             if (typeof data.description !== 'string' || data.description.trim() === '') {
                 errors.push({
-                    code: 'invalid_frontmatter',
-                    workspace: w,
-                    path: target,
+                    code: 'invalid_frontmatter', workspace: w, path: target,
                     message: `WORKSPACE.md for '${w}' frontmatter must declare a non-empty 'description'`,
                 });
             }
-            if (data.visibility === 'private') {
-                const adminsOk = Array.isArray(data.admins) && data.admins.length > 0;
-                if (!adminsOk) {
-                    errors.push({
-                        code: 'private_without_admins',
-                        workspace: w,
-                        path: target,
-                        message: `WORKSPACE.md for '${w}' declares 'visibility: private' but is missing a non-empty 'admins:' list`,
-                    });
-                }
+            if (typeof data.admin !== 'string' || data.admin.trim() === '') {
+                errors.push({
+                    code: 'invalid_frontmatter', workspace: w, path: target,
+                    message: `WORKSPACE.md for '${w}' frontmatter must declare a non-empty 'admin' scope (required field)`,
+                });
             }
         }
 
-        // Rule 9: file_too_large — read post-stage size from working tree.
-        // Rule 12: merge_markers — leftover conflict markers from a stash
-        //          pop or rebase. Same loop reads the file once and checks
-        //          both invariants.
+        // file_too_large + merge_markers (one pass per file)
         for (const e of entries) {
             if (e.isDelete) continue;
             const p = e.toPath;
@@ -454,15 +490,16 @@ function build({ principal }: BuildOptions): LintFn {
                         code: 'merge_markers',
                         path: p,
                         workspace: workspaceOf(p),
-                        message: `File ${p} contains unresolved git conflict markers (<<<<<<<, =======, >>>>>>>); resolve them before settling`,
+                        message: `File ${p} contains unresolved git conflict markers; resolve them before settling`,
                     });
                 }
             } catch {
-                // File missing or unreadable — other rules surface that.
+                // best-effort
             }
         }
 
-        // Touched-workspaces analysis (rules 2, 8, 11).
+        // Per-workspace pass: workspace_md_missing, archived_workspace_edit,
+        // and the read/write/admin scope rules.
         const touchedWorkspaces = new Set<string>();
         for (const p of touchedPaths) {
             const w = workspaceOf(p);
@@ -470,9 +507,9 @@ function build({ principal }: BuildOptions): LintFn {
         }
 
         for (const w of touchedWorkspaces) {
-            const ws = await readWorkspaceMd(workingTreeRoot, w);
+            const ws = await readWorkspaceMdFromDisk(workingTreeRoot, w);
 
-            // Rule 2: workspace_md_missing
+            // workspace_md_missing
             if (!ws.exists) {
                 errors.push({
                     code: 'workspace_md_missing',
@@ -484,13 +521,13 @@ function build({ principal }: BuildOptions): LintFn {
 
             const fm = ws.frontmatter ?? {};
 
-            // Rule 8: archived_workspace_edit
+            // archived_workspace_edit
             if (fm.archived === true) {
                 const touchedInWs = [...touchedPaths].filter(p => workspaceOf(p) === w);
                 const onlyWorkspaceMd = touchedInWs.every(p => isWorkspaceMd(p, w));
                 const wsMdEntry = entries.find(e => e.toPath && isWorkspaceMd(e.toPath, w));
-                const newFm = wsMdEntry ? parseFrontmatter(wsMdEntry.addedHead) : undefined;
-                const unarchives = newFm?.ok && newFm.data.archived === false;
+                const newFmFromAdded = wsMdEntry ? parseFrontmatter(wsMdEntry.addedHead) : undefined;
+                const unarchives = newFmFromAdded?.ok && newFmFromAdded.data.archived === false;
                 if (!onlyWorkspaceMd || !unarchives) {
                     errors.push({
                         code: 'archived_workspace_edit',
@@ -500,28 +537,72 @@ function build({ principal }: BuildOptions): LintFn {
                 }
             }
 
-            // Rule 11: visibility_denied (§12). Skipped in scope-less mode.
-            if (principal) {
-                const visibility = parseVisibility(fm.visibility);
-                if (visibility === undefined) {
-                    errors.push({
-                        code: 'invalid_frontmatter',
-                        workspace: w,
-                        message: `Workspace '${w}' has an unparseable 'visibility:' value`,
-                    });
-                } else {
-                    const admins = asStringList(fm.admins);
-                    const ok = principalSatisfiesVisibility(visibility, admins, principal);
-                    if (!ok) {
-                        const desc = visibility === 'public' ? 'public'
-                            : visibility === 'private' ? 'private'
-                            : `[${visibility.join(', ')}]`;
+            // Scope rules — skipped in scope-less mode.
+            if (!principal) continue;
+
+            // read_denied — any touch requires read access.
+            if (!canRead(fm, principal)) {
+                errors.push({
+                    code: 'read_denied',
+                    workspace: w,
+                    message: `Workspace '${w}' read scope '${readScopeOf(fm) ?? '(everyone)'}' is not satisfied by principal scopes`,
+                });
+                continue; // can't reason about per-file rules without read
+            }
+
+            // Per-file write_denied / admin_denied.
+            const oldFmRead = await readOldFrontmatter(workingTreeRoot, w);
+            const wsEntries = entries.filter(e => {
+                const t = e.toPath ?? e.fromPath;
+                return t !== undefined && workspaceOf(t) === w;
+            });
+
+            for (const e of wsEntries) {
+                const target = e.toPath ?? e.fromPath!;
+
+                // attachments.yaml already handled by attachments_hand_edit.
+                if (isAttachmentsYaml(target, w)) continue;
+
+                // WORKSPACE.md edits: frontmatter changed → admin; body-only → write.
+                if (isWorkspaceMd(target, w) && !e.isDelete) {
+                    const isNewWs = !oldFmRead.exists;
+                    const fmChanged = isNewWs || frontmatterDiffers(oldFmRead.frontmatter, fm);
+                    if (fmChanged) {
+                        // For new workspaces, the principal must hold the
+                        // scope they're declaring (can't lock others out
+                        // without already being authorized). For edits, the
+                        // *previous* admin scope gates the change — current
+                        // admin must approve the update.
+                        const adminFm = isNewWs ? fm : (oldFmRead.frontmatter ?? {});
+                        if (!canAdmin(adminFm, principal)) {
+                            errors.push({
+                                code: 'admin_denied',
+                                workspace: w,
+                                path: target,
+                                message: isNewWs
+                                    ? `Creating workspace '${w}' requires holding its declared admin scope '${adminScopeOf(fm) ?? '(missing — invalid frontmatter)'}'`
+                                    : `Changing WORKSPACE.md frontmatter for '${w}' requires the workspace's admin scope '${adminScopeOf(adminFm) ?? '(none)'}'`,
+                            });
+                        }
+                    } else if (!canWrite(fm, principal)) {
                         errors.push({
-                            code: 'visibility_denied',
+                            code: 'write_denied',
                             workspace: w,
-                            message: `Workspace '${w}' visibility ${desc} is not satisfied by principal scopes`,
+                            path: target,
+                            message: `Editing WORKSPACE.md body for '${w}' requires write scope '${writeScopeOf(fm) ?? readScopeOf(fm) ?? '(everyone)'}'`,
                         });
                     }
+                    continue;
+                }
+
+                // Prose (any non-system file): write-level. Includes deletes.
+                if (!canWrite(fm, principal)) {
+                    errors.push({
+                        code: 'write_denied',
+                        workspace: w,
+                        path: target,
+                        message: `Editing prose in '${w}' requires write scope '${writeScopeOf(fm) ?? readScopeOf(fm) ?? '(everyone)'}'`,
+                    });
                 }
             }
         }
@@ -532,12 +613,13 @@ function build({ principal }: BuildOptions): LintFn {
 
 /**
  * Default scope-less lint. Enforces every rule that does not depend on the
- * principal. The `_platform` rule fails conservatively (no proof of
- * `ernesto:agent-ops`); the §12 visibility rule is skipped.
+ * principal (shape, content, attachments_hand_edit, merge_markers). Suitable
+ * for non-authoritative previews; the authoritative path always uses
+ * `makeLintWorkspace(principal)`.
  */
 export const lintWorkspace: LintFn = build({});
 
-/** Build a lint function bound to the principal's live scope set + email. */
+/** Build a lint function bound to the principal's live scope set. */
 export function makeLintWorkspace(principal: LintPrincipal): LintFn {
     return build({ principal });
 }
