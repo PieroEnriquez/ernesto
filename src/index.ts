@@ -60,3 +60,7 @@ export type {
     LintFn, LintInput, LintError, PushToMainFn,
     RedisLockClient,
 } from './workdir';
+
+// ─── Lint (workspace settle gate) ────────────────────────────────────────
+export { lintWorkspace, makeLintWorkspace } from './lint';
+export type { LintPrincipal } from './lint';
