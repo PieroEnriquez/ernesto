@@ -1,6 +1,15 @@
 import { Workdir } from './types';
 import { runGit } from './run-git';
 
+/**
+ * Per-workspace subdirectories that are generated content (extraction worker,
+ * derive worker, attach route). They live as directory symlinks into master-fs
+ * and must never enter the index — settle excludes them from staging via git
+ * pathspec, regardless of any `.gitignore` rules. Keep this list in sync with
+ * the lint's `forbidden_generated_path` rule.
+ */
+const GENERATED_SUBDIRS = ['extracted', 'routes', 'attached'] as const;
+
 export interface LintError {
     code: string;
     workspace?: string;
@@ -69,7 +78,21 @@ export async function settleFromWorktree(
         const root = workdir.workingTreeRoot;
         const wsPaths = input.workspaces.map(w => `workspaces/${w}`);
 
-        await runGit(root, ['add', '--', ...wsPaths]);
+        // Stage each workspace minus its generated subtrees. `extracted/`,
+        // `routes/`, and `attached/` are directory symlinks into master-fs
+        // placed at session boot; they must never enter the index. Doing
+        // the exclusion here (instead of via the workspaces repo's
+        // `.gitignore`) means the working tree is still discoverable to
+        // ripgrep-based tools (`fs_glob`, `fs_grep`) — only git treats
+        // these paths as out-of-bounds.
+        const addArgs = ['add', '--'];
+        for (const ws of input.workspaces) {
+            addArgs.push(`workspaces/${ws}`);
+            for (const sub of GENERATED_SUBDIRS) {
+                addArgs.push(`:(exclude)workspaces/${ws}/${sub}`);
+            }
+        }
+        await runGit(root, addArgs);
 
         const diff = await runGit(root, [
             'diff', '--cached', '--', ...wsPaths,
