@@ -47,6 +47,7 @@ export {
     makeRedisWorkdirLock, WorkdirLockAcquireTimeout,
     makeInMemoryFsAdapter, makeInMemoryMasterFs,
     makeNodeFsAdapter, makeVolumeMasterFs,
+    makeHttpsMasterFs,
     bootWorkdir, rehydrateWorkdir,
     commitTurn, materializeFile, settleFromWorktree,
 } from './workdir';
@@ -59,6 +60,7 @@ export type {
     SettleInput, SettleResult as WorkdirSettleResult,
     LintFn, LintInput, LintError, PushToMainFn,
     RedisLockClient,
+    HttpsMasterFsOptions,
 } from './workdir';
 
 // ─── Lint (workspace settle gate) ────────────────────────────────────────

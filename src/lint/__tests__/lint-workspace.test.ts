@@ -515,6 +515,29 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
         expect(ok).toEqual({ ok: true });
     });
 
+    it('bypass: { attachments_hand_edit } skips the rule for privileged settles', async () => {
+        await seedWorkspace(root, 'hr', VALID_HR);
+        await commitAll(root, 'seed');
+        // Without bypass: any touch is rejected.
+        const lint = makeLintWorkspace({
+            scopes: new Set(['ernesto:agent-ops']),
+            email: 'ops@bitrefill.com',
+        });
+        await writeStagedFile(root, 'workspaces/hr/attachments.yaml', '- key: abc\n');
+        const diff = diffAdd('workspaces/hr/attachments.yaml', '- key: abc\n');
+        const blocked = await lint({ diff, workspaces: ['hr'], workingTreeRoot: root });
+        const blockedFailed = expectErrors(blocked);
+        expect(blockedFailed.errors.some(e => e.code === 'attachments_hand_edit')).toBe(true);
+
+        // With bypass: rule is skipped, settle passes.
+        const lintBypass = makeLintWorkspace(
+            { scopes: new Set(['ernesto:agent-ops']), email: 'ops@bitrefill.com' },
+            { bypass: new Set(['attachments_hand_edit']) },
+        );
+        const ok = await lintBypass({ diff, workspaces: ['hr'], workingTreeRoot: root });
+        expect(ok).toEqual({ ok: true });
+    });
+
     it('changing the admin scope itself requires holding the OLD admin scope', async () => {
         await seedWorkspace(root, 'hr', VALID_HR);
         await commitAll(root, 'seed');

@@ -314,9 +314,15 @@ interface BuildOptions {
      *  lint runs in scope-less mode: those rules are skipped but every
      *  shape/content rule still runs. */
     principal?: LintPrincipal;
+    /** Rule codes to skip. Wired by privileged-route settles that legitimately
+     *  modify route-only files (e.g. `_platform://attach` writes
+     *  `attachments.yaml`, so the surrounding settle bypasses
+     *  `attachments_hand_edit`). User-initiated settles must never set this. */
+    bypass?: ReadonlySet<string>;
 }
 
-function build({ principal }: BuildOptions): LintFn {
+function build({ principal, bypass }: BuildOptions): LintFn {
+    const isBypassed = (code: string): boolean => bypass?.has(code) ?? false;
     return async ({ diff, workspaces, workingTreeRoot }) => {
         const errors: LintError[] = [];
         const entries = parseDiff(diff);
@@ -372,15 +378,18 @@ function build({ principal }: BuildOptions): LintFn {
         }
 
         // attachments_hand_edit — always reject any touch (add, modify, delete).
-        for (const p of touchedPaths) {
-            const w = workspaceOf(p);
-            if (w && isAttachmentsYaml(p, w)) {
-                errors.push({
-                    code: 'attachments_hand_edit',
-                    workspace: w,
-                    path: p,
-                    message: `attachments.yaml is route-only; use _platform://attach (write) or _platform://detach (admin) — hand-edits are rejected`,
-                });
+        // Bypassed only by privileged-route settles (e.g. `_platform://attach`).
+        if (!isBypassed('attachments_hand_edit')) {
+            for (const p of touchedPaths) {
+                const w = workspaceOf(p);
+                if (w && isAttachmentsYaml(p, w)) {
+                    errors.push({
+                        code: 'attachments_hand_edit',
+                        workspace: w,
+                        path: p,
+                        message: `attachments.yaml is route-only; use _platform://attach (write) or _platform://detach (admin) — hand-edits are rejected`,
+                    });
+                }
             }
         }
 
@@ -619,7 +628,18 @@ function build({ principal }: BuildOptions): LintFn {
  */
 export const lintWorkspace: LintFn = build({});
 
+export interface MakeLintWorkspaceOptions {
+    /** Rule codes the caller is privileged to skip. Wire only from routes
+     *  that legitimately mutate route-only files (e.g. `_platform://attach`
+     *  bypasses `attachments_hand_edit`). User-initiated settles must not
+     *  pass this. */
+    bypass?: ReadonlySet<string>;
+}
+
 /** Build a lint function bound to the principal's live scope set. */
-export function makeLintWorkspace(principal: LintPrincipal): LintFn {
-    return build({ principal });
+export function makeLintWorkspace(
+    principal: LintPrincipal,
+    options: MakeLintWorkspaceOptions = {},
+): LintFn {
+    return build({ principal, bypass: options.bypass });
 }
