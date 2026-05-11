@@ -91,7 +91,7 @@ export { defineExtraction, ExtractionRegistry, dispatchExtraction, clickupPlugin
 export type {
     ExtractionPlugin, ExtractionPluginConfig, ExtractionContext, ExtractionLogger,
     ExtractionUser, ExtractionRequest, ExtractionResult, ExtractionEntry,
-    ExtractionFormat, ExtractionScope,
+    ExtractionScope,
     DispatchExtractionResult, DispatchExtractionErrorCode,
     ClickUpPluginOptions,
     DrivePluginOptions,

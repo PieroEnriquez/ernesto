@@ -81,7 +81,7 @@ describe('githubPlugin – happy path per target kind', () => {
 
         const plugin = githubPlugin({ token: TOKEN, owner: OWNER });
         const result = await plugin.fetch(
-            { target: `pr:${REPO}:6298`, format: 'markdown' },
+            { target: `pr:${REPO}:6298` },
             makeCtx(),
         );
 
@@ -108,7 +108,7 @@ describe('githubPlugin – happy path per target kind', () => {
 
         const plugin = githubPlugin({ token: TOKEN, owner: OWNER });
         const result = await plugin.fetch(
-            { target: `commit:${REPO}:a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0`, format: 'markdown' },
+            { target: `commit:${REPO}:a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0` },
             makeCtx(),
         );
 
@@ -137,7 +137,7 @@ describe('githubPlugin – happy path per target kind', () => {
 
         const plugin = githubPlugin({ token: TOKEN, owner: OWNER });
         const result = await plugin.fetch(
-            { target: `prs:${REPO}`, format: 'markdown' },
+            { target: `prs:${REPO}` },
             makeCtx(),
         );
 
@@ -163,7 +163,7 @@ describe('githubPlugin – happy path per target kind', () => {
 
         const plugin = githubPlugin({ token: TOKEN, owner: OWNER });
         const result = await plugin.fetch(
-            { target: `commits:${REPO}`, format: 'markdown' },
+            { target: `commits:${REPO}` },
             makeCtx(),
         );
 
@@ -186,7 +186,7 @@ describe('githubPlugin – error paths', () => {
         const ctx = makeCtx();
         const plugin = githubPlugin({ token: TOKEN, owner: OWNER });
         const err = await plugin
-            .fetch({ target: `pr:${REPO}:1`, format: 'markdown' }, ctx)
+            .fetch({ target: `pr:${REPO}:1` }, ctx)
             .then(
                 () => null,
                 (e: Error) => e,
@@ -210,7 +210,7 @@ describe('githubPlugin – error paths', () => {
         const ctx = makeCtx();
         const plugin = githubPlugin({ token: TOKEN, owner: OWNER });
         const result = await plugin.fetch(
-            { target: `pr:${REPO}:9999`, format: 'markdown' },
+            { target: `pr:${REPO}:9999` },
             ctx,
         );
 
@@ -225,14 +225,14 @@ describe('githubPlugin – error paths', () => {
     it('rejects unsupported target prefixes', async () => {
         const plugin = githubPlugin({ token: TOKEN, owner: OWNER });
         await expect(
-            plugin.fetch({ target: 'issue:backend:1', format: 'markdown' }, makeCtx()),
+            plugin.fetch({ target: 'issue:backend:1' }, makeCtx()),
         ).rejects.toThrow(/unsupported target kind/);
     });
 
     it('rejects pr target with non-numeric number', async () => {
         const plugin = githubPlugin({ token: TOKEN, owner: OWNER });
         await expect(
-            plugin.fetch({ target: 'pr:backend:notanumber', format: 'markdown' }, makeCtx()),
+            plugin.fetch({ target: 'pr:backend:notanumber' }, makeCtx()),
         ).rejects.toThrow(/pr target id must be numeric/);
     });
 });
@@ -258,7 +258,7 @@ describe('githubPlugin – 429 retry behaviour', () => {
         });
 
         const promise = plugin.fetch(
-            { target: `pr:${REPO}:6298`, format: 'markdown' },
+            { target: `pr:${REPO}:6298` },
             ctx,
         );
 
@@ -295,7 +295,7 @@ describe('githubPlugin – 429 retry behaviour', () => {
         });
 
         const promise = plugin.fetch(
-            { target: `pr:${REPO}:6298`, format: 'markdown' },
+            { target: `pr:${REPO}:6298` },
             ctx,
         );
         // Swallow the rejection now so an unhandled-rejection doesn't fire while we advance timers.

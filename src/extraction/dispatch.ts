@@ -11,7 +11,6 @@
 import type { ExtractionRegistry } from './extraction-registry';
 import type {
     ExtractionContext,
-    ExtractionFormat,
     ExtractionPlugin,
     ExtractionRequest,
     ExtractionResult,
@@ -19,12 +18,6 @@ import type {
 } from './define-extraction';
 
 const AGENT_OPS_SCOPE: ExtractionScope = 'ernesto:agent-ops';
-
-const ALLOWED_FORMATS: ReadonlySet<ExtractionFormat> = new Set<ExtractionFormat>([
-    'markdown',
-    'json',
-    'text',
-]);
 
 export type DispatchExtractionErrorCode =
     | 'source_not_found'
@@ -102,9 +95,6 @@ function checkScope(
 function validateRequest(request: ExtractionRequest): { field: string; message: string } | null {
     if (typeof request.target !== 'string' || request.target.length === 0) {
         return { field: 'target', message: 'target must be a non-empty string' };
-    }
-    if (!ALLOWED_FORMATS.has(request.format)) {
-        return { field: 'format', message: 'format must be markdown, json, or text' };
     }
     return null;
 }

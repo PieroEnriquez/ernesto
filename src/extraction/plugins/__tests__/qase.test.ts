@@ -46,7 +46,7 @@ describe('qasePlugin – auth header shape', () => {
 
         const plugin = qasePlugin({ token: TOKEN });
         await plugin.fetch(
-            { target: 'case:DEMO:1', format: 'json' },
+            { target: 'case:DEMO:1' },
             makeCtx(),
         );
 
@@ -66,7 +66,7 @@ describe('qasePlugin – happy path per target kind', () => {
 
         const plugin = qasePlugin({ token: TOKEN });
         const result = await plugin.fetch(
-            { target: 'case:DEMO:42', format: 'json' },
+            { target: 'case:DEMO:42' },
             makeCtx(),
         );
 
@@ -97,7 +97,7 @@ describe('qasePlugin – happy path per target kind', () => {
 
         const plugin = qasePlugin({ token: TOKEN });
         const result = await plugin.fetch(
-            { target: 'project:DEMO', format: 'json' },
+            { target: 'project:DEMO' },
             makeCtx(),
         );
 
@@ -134,7 +134,7 @@ describe('qasePlugin – happy path per target kind', () => {
 
         const plugin = qasePlugin({ token: TOKEN });
         const result = await plugin.fetch(
-            { target: 'suite:DEMO:7', format: 'json' },
+            { target: 'suite:DEMO:7' },
             makeCtx(),
         );
 
@@ -184,7 +184,7 @@ describe('qasePlugin – happy path per target kind', () => {
 
         const plugin = qasePlugin({ token: TOKEN, pageSize: 2 });
         const result = await plugin.fetch(
-            { target: 'suite:DEMO:7', format: 'json' },
+            { target: 'suite:DEMO:7' },
             makeCtx(),
         );
 
@@ -211,7 +211,7 @@ describe('qasePlugin – error paths', () => {
 
         const plugin = qasePlugin({ token: TOKEN });
         await expect(
-            plugin.fetch({ target: 'case:DEMO:1', format: 'json' }, makeCtx()),
+            plugin.fetch({ target: 'case:DEMO:1' }, makeCtx()),
         ).rejects.toThrow(/auth rejected.*401/);
     });
 
@@ -222,7 +222,7 @@ describe('qasePlugin – error paths', () => {
         const ctx = makeCtx();
         const plugin = qasePlugin({ token: TOKEN });
         const result = await plugin.fetch(
-            { target: 'case:DEMO:gone', format: 'json' },
+            { target: 'case:DEMO:gone' },
             ctx,
         );
 
@@ -237,14 +237,14 @@ describe('qasePlugin – error paths', () => {
     it('rejects unsupported target prefixes', async () => {
         const plugin = qasePlugin({ token: TOKEN });
         await expect(
-            plugin.fetch({ target: 'milestone:DEMO:1', format: 'json' }, makeCtx()),
+            plugin.fetch({ target: 'milestone:DEMO:1' }, makeCtx()),
         ).rejects.toThrow(/unsupported target kind/);
     });
 
     it('rejects malformed suite/case targets (missing id segment)', async () => {
         const plugin = qasePlugin({ token: TOKEN });
         await expect(
-            plugin.fetch({ target: 'suite:DEMO', format: 'json' }, makeCtx()),
+            plugin.fetch({ target: 'suite:DEMO' }, makeCtx()),
         ).rejects.toThrow(/suite target must be/);
     });
 });
@@ -269,7 +269,7 @@ describe('qasePlugin – 429 retry behaviour', () => {
             maxRetries: 3,
         });
 
-        const promise = plugin.fetch({ target: 'case:DEMO:9', format: 'json' }, ctx);
+        const promise = plugin.fetch({ target: 'case:DEMO:9' }, ctx);
 
         await vi.advanceTimersByTimeAsync(0);
         expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -304,7 +304,7 @@ describe('qasePlugin – token redaction', () => {
             maxRetries: 3,
         });
 
-        const promise = plugin.fetch({ target: 'case:DEMO:1', format: 'json' }, ctx);
+        const promise = plugin.fetch({ target: 'case:DEMO:1' }, ctx);
         await vi.advanceTimersByTimeAsync(1);
         await promise;
 

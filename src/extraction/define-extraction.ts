@@ -15,8 +15,6 @@
  * `{ id, email? }`.
  */
 
-export type ExtractionFormat = 'markdown' | 'json' | 'text';
-
 export type ExtractionScope = string;
 
 export interface ExtractionLogger {
@@ -38,7 +36,6 @@ export interface ExtractionContext {
 
 export interface ExtractionRequest {
     target: string;
-    format: ExtractionFormat;
     refresh?: boolean;
 }
 

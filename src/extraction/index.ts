@@ -8,7 +8,6 @@ export type {
     ExtractionRequest,
     ExtractionResult,
     ExtractionEntry,
-    ExtractionFormat,
     ExtractionScope,
 } from './define-extraction';
 

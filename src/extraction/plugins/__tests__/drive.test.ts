@@ -63,7 +63,7 @@ describe('drivePlugin', () => {
         });
         vi.stubGlobal('fetch', fetchMock);
 
-        const result = await plugin.fetch({ target: 'doc:doc-1', format: 'markdown' }, makeCtx());
+        const result = await plugin.fetch({ target: 'doc:doc-1' }, makeCtx());
 
         expect(result.entries).toHaveLength(1);
         expect(result.entries[0]).toEqual({
@@ -93,7 +93,7 @@ describe('drivePlugin', () => {
         });
         vi.stubGlobal('fetch', fetchMock);
 
-        const result = await plugin.fetch({ target: 'sheet:sheet-1', format: 'text' }, makeCtx());
+        const result = await plugin.fetch({ target: 'sheet:sheet-1' }, makeCtx());
 
         expect(result.entries).toEqual([
             { path: 'sheets/my-sheet.csv', content: 'a,b\n1,2\n', contentType: 'text/csv' },
@@ -148,7 +148,7 @@ describe('drivePlugin', () => {
         });
         vi.stubGlobal('fetch', fetchMock);
 
-        const result = await plugin.fetch({ target: 'folder:root-folder', format: 'markdown' }, makeCtx());
+        const result = await plugin.fetch({ target: 'folder:root-folder' }, makeCtx());
 
         const paths = result.entries.map((e) => e.path).sort();
         expect(paths).toEqual(['docs/doc-a.md', 'sheets/sheet-b.csv']);
@@ -189,7 +189,7 @@ describe('drivePlugin', () => {
         });
         vi.stubGlobal('fetch', fetchMock);
 
-        const result = await plugin.fetch({ target: 'doc:doc-1', format: 'markdown' }, makeCtx());
+        const result = await plugin.fetch({ target: 'doc:doc-1' }, makeCtx());
 
         expect(result.entries).toEqual([
             { path: 'docs/after-refresh.md', content: '# refreshed', contentType: 'text/markdown' },
@@ -203,7 +203,7 @@ describe('drivePlugin', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         await expect(
-            plugin.fetch({ target: 'doc:doc-1', format: 'markdown' }, makeCtx()),
+            plugin.fetch({ target: 'doc:doc-1' }, makeCtx()),
         ).rejects.toThrow(/unauthorized/i);
     });
 
@@ -226,7 +226,7 @@ describe('drivePlugin', () => {
         });
         vi.stubGlobal('fetch', fetchMock);
 
-        const result = await plugin.fetch({ target: 'doc:doc-1', format: 'markdown' }, makeCtx());
+        const result = await plugin.fetch({ target: 'doc:doc-1' }, makeCtx());
 
         expect(metaAttempts).toBe(3);
         expect(result.entries[0].path).toBe('docs/slow-doc.md');
@@ -237,7 +237,7 @@ describe('drivePlugin', () => {
         const fetchMock = vi.fn(async () => jsonResponse({ status: 404, body: { error: 'not found' } }));
         vi.stubGlobal('fetch', fetchMock);
 
-        const result = await plugin.fetch({ target: 'doc:missing', format: 'markdown' }, makeCtx());
+        const result = await plugin.fetch({ target: 'doc:missing' }, makeCtx());
         expect(result.entries).toEqual([]);
         expect(typeof result.fetchedAt).toBe('string');
     });
@@ -247,7 +247,7 @@ describe('drivePlugin', () => {
         const fetchMock = vi.fn(async () => jsonResponse({ status: 404, body: {} }));
         vi.stubGlobal('fetch', fetchMock);
 
-        const result = await plugin.fetch({ target: 'folder:gone', format: 'markdown' }, makeCtx());
+        const result = await plugin.fetch({ target: 'folder:gone' }, makeCtx());
         expect(result.entries).toEqual([]);
     });
 
@@ -270,7 +270,7 @@ describe('drivePlugin', () => {
         });
         vi.stubGlobal('fetch', fetchMock);
 
-        const result = await plugin.fetch({ target: 'pdf:pdf-1', format: 'text' }, makeCtx());
+        const result = await plugin.fetch({ target: 'pdf:pdf-1' }, makeCtx());
 
         expect(result.entries).toEqual([
             {
@@ -286,7 +286,7 @@ describe('drivePlugin', () => {
         const fetchMock = vi.fn(async () => jsonResponse({ status: 404, body: { error: 'not found' } }));
         vi.stubGlobal('fetch', fetchMock);
 
-        const result = await plugin.fetch({ target: 'pdf:missing', format: 'text' }, makeCtx());
+        const result = await plugin.fetch({ target: 'pdf:missing' }, makeCtx());
         expect(result.entries).toEqual([]);
         expect(typeof result.fetchedAt).toBe('string');
     });
@@ -311,7 +311,7 @@ describe('drivePlugin', () => {
         });
         vi.stubGlobal('fetch', fetchMock);
 
-        const result = await plugin.fetch({ target: 'docx:docx-1', format: 'markdown' }, makeCtx());
+        const result = await plugin.fetch({ target: 'docx:docx-1' }, makeCtx());
 
         expect(result.entries).toEqual([
             {
@@ -327,14 +327,14 @@ describe('drivePlugin', () => {
         const fetchMock = vi.fn(async () => jsonResponse({ status: 404, body: { error: 'not found' } }));
         vi.stubGlobal('fetch', fetchMock);
 
-        const result = await plugin.fetch({ target: 'docx:missing', format: 'markdown' }, makeCtx());
+        const result = await plugin.fetch({ target: 'docx:missing' }, makeCtx());
         expect(result.entries).toEqual([]);
     });
 
     it('rejects invalid target shapes', async () => {
         const plugin = drivePlugin({ accessToken: 'tok' });
         vi.stubGlobal('fetch', vi.fn());
-        await expect(plugin.fetch({ target: 'bogus', format: 'markdown' }, makeCtx())).rejects.toThrow();
-        await expect(plugin.fetch({ target: 'video:abc', format: 'markdown' }, makeCtx())).rejects.toThrow();
+        await expect(plugin.fetch({ target: 'bogus' }, makeCtx())).rejects.toThrow();
+        await expect(plugin.fetch({ target: 'video:abc' }, makeCtx())).rejects.toThrow();
     });
 });

@@ -27,7 +27,7 @@ const echoPlugin = defineExtraction({
     }),
 });
 
-const validRequest: ExtractionRequest = { target: 'list:12345', format: 'markdown' };
+const validRequest: ExtractionRequest = { target: 'list:12345' };
 
 describe('dispatchExtraction', () => {
     it('returns ok with the plugin payload on happy path', async () => {
@@ -87,29 +87,13 @@ describe('dispatchExtraction', () => {
         const result = await dispatchExtraction(
             reg,
             'clickup',
-            { target: '', format: 'markdown' },
+            { target: '' },
             makeCtx(['clickup:read']),
         );
         expect(result.ok).toBe(false);
         if (result.ok) return;
         expect(result.error).toBe('invalid_request');
         expect(result.details).toMatchObject({ field: 'target' });
-    });
-
-    it('returns invalid_request when format is not one of the allowed values', async () => {
-        const reg = new ExtractionRegistry();
-        reg.register(echoPlugin);
-
-        const result = await dispatchExtraction(
-            reg,
-            'clickup',
-            { target: 'list:1', format: 'pdf' as unknown as 'markdown' },
-            makeCtx(['clickup:read']),
-        );
-        expect(result.ok).toBe(false);
-        if (result.ok) return;
-        expect(result.error).toBe('invalid_request');
-        expect(result.details).toMatchObject({ field: 'format' });
     });
 
     it('returns fetch_failed with message only (no stack) when plugin throws', async () => {
@@ -127,7 +111,7 @@ describe('dispatchExtraction', () => {
         const result = await dispatchExtraction(
             reg,
             'boom',
-            { target: 't', format: 'text' },
+            { target: 't' },
             makeCtx(['x:read']),
         );
         expect(result.ok).toBe(false);
@@ -157,7 +141,7 @@ describe('dispatchExtraction', () => {
         const result = await dispatchExtraction(
             reg,
             'liar',
-            { target: 't', format: 'text' },
+            { target: 't' },
             ctx,
         );
         expect(result.ok).toBe(false);

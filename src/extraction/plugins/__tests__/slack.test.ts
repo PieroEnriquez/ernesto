@@ -57,7 +57,7 @@ describe('slackPlugin – channel target happy path', () => {
 
         const plugin = slackPlugin({ token: TOKEN });
         const result = await plugin.fetch(
-            { target: 'channel:C12345', format: 'markdown' },
+            { target: 'channel:C12345' },
             makeCtx(),
         );
 
@@ -98,7 +98,7 @@ describe('slackPlugin – thread target happy path', () => {
 
         const plugin = slackPlugin({ token: TOKEN });
         const result = await plugin.fetch(
-            { target: 'thread:C12345:1700000100.000100', format: 'markdown' },
+            { target: 'thread:C12345:1700000100.000100' },
             makeCtx(),
         );
 
@@ -134,7 +134,7 @@ describe('slackPlugin – invalid_auth (HTTP 200 + ok:false)', () => {
         const plugin = slackPlugin({ token: TOKEN });
 
         await expect(
-            plugin.fetch({ target: 'channel:C404', format: 'markdown' }, ctx),
+            plugin.fetch({ target: 'channel:C404' }, ctx),
         ).rejects.toThrow(/invalid_auth/);
 
         // Token must not appear in any log call.
@@ -155,7 +155,7 @@ describe('slackPlugin – invalid_auth (HTTP 200 + ok:false)', () => {
 
         const plugin = slackPlugin({ token: TOKEN });
         await expect(
-            plugin.fetch({ target: 'channel:Cgone', format: 'markdown' }, makeCtx()),
+            plugin.fetch({ target: 'channel:Cgone' }, makeCtx()),
         ).rejects.toThrow(/channel_not_found/);
     });
 });
@@ -176,7 +176,7 @@ describe('slackPlugin – 429 with Retry-After', () => {
         const ctx = makeCtx();
         const plugin = slackPlugin({ token: TOKEN, backoffBaseMs: 500, maxRetries: 3 });
 
-        const promise = plugin.fetch({ target: 'channel:C1', format: 'markdown' }, ctx);
+        const promise = plugin.fetch({ target: 'channel:C1' }, ctx);
 
         // Let the initial fetch resolve and schedule the retry timer.
         await vi.advanceTimersByTimeAsync(0);
@@ -206,7 +206,7 @@ describe('slackPlugin – 429 with Retry-After', () => {
         const ctx = makeCtx();
         const plugin = slackPlugin({ token: TOKEN, backoffBaseMs: 500, maxRetries: 3 });
 
-        const promise = plugin.fetch({ target: 'channel:C1', format: 'markdown' }, ctx);
+        const promise = plugin.fetch({ target: 'channel:C1' }, ctx);
 
         await vi.advanceTimersByTimeAsync(0);
         expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -227,14 +227,14 @@ describe('slackPlugin – target parsing', () => {
     it('rejects unsupported target prefixes', async () => {
         const plugin = slackPlugin({ token: TOKEN });
         await expect(
-            plugin.fetch({ target: 'message:C1:1700000100.0001', format: 'markdown' }, makeCtx()),
+            plugin.fetch({ target: 'message:C1:1700000100.0001' }, makeCtx()),
         ).rejects.toThrow(/unsupported target kind/);
     });
 
     it('rejects malformed thread targets', async () => {
         const plugin = slackPlugin({ token: TOKEN });
         await expect(
-            plugin.fetch({ target: 'thread:C1', format: 'markdown' }, makeCtx()),
+            plugin.fetch({ target: 'thread:C1' }, makeCtx()),
         ).rejects.toThrow(/invalid thread target/);
     });
 });

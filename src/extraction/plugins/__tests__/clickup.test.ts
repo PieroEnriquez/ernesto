@@ -44,7 +44,7 @@ describe('clickupPlugin – happy path per target kind', () => {
 
         const plugin = clickupPlugin({ token: TOKEN });
         const result = await plugin.fetch(
-            { target: 'task:abc123', format: 'json' },
+            { target: 'task:abc123' },
             makeCtx(),
         );
 
@@ -70,7 +70,7 @@ describe('clickupPlugin – happy path per target kind', () => {
 
         const plugin = clickupPlugin({ token: TOKEN });
         const result = await plugin.fetch(
-            { target: 'list:list_42', format: 'json' },
+            { target: 'list:list_42' },
             makeCtx(),
         );
 
@@ -90,7 +90,7 @@ describe('clickupPlugin – happy path per target kind', () => {
 
         const plugin = clickupPlugin({ token: TOKEN });
         const result = await plugin.fetch(
-            { target: 'doc:doc9', format: 'markdown' },
+            { target: 'doc:doc9' },
             makeCtx(),
         );
 
@@ -111,7 +111,7 @@ describe('clickupPlugin – error paths', () => {
 
         const plugin = clickupPlugin({ token: TOKEN });
         await expect(
-            plugin.fetch({ target: 'task:abc', format: 'json' }, makeCtx()),
+            plugin.fetch({ target: 'task:abc' }, makeCtx()),
         ).rejects.toThrow(/auth rejected.*401/);
     });
 
@@ -122,7 +122,7 @@ describe('clickupPlugin – error paths', () => {
         const ctx = makeCtx();
         const plugin = clickupPlugin({ token: TOKEN });
         const result = await plugin.fetch(
-            { target: 'task:gone', format: 'json' },
+            { target: 'task:gone' },
             ctx,
         );
 
@@ -137,7 +137,7 @@ describe('clickupPlugin – error paths', () => {
     it('rejects unsupported target prefixes', async () => {
         const plugin = clickupPlugin({ token: TOKEN });
         await expect(
-            plugin.fetch({ target: 'space:xyz', format: 'json' }, makeCtx()),
+            plugin.fetch({ target: 'space:xyz' }, makeCtx()),
         ).rejects.toThrow(/unsupported target kind/);
     });
 });
@@ -203,7 +203,7 @@ describe('clickupPlugin – list-table target', () => {
 
         const plugin = clickupPlugin({ token: TOKEN });
         const result = await plugin.fetch(
-            { target: 'list-table:list_99', format: 'markdown' },
+            { target: 'list-table:list_99' },
             makeCtx(),
         );
 
@@ -241,7 +241,7 @@ describe('clickupPlugin – list-table target', () => {
 
         const plugin = clickupPlugin({ token: TOKEN });
         const result = await plugin.fetch(
-            { target: 'list-table:list_99', format: 'markdown' },
+            { target: 'list-table:list_99' },
             makeCtx(),
         );
 
@@ -261,7 +261,7 @@ describe('clickupPlugin – list-table target', () => {
         const ctx = makeCtx();
         const plugin = clickupPlugin({ token: TOKEN });
         const result = await plugin.fetch(
-            { target: 'list-table:gone', format: 'markdown' },
+            { target: 'list-table:gone' },
             ctx,
         );
 
@@ -295,7 +295,7 @@ describe('clickupPlugin – 429 retry behaviour', () => {
             maxRetries: 3,
         });
 
-        const promise = plugin.fetch({ target: 'task:abc', format: 'json' }, ctx);
+        const promise = plugin.fetch({ target: 'task:abc' }, ctx);
 
         // Let the initial fetch resolve and schedule the backoff timer.
         await vi.advanceTimersByTimeAsync(0);
@@ -329,7 +329,7 @@ describe('clickupPlugin – 429 retry behaviour', () => {
             maxRetries: 3,
         });
 
-        const promise = plugin.fetch({ target: 'task:abc', format: 'json' }, ctx);
+        const promise = plugin.fetch({ target: 'task:abc' }, ctx);
 
         await vi.advanceTimersByTimeAsync(0);
         expect(fetchMock).toHaveBeenCalledTimes(1);
