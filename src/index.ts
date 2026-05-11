@@ -64,8 +64,13 @@ export type {
 } from './workdir';
 
 // ─── Lint (workspace settle gate) ────────────────────────────────────────
-export { lintWorkspace, makeLintWorkspace } from './lint';
-export type { LintPrincipal } from './lint';
+export {
+    lintWorkspace,
+    makeLintWorkspace,
+    makeScopelessLintWorkspace,
+    UNREGISTERED_EXTRACTION_SOURCE,
+} from './lint';
+export type { LintPrincipal, MakeLintWorkspaceOptions } from './lint';
 
 // ─── Routes ──────────────────────────────────────────────────────────────
 export { defineRoute, RouteRegistry, dispatchRoute } from './route';

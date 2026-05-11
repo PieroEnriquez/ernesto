@@ -62,6 +62,12 @@ import yaml from 'js-yaml';
 import type { LintFn, LintError } from '../workdir/settle';
 import { runGit } from '../workdir/run-git';
 
+/** Lint error key emitted when a `WORKSPACE.md` declares an `extractions:`
+ *  entry whose `source` is not registered with the live extraction registry.
+ *  Exported so other consumers (callers wiring `bypass`, integration tests,
+ *  alerting) can reference the key without stringly-typed duplicates. */
+export const UNREGISTERED_EXTRACTION_SOURCE = 'unregistered_extraction_source';
+
 const GENERATED_SUBDIRS = ['routes', 'extracted'] as const;
 const MAX_FILE_BYTES = 1024 * 1024;
 const WORKSPACE_NAME_REGEX = /^[a-z][a-z0-9-]{0,39}$/;
@@ -319,9 +325,18 @@ interface BuildOptions {
      *  `attachments.yaml`, so the surrounding settle bypasses
      *  `attachments_hand_edit`). User-initiated settles must never set this. */
     bypass?: ReadonlySet<string>;
+    /** Resolver for the set of currently registered extraction sources.
+     *  When provided, modified `WORKSPACE.md` files whose `extractions:`
+     *  block names an unregistered source fail with
+     *  `unregistered_extraction_source`. When omitted, the check is skipped
+     *  entirely — callers without an extraction registry on hand (eg. the
+     *  default scope-less preview) opt out, but production callers MUST
+     *  wire this. Resolved at call time so plugin registration races don't
+     *  bake a stale snapshot. */
+    getRegisteredSources?: () => ReadonlySet<string>;
 }
 
-function build({ principal, bypass }: BuildOptions): LintFn {
+function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintFn {
     const isBypassed = (code: string): boolean => bypass?.has(code) ?? false;
     return async ({ diff, workspaces, workingTreeRoot }) => {
         const errors: LintError[] = [];
@@ -477,6 +492,31 @@ function build({ principal, bypass }: BuildOptions): LintFn {
                     message: `WORKSPACE.md for '${w}' frontmatter must declare a non-empty 'admin' scope (required field)`,
                 });
             }
+
+            // unregistered_extraction_source — gated on caller wiring a
+            // registry resolver. Bypassable for privileged route shims that
+            // legitimately mutate WORKSPACE.md frontmatter outside the
+            // declared-extractions invariant (none today, but the bypass
+            // matches the rest of the lint surface for symmetry).
+            if (getRegisteredSources && !isBypassed(UNREGISTERED_EXTRACTION_SOURCE)) {
+                const registered = getRegisteredSources();
+                const extractions = data.extractions;
+                if (Array.isArray(extractions)) {
+                    for (const entry of extractions) {
+                        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+                        const source = (entry as Record<string, unknown>).source;
+                        if (typeof source !== 'string' || source.trim() === '') continue;
+                        if (!registered.has(source)) {
+                            errors.push({
+                                code: UNREGISTERED_EXTRACTION_SOURCE,
+                                workspace: w,
+                                path: target,
+                                message: `WORKSPACE.md for '${w}' declares extraction source '${source}', which is not in the registered set [${[...registered].sort().join(', ')}]`,
+                            });
+                        }
+                    }
+                }
+            }
         }
 
         // file_too_large + merge_markers (one pass per file)
@@ -629,8 +669,22 @@ function build({ principal, bypass }: BuildOptions): LintFn {
  * principal (shape, content, attachments_hand_edit, merge_markers). Suitable
  * for non-authoritative previews; the authoritative path always uses
  * `makeLintWorkspace(principal)`.
+ *
+ * Skips `unregistered_extraction_source` because no registry is wired —
+ * authoritative callers must use `makeLintWorkspace` with
+ * `getRegisteredSources` set.
  */
 export const lintWorkspace: LintFn = build({});
+
+/** Same as `lintWorkspace` but with the extraction registry threaded in.
+ *  Suitable for non-authoritative previews that still want the extraction-
+ *  source check (e.g. CI lint that has no principal but does have a
+ *  registry). */
+export function makeScopelessLintWorkspace(
+    options: { getRegisteredSources?: () => ReadonlySet<string> } = {},
+): LintFn {
+    return build({ getRegisteredSources: options.getRegisteredSources });
+}
 
 export interface MakeLintWorkspaceOptions {
     /** Rule codes the caller is privileged to skip. Wire only from routes
@@ -638,6 +692,11 @@ export interface MakeLintWorkspaceOptions {
      *  bypasses `attachments_hand_edit`). User-initiated settles must not
      *  pass this. */
     bypass?: ReadonlySet<string>;
+    /** Live extraction registry resolver. When set, modified `WORKSPACE.md`
+     *  files whose `extractions:` block names an unknown source fail with
+     *  `unregistered_extraction_source`. Resolve at call time so plugin
+     *  registration races don't bake a stale snapshot. */
+    getRegisteredSources?: () => ReadonlySet<string>;
 }
 
 /** Build a lint function bound to the principal's live scope set. */
@@ -645,5 +704,9 @@ export function makeLintWorkspace(
     principal: LintPrincipal,
     options: MakeLintWorkspaceOptions = {},
 ): LintFn {
-    return build({ principal, bypass: options.bypass });
+    return build({
+        principal,
+        bypass: options.bypass,
+        getRegisteredSources: options.getRegisteredSources,
+    });
 }

@@ -13,7 +13,11 @@ import { tmpdir } from 'os';
 import * as path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { lintWorkspace, makeLintWorkspace } from '../lint-workspace';
+import {
+    lintWorkspace,
+    makeLintWorkspace,
+    UNREGISTERED_EXTRACTION_SOURCE,
+} from '../lint-workspace';
 
 const pExec = promisify(execFile);
 
@@ -589,5 +593,167 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
         const result = await lint({ diff, workspaces: ['hr'], workingTreeRoot: root });
         const failed = expectErrors(result);
         expect(failed.errors.some(e => e.code === 'admin_denied')).toBe(true);
+    });
+});
+
+describe('unregistered_extraction_source — registry-driven validation', () => {
+    let root: string;
+
+    beforeEach(async () => {
+        root = await mkdtemp(path.join(tmpdir(), 'lint-ws-ext-'));
+        await initRepo(root);
+    });
+
+    afterEach(async () => {
+        await rm(root, { recursive: true, force: true });
+    });
+
+    function makeMd(name: string, extractions: ReadonlyArray<{ source: string; target: string }>): string {
+        const lines = [
+            '---',
+            `name: ${name}`,
+            `description: ${name} workspace`,
+            `admin: ${name}-admin`,
+        ];
+        if (extractions.length > 0) {
+            lines.push('extractions:');
+            for (const e of extractions) {
+                lines.push(`  - source: ${e.source}`);
+                lines.push(`    target: ${e.target}`);
+            }
+        }
+        lines.push('---', '', `# ${name}`);
+        return lines.join('\n');
+    }
+
+    it('passes when every declared source is registered', async () => {
+        const body = makeMd('hr', [{ source: 'clickup', target: 'team-handbook' }]);
+        await seedWorkspace(root, 'hr', body);
+        await commitAll(root, 'seed');
+
+        const newBody = makeMd('hr', [
+            { source: 'clickup', target: 'team-handbook' },
+            { source: 'github', target: 'bitrefill/backend' },
+        ]);
+        await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', newBody);
+        const diff = diffModify('workspaces/hr/WORKSPACE.md', body, newBody);
+
+        const lint = makeLintWorkspace(
+            { scopes: new Set(['ernesto:agent-ops']), email: 'ops@bitrefill.com' },
+            { getRegisteredSources: () => new Set(['clickup', 'github', 'slack']) },
+        );
+        const result = await lint({ diff, workspaces: ['hr'], workingTreeRoot: root });
+        expect(result).toEqual({ ok: true });
+    });
+
+    it('flags unregistered_extraction_source when a source is not registered', async () => {
+        const body = makeMd('hr', []);
+        await seedWorkspace(root, 'hr', body);
+        await commitAll(root, 'seed');
+
+        const newBody = makeMd('hr', [
+            { source: 'clickup', target: 'team-handbook' },
+            { source: 'mystery-source', target: 'whatever' },
+        ]);
+        await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', newBody);
+        const diff = diffModify('workspaces/hr/WORKSPACE.md', body, newBody);
+
+        const lint = makeLintWorkspace(
+            { scopes: new Set(['ernesto:agent-ops']), email: 'ops@bitrefill.com' },
+            { getRegisteredSources: () => new Set(['clickup', 'github']) },
+        );
+        const result = await lint({ diff, workspaces: ['hr'], workingTreeRoot: root });
+        const failed = expectErrors(result);
+        const ext = failed.errors.filter(e => e.code === UNREGISTERED_EXTRACTION_SOURCE);
+        expect(ext.length).toBe(1);
+        expect(ext[0].workspace).toBe('hr');
+        expect(ext[0].message).toContain('mystery-source');
+    });
+
+    it('emits one error per unregistered entry when multiple bad sources are listed', async () => {
+        const body = makeMd('hr', []);
+        await seedWorkspace(root, 'hr', body);
+        await commitAll(root, 'seed');
+
+        const newBody = makeMd('hr', [
+            { source: 'mystery-a', target: 'x' },
+            { source: 'mystery-b', target: 'y' },
+        ]);
+        await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', newBody);
+        const diff = diffModify('workspaces/hr/WORKSPACE.md', body, newBody);
+
+        const lint = makeLintWorkspace(
+            { scopes: new Set(['ernesto:agent-ops']), email: 'ops@bitrefill.com' },
+            { getRegisteredSources: () => new Set(['clickup']) },
+        );
+        const result = await lint({ diff, workspaces: ['hr'], workingTreeRoot: root });
+        const failed = expectErrors(result);
+        const bad = failed.errors.filter(e => e.code === UNREGISTERED_EXTRACTION_SOURCE);
+        expect(bad.map(e => e.message)).toEqual([
+            expect.stringContaining('mystery-a'),
+            expect.stringContaining('mystery-b'),
+        ]);
+    });
+
+    it('is skipped entirely when getRegisteredSources is not wired', async () => {
+        const body = makeMd('hr', []);
+        await seedWorkspace(root, 'hr', body);
+        await commitAll(root, 'seed');
+
+        const newBody = makeMd('hr', [{ source: 'anything-goes', target: 'x' }]);
+        await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', newBody);
+        const diff = diffModify('workspaces/hr/WORKSPACE.md', body, newBody);
+
+        // Default scope-less lintWorkspace has no registry → no extraction check.
+        const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
+        expect(result).toEqual({ ok: true });
+    });
+
+    it('is bypassable via bypass: { unregistered_extraction_source }', async () => {
+        const body = makeMd('hr', []);
+        await seedWorkspace(root, 'hr', body);
+        await commitAll(root, 'seed');
+
+        const newBody = makeMd('hr', [{ source: 'mystery', target: 'x' }]);
+        await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', newBody);
+        const diff = diffModify('workspaces/hr/WORKSPACE.md', body, newBody);
+
+        const lint = makeLintWorkspace(
+            { scopes: new Set(['ernesto:agent-ops']), email: 'ops@bitrefill.com' },
+            {
+                getRegisteredSources: () => new Set(['clickup']),
+                bypass: new Set([UNREGISTERED_EXTRACTION_SOURCE]),
+            },
+        );
+        const result = await lint({ diff, workspaces: ['hr'], workingTreeRoot: root });
+        expect(result).toEqual({ ok: true });
+    });
+
+    it('ignores malformed extractions entries silently (handled by frontmatter shape rules)', async () => {
+        // entry missing `source` field → skipped, not flagged here.
+        const body = makeMd('hr', []);
+        await seedWorkspace(root, 'hr', body);
+        await commitAll(root, 'seed');
+
+        const newBody = [
+            '---',
+            'name: hr',
+            'description: hr',
+            'admin: hr-admin',
+            'extractions:',
+            '  - target: only-target',
+            '---',
+            '',
+            '# hr',
+        ].join('\n');
+        await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', newBody);
+        const diff = diffModify('workspaces/hr/WORKSPACE.md', body, newBody);
+
+        const lint = makeLintWorkspace(
+            { scopes: new Set(['ernesto:agent-ops']), email: 'ops@bitrefill.com' },
+            { getRegisteredSources: () => new Set(['clickup']) },
+        );
+        const result = await lint({ diff, workspaces: ['hr'], workingTreeRoot: root });
+        expect(result).toEqual({ ok: true });
     });
 });
