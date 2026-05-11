@@ -71,3 +71,12 @@ export type {
     Route, RouteConfig, RouteContext, RouteLogger, RouteScope, RouteUser,
     DispatchResult, DispatchErrorCode,
 } from './route';
+
+// ─── Extractions ─────────────────────────────────────────────────────────
+export { defineExtraction, ExtractionRegistry, dispatchExtraction } from './extraction';
+export type {
+    ExtractionPlugin, ExtractionPluginConfig, ExtractionContext, ExtractionLogger,
+    ExtractionUser, ExtractionRequest, ExtractionResult, ExtractionEntry,
+    ExtractionFormat, ExtractionScope,
+    DispatchExtractionResult, DispatchExtractionErrorCode,
+} from './extraction';
