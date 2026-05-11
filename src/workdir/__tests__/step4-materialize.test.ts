@@ -9,7 +9,7 @@ const dec = (b: Uint8Array) => new TextDecoder().decode(b);
 
 function buildWorkdir(opts: {
     bytes?: Map<string, Uint8Array>;
-    symlinkRoot?: string;
+    hardlinkSourceRoot?: string;
 }) {
     const fs = makeInMemoryFsAdapter();
     const master = makeInMemoryMasterFs(opts);
@@ -35,19 +35,23 @@ describe('materializeFile', () => {
         expect(dec(await fs.readFile('workspaces/hr/extracted/a.md'))).toBe('# a\n');
     });
 
-    it('creates a symlink when master FS resolves to a symlink', async () => {
+    it('hardlinks the file when master FS resolves to a hardlink', async () => {
         const { workdir, fs } = buildWorkdir({
-            symlinkRoot: '/master-fs',
+            hardlinkSourceRoot: '/master-fs',
             bytes: new Map([['workspaces/hr/INDEX.md', enc('# hr\n')]]),
         });
+        // The in-memory `link()` copies bytes from the source path, so the
+        // source needs to be present at the master-fs location first.
+        await fs.writeFile('/master-fs/workspaces/hr/INDEX.md', enc('# hr\n'));
 
         const r = await materializeFile(workdir, {
             treePath: 'workspaces/hr/INDEX.md',
             masterFsPath: 'workspaces/hr/INDEX.md',
         });
 
-        expect(r).toEqual({ kind: 'placed', placement: 'symlink' });
+        expect(r).toEqual({ kind: 'placed', placement: 'hardlink' });
         expect(await fs.exists('workspaces/hr/INDEX.md')).toBe(true);
+        expect(dec(await fs.readFile('workspaces/hr/INDEX.md'))).toBe('# hr\n');
     });
 
     it('is a no-op when the tree path is already present', async () => {

@@ -47,7 +47,7 @@ describe('bootWorkdir — node adapter ↔ in-memory parity', () => {
         await rm(tmpRoot, { recursive: true, force: true });
     });
 
-    it('real adapter pair lays out symlinks; reads resolve to fixture bytes', async () => {
+    it('real adapter pair lays out hardlinks; reads resolve to fixture bytes', async () => {
         const fs = makeNodeFsAdapter(workingTreeRoot);
         const master = makeVolumeMasterFs(masterFsRoot);
 
@@ -58,7 +58,7 @@ describe('bootWorkdir — node adapter ↔ in-memory parity', () => {
             layout: LAYOUT,
         });
 
-        expect(result.placed.every(p => p.kind === 'symlink')).toBe(true);
+        expect(result.placed.every(p => p.kind === 'hardlink')).toBe(true);
         expect(result.placed).toHaveLength(4);
 
         for (const f of FIXTURE) {

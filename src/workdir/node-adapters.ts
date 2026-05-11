@@ -37,13 +37,16 @@ export function makeNodeFsAdapter(workingTreeRoot: string): FsAdapter {
                 return false;
             }
         },
-        async symlink(target, linkPath) {
+        async link(sourcePath, linkPath) {
+            // `sourcePath` is an absolute host-FS path (e.g. into master-fs);
+            // `linkPath` is workdir-relative. Pre-empt any prior entry at the
+            // destination so re-mirroring on session boot is idempotent.
             const a = abs(linkPath);
             await fsp.mkdir(path.dirname(a), { recursive: true });
             try {
                 await fsp.unlink(a);
             } catch { /* not present */ }
-            await fsp.symlink(target, a);
+            await fsp.link(sourcePath, a);
         },
         async remove(p) {
             await fsp.rm(abs(p), { recursive: true, force: true });
@@ -69,14 +72,22 @@ export function makeNodeFsAdapter(workingTreeRoot: string): FsAdapter {
     };
 }
 
-/** Backend volume-side master FS. Resolves to a symlink target on the host FS. */
+/**
+ * Backend volume-side master FS. Returns the host-FS source path; the caller
+ * (`bootWorkdir`/`materializeFile`) hard-links it into the working tree via
+ * `fs.link()`. Directory symlinks were v1 — ripgrep skipped them during
+ * traversal, making fs_glob/fs_grep blind to the master-fs subtree. Hard
+ * links are real directory entries pointing at the same inode, so the agent's
+ * discovery tools walk them normally. Requires the working tree and master-fs
+ * to be on the same volume (same device for `link(2)`).
+ */
 export function makeVolumeMasterFs(masterFsRoot: string): MasterFsAdapter {
     return {
         async resolve(masterFsPath) {
-            const target = path.join(masterFsRoot, masterFsPath);
+            const sourcePath = path.join(masterFsRoot, masterFsPath);
             try {
-                await fsp.access(target);
-                return { kind: 'symlink', target };
+                await fsp.access(sourcePath);
+                return { kind: 'hardlink', sourcePath };
             } catch {
                 return { kind: 'not-found' };
             }

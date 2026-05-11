@@ -92,11 +92,17 @@ describe('bootWorkdir — in-memory adapter pair (bytes mode)', () => {
     });
 });
 
-describe('bootWorkdir — in-memory adapter pair (symlink mode)', () => {
-    it('records symlinks instead of bytes when master FS resolves to symlinks', async () => {
+describe('bootWorkdir — in-memory adapter pair (hardlink mode)', () => {
+    it('records hardlinks instead of bytes when master FS resolves to hardlinks', async () => {
         const fs = makeInMemoryFsAdapter();
+        // In-memory `link()` reads bytes from the source path, so pre-seed
+        // the source files under the same hardlinkSourceRoot the master-fs
+        // adapter will return.
+        for (const [p, content] of FIXTURE_BYTES) {
+            await fs.writeFile(`/master-fs/${p}`, content);
+        }
         const master = makeInMemoryMasterFs({
-            symlinkRoot: '/master-fs',
+            hardlinkSourceRoot: '/master-fs',
             bytes: FIXTURE_BYTES,
         });
 
@@ -107,7 +113,7 @@ describe('bootWorkdir — in-memory adapter pair (symlink mode)', () => {
             layout: FIXTURE_LAYOUT,
         });
 
-        expect(result.placed.every(p => p.kind === 'symlink')).toBe(true);
+        expect(result.placed.every(p => p.kind === 'hardlink')).toBe(true);
         expect(result.placed).toHaveLength(3);
     });
 });

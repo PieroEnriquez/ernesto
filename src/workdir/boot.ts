@@ -5,25 +5,31 @@ import { BootInput, BootResult, Workdir, WorkdirInput } from './types';
  *
  * For each layout entry whose `workspace` is in `visibleWorkspaces`:
  *   - resolve via master FS adapter
- *   - if `symlink` → create symlink in working tree
- *   - if `bytes`   → write bytes to working tree
+ *   - if `hardlink` → `fs.link()` the master-fs file into the working tree
+ *   - if `bytes`    → write bytes to working tree
  *   - if `not-found` → skip (caller responsibility to declare it)
  *
  * Pure on adapters: no global state, no environment reads. The same input
  * produces byte-identical output across the in-memory and node adapter pairs.
+ *
+ * Note: on Tier A/B, the deployer (`ensureMasterFsOverlays` in the backend)
+ * generally does the bulk subtree mirroring before this function is reached.
+ * `bootWorkdir` covers the eager-set placement path (Tier C with HTTPS bytes,
+ * plus tests). The `hardlink` branch is retained for parity with the volume
+ * adapter contract.
  */
 export async function bootWorkdir(input: BootInput): Promise<BootResult> {
     const { fs, master, layout, visibleWorkspaces } = input;
     const visible = new Set(visibleWorkspaces);
-    const placed: Array<{ treePath: string; kind: 'symlink' | 'bytes' }> = [];
+    const placed: Array<{ treePath: string; kind: 'hardlink' | 'bytes' }> = [];
 
     for (const entry of layout) {
         if (!visible.has(entry.workspace)) continue;
         const r = await master.resolve(entry.masterFsPath);
         if (r.kind === 'not-found') continue;
-        if (r.kind === 'symlink') {
-            await fs.symlink(r.target, entry.treePath);
-            placed.push({ treePath: entry.treePath, kind: 'symlink' });
+        if (r.kind === 'hardlink') {
+            await fs.link(r.sourcePath, entry.treePath);
+            placed.push({ treePath: entry.treePath, kind: 'hardlink' });
         } else {
             await fs.writeFile(entry.treePath, r.bytes);
             placed.push({ treePath: entry.treePath, kind: 'bytes' });

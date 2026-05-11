@@ -13,13 +13,18 @@ export interface FsAdapter {
     readFile(path: string): Promise<Uint8Array>;
     writeFile(path: string, content: Uint8Array): Promise<void>;
     exists(path: string): Promise<boolean>;
-    symlink(target: string, linkPath: string): Promise<void>;
+    /** Create a hard link at `linkPath` pointing at the same inode as `sourcePath`.
+     *  Used by `bootWorkdir`/`materializeFile` to surface master-fs content into the
+     *  working tree on Tier A/B. Symlinks were the v1 placement, but ripgrep (engine
+     *  behind fs_glob/fs_grep) skips symlinks during traversal — hard links walk
+     *  normally. The in-memory adapter implements this as a byte copy. */
+    link(sourcePath: string, linkPath: string): Promise<void>;
     remove(path: string): Promise<void>;
     glob(pattern: string): Promise<string[]>;
 }
 
 export type MasterFsResolution =
-    | { kind: 'symlink'; target: string }
+    | { kind: 'hardlink'; sourcePath: string }
     | { kind: 'bytes'; bytes: Uint8Array; etag?: string }
     | { kind: 'not-found' };
 
@@ -63,5 +68,5 @@ export interface BootInput extends WorkdirInput {
 
 export interface BootResult {
     workdir: Workdir;
-    placed: ReadonlyArray<{ treePath: string; kind: 'symlink' | 'bytes' }>;
+    placed: ReadonlyArray<{ treePath: string; kind: 'hardlink' | 'bytes' }>;
 }

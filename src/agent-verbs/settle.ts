@@ -294,11 +294,14 @@ async function deriveAffectedWorkspaces(workingTreeRoot: string): Promise<string
         const match = /^workspaces\/([^/]+)\/(.+)$/.exec(path);
         if (match) {
             // Skip generated subtrees. `extracted/`, `routes/`, `attached/`
-            // are directory symlinks into master-fs placed at session boot —
-            // without this filter the bot-placed symlinks would show up as
-            // untracked in `git status` and add every workspace to the
-            // "affected" set on every settle, firing audit + pubsub hooks
-            // for workspaces the user never touched.
+            // are hard-link mirrors of master-fs placed at session boot
+            // (deployer-owned: backend's `ensureMasterFsOverlays`). Without
+            // this filter, every workspace whose mirror got refreshed mid-
+            // session would show up as untracked in `git status` and be
+            // added to the "affected" set on every settle, firing audit +
+            // pubsub hooks for workspaces the user never touched. (The
+            // staging-side companion filter is the pathspec exclusion in
+            // `settleFromWorktree`.)
             const firstSeg = match[2].split('/')[0];
             if (firstSeg !== 'extracted' && firstSeg !== 'routes' && firstSeg !== 'attached') {
                 names.add(match[1]);
