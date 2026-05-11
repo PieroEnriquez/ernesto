@@ -142,6 +142,139 @@ describe('clickupPlugin – error paths', () => {
     });
 });
 
+describe('clickupPlugin – list-table target', () => {
+    const listMeta = { id: 'list_99', name: 'Sprint 2026-Q2' };
+
+    const recentTs = () => String(Date.now() - 24 * 60 * 60 * 1000); // 1 day ago
+    const ancientTs = () => {
+        // 6 months ago — comfortably beyond the 3-month closed-task cutoff.
+        const d = new Date();
+        d.setMonth(d.getMonth() - 6);
+        return String(d.getTime());
+    };
+
+    it('renders a markdown table under lists/{id}.md with the legacy columns', async () => {
+        const tasks = [
+            {
+                id: 't1',
+                custom_id: 'CUS-1',
+                name: 'Open work',
+                status: { status: 'in progress', type: 'custom' },
+                assignees: [{ username: 'alice' }, { username: 'bob' }],
+                tags: [{ name: 'urgent' }],
+                priority: { priority: 'high' },
+                date_created: '1700000000000',
+                date_updated: recentTs(),
+                url: 'https://app.clickup.com/t/t1',
+            },
+            {
+                id: 't2',
+                custom_id: null,
+                name: 'Recently closed',
+                status: { status: 'done', type: 'closed' },
+                assignees: [],
+                tags: [],
+                priority: null,
+                date_created: '1700000000000',
+                date_updated: recentTs(),
+                date_closed: recentTs(),
+                url: 'https://app.clickup.com/t/t2',
+            },
+            {
+                id: 't3',
+                custom_id: null,
+                name: 'Old closed (should be excluded)',
+                status: { status: 'done', type: 'closed' },
+                assignees: [],
+                tags: [],
+                priority: null,
+                date_created: '1500000000000',
+                date_updated: ancientTs(),
+                date_closed: ancientTs(),
+                url: 'https://app.clickup.com/t/t3',
+            },
+        ];
+
+        const fetchMock = vi
+            .fn()
+            .mockResolvedValueOnce(jsonResponse(200, listMeta))
+            .mockResolvedValueOnce(jsonResponse(200, { tasks }));
+        vi.stubGlobal('fetch', fetchMock);
+
+        const plugin = clickupPlugin({ token: TOKEN });
+        const result = await plugin.fetch(
+            { target: 'list-table:list_99', format: 'markdown' },
+            makeCtx(),
+        );
+
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        const [listUrl] = fetchMock.mock.calls[0];
+        const [tasksUrl] = fetchMock.mock.calls[1];
+        expect(listUrl).toBe('https://api.clickup.com/api/v2/list/list_99');
+        expect(tasksUrl).toBe(
+            'https://api.clickup.com/api/v2/list/list_99/task?subtasks=true&include_closed=true',
+        );
+
+        expect(result.entries).toHaveLength(1);
+        const entry = result.entries[0];
+        expect(entry.path).toBe('lists/list_99.md');
+        expect(entry.contentType).toBe('text/markdown');
+        // Header carries the list name.
+        expect(entry.content).toContain('# Sprint 2026-Q2');
+        // Column header row.
+        expect(entry.content).toContain(
+            '| ID | Name | Status | Assignees | Priority | Tags | Updated | URL |',
+        );
+        // Recent open + recent closed tasks rendered; old closed task excluded.
+        expect(entry.content).toContain('CUS-1');
+        expect(entry.content).toContain('Open work');
+        expect(entry.content).toContain('Recently closed');
+        expect(entry.content).not.toContain('Old closed');
+    });
+
+    it('returns an empty-list markdown body when the list has no tasks', async () => {
+        const fetchMock = vi
+            .fn()
+            .mockResolvedValueOnce(jsonResponse(200, listMeta))
+            .mockResolvedValueOnce(jsonResponse(200, { tasks: [] }));
+        vi.stubGlobal('fetch', fetchMock);
+
+        const plugin = clickupPlugin({ token: TOKEN });
+        const result = await plugin.fetch(
+            { target: 'list-table:list_99', format: 'markdown' },
+            makeCtx(),
+        );
+
+        expect(result.entries).toHaveLength(1);
+        const entry = result.entries[0];
+        expect(entry.path).toBe('lists/list_99.md');
+        expect(entry.content).toContain('# Sprint 2026-Q2');
+        expect(entry.content).toContain('_No tasks._');
+        // No table header rendered for an empty list.
+        expect(entry.content).not.toContain('| ID | Name | Status |');
+    });
+
+    it('returns empty entries when the list itself is 404', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(emptyResponse(404));
+        vi.stubGlobal('fetch', fetchMock);
+
+        const ctx = makeCtx();
+        const plugin = clickupPlugin({ token: TOKEN });
+        const result = await plugin.fetch(
+            { target: 'list-table:gone', format: 'markdown' },
+            ctx,
+        );
+
+        expect(result.entries).toEqual([]);
+        // We bail after the list-meta call — no follow-up for tasks.
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(ctx.log.info).toHaveBeenCalledWith(
+            'ClickUp target not found',
+            expect.objectContaining({ kind: 'list-table' }),
+        );
+    });
+});
+
 describe('clickupPlugin – 429 retry behaviour', () => {
     beforeEach(() => {
         vi.useFakeTimers();

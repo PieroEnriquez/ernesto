@@ -251,6 +251,86 @@ describe('drivePlugin', () => {
         expect(result.entries).toEqual([]);
     });
 
+    it('fetches a PDF as base64 binary via alt=media', async () => {
+        const plugin = drivePlugin({ accessToken: 'tok' });
+        // Arbitrary binary bytes (not valid PDF — we only check passthrough)
+        const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34, 0x00, 0xff, 0xfe]);
+        const expectedBase64 = Buffer.from(bytes).toString('base64');
+
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.includes('/files/pdf-1?') && !url.includes('alt=media')) {
+                return jsonResponse({ body: { id: 'pdf-1', name: 'Quarterly Report', mimeType: 'application/pdf' } });
+            }
+            if (url.includes('/files/pdf-1?alt=media')) {
+                // ArrayBuffer body
+                return new Response(bytes, { status: 200, headers: { 'Content-Type': 'application/pdf' } });
+            }
+            throw new Error(`unexpected url: ${url}`);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        const result = await plugin.fetch({ target: 'pdf:pdf-1', format: 'text' }, makeCtx());
+
+        expect(result.entries).toEqual([
+            {
+                path: 'pdfs/quarterly-report.pdf',
+                content: expectedBase64,
+                contentType: 'application/pdf',
+            },
+        ]);
+    });
+
+    it('returns empty entries when the PDF target 404s', async () => {
+        const plugin = drivePlugin({ accessToken: 'tok' });
+        const fetchMock = vi.fn(async () => jsonResponse({ status: 404, body: { error: 'not found' } }));
+        vi.stubGlobal('fetch', fetchMock);
+
+        const result = await plugin.fetch({ target: 'pdf:missing', format: 'text' }, makeCtx());
+        expect(result.entries).toEqual([]);
+        expect(typeof result.fetchedAt).toBe('string');
+    });
+
+    it('fetches a DOCX exported as markdown via Drive', async () => {
+        const plugin = drivePlugin({ accessToken: 'tok' });
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.includes('/files/docx-1?') && !url.includes('export')) {
+                return jsonResponse({
+                    body: {
+                        id: 'docx-1',
+                        name: 'Meeting Notes',
+                        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    },
+                });
+            }
+            if (url.includes('/files/docx-1/export') && url.includes('text%2Fmarkdown')) {
+                return textResponse('# Meeting Notes\n\n- item 1\n- item 2');
+            }
+            throw new Error(`unexpected url: ${url}`);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        const result = await plugin.fetch({ target: 'docx:docx-1', format: 'markdown' }, makeCtx());
+
+        expect(result.entries).toEqual([
+            {
+                path: 'docs/meeting-notes.md',
+                content: '# Meeting Notes\n\n- item 1\n- item 2',
+                contentType: 'text/markdown',
+            },
+        ]);
+    });
+
+    it('returns empty entries when the DOCX target 404s', async () => {
+        const plugin = drivePlugin({ accessToken: 'tok' });
+        const fetchMock = vi.fn(async () => jsonResponse({ status: 404, body: { error: 'not found' } }));
+        vi.stubGlobal('fetch', fetchMock);
+
+        const result = await plugin.fetch({ target: 'docx:missing', format: 'markdown' }, makeCtx());
+        expect(result.entries).toEqual([]);
+    });
+
     it('rejects invalid target shapes', async () => {
         const plugin = drivePlugin({ accessToken: 'tok' });
         vi.stubGlobal('fetch', vi.fn());

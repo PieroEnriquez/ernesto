@@ -87,7 +87,7 @@ export type {
 } from './agent-verbs';
 
 // ─── Extractions ─────────────────────────────────────────────────────────
-export { defineExtraction, ExtractionRegistry, dispatchExtraction, clickupPlugin, drivePlugin } from './extraction';
+export { defineExtraction, ExtractionRegistry, dispatchExtraction, clickupPlugin, drivePlugin, qasePlugin, githubPlugin, slackPlugin } from './extraction';
 export type {
     ExtractionPlugin, ExtractionPluginConfig, ExtractionContext, ExtractionLogger,
     ExtractionUser, ExtractionRequest, ExtractionResult, ExtractionEntry,
@@ -95,4 +95,7 @@ export type {
     DispatchExtractionResult, DispatchExtractionErrorCode,
     ClickUpPluginOptions,
     DrivePluginOptions,
+    QasePluginOptions,
+    GitHubPluginOptions,
+    SlackPluginOptions,
 } from './extraction';

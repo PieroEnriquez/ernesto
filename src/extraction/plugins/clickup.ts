@@ -7,9 +7,12 @@
  * not carry credentials.
  *
  * Target syntax (matches frontmatter convention):
- *   - task:{id}
- *   - list:{id}
- *   - doc:{id}
+ *   - task:{id}           → tasks/{id}.json (raw JSON)
+ *   - list:{id}           → lists/{id}.json (raw JSON list metadata)
+ *   - doc:{id}            → docs/{id}.md   (markdown content)
+ *   - list-table:{id}     → lists/{id}.md  (markdown table of tasks, legacy
+ *                            ClickUpListFormat parity; closed tasks older than
+ *                            ~3 months are dropped)
  *
  * Failure shape contract:
  *   - 404 → resolve with empty entries (target absent is not a fatal error)
@@ -32,14 +35,47 @@ export interface ClickUpPluginOptions {
     timeoutMs?: number;
     maxRetries?: number;
     backoffBaseMs?: number;
+    /**
+     * Cutoff (in months) for closed tasks rendered by `list-table:` targets.
+     * Closed tasks whose `date_closed` (or `date_updated`) is older than
+     * `now - closedTaskCutoffMonths` months are excluded. Matches the legacy
+     * ClickUpListFormat behaviour. Defaults to 3.
+     */
+    closedTaskCutoffMonths?: number;
 }
 
-type TargetKind = 'task' | 'list' | 'doc';
+type TargetKind = 'task' | 'list' | 'doc' | 'list-table';
 
 const DEFAULT_BASE_URL = 'https://api.clickup.com/api/v2';
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_BACKOFF_BASE_MS = 500;
+const DEFAULT_CLOSED_TASK_CUTOFF_MONTHS = 3;
+
+const CLOSED_STATUS_NAMES = new Set([
+    'closed',
+    'done',
+    'complete',
+    'completed',
+    'resolved',
+    'cancelled',
+    'canceled',
+    'archived',
+]);
+
+interface ClickUpTask {
+    id: string;
+    custom_id?: string | null;
+    name: string;
+    status?: { status?: string; type?: string } | null;
+    assignees?: { username?: string }[];
+    tags?: { name?: string }[];
+    priority?: { priority?: string } | null;
+    date_created?: string | null;
+    date_updated?: string | null;
+    date_closed?: string | null;
+    url?: string | null;
+}
 
 export function clickupPlugin(opts: ClickUpPluginOptions): ExtractionPlugin {
     if (!opts.token || typeof opts.token !== 'string') {
@@ -49,16 +85,36 @@ export function clickupPlugin(opts: ClickUpPluginOptions): ExtractionPlugin {
     const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     const maxRetries = opts.maxRetries ?? DEFAULT_MAX_RETRIES;
     const backoffBaseMs = opts.backoffBaseMs ?? DEFAULT_BACKOFF_BASE_MS;
+    const closedTaskCutoffMonths =
+        opts.closedTaskCutoffMonths ?? DEFAULT_CLOSED_TASK_CUTOFF_MONTHS;
     const token = opts.token;
 
     return defineExtraction({
         source: 'clickup',
         scope: 'extraction:clickup:read',
         description:
-            'Fetch ClickUp tasks, lists, and docs by id. Targets: task:{id}, list:{id}, doc:{id}.',
+            'Fetch ClickUp tasks, lists, and docs by id. Targets: task:{id}, list:{id}, doc:{id}, list-table:{id}.',
         fetch: async (req: ExtractionRequest, ctx: ExtractionContext): Promise<ExtractionResult> => {
             const parsed = parseTarget(req.target);
             const fetchedAt = new Date().toISOString();
+
+            if (parsed.kind === 'list-table') {
+                const entry = await fetchListTable({
+                    id: parsed.id,
+                    token,
+                    baseUrl,
+                    timeoutMs,
+                    maxRetries,
+                    backoffBaseMs,
+                    closedTaskCutoffMonths,
+                    log: ctx.log,
+                });
+                if (!entry) {
+                    ctx.log.info('ClickUp target not found', { kind: parsed.kind });
+                    return { entries: [], fetchedAt };
+                }
+                return { entries: [entry], fetchedAt };
+            }
 
             const endpoint = endpointFor(parsed.kind, parsed.id, baseUrl);
             const response = await fetchWithRetry(endpoint, token, {
@@ -85,7 +141,7 @@ function parseTarget(target: string): { kind: TargetKind; id: string } {
     const idx = target.indexOf(':');
     if (idx < 0) {
         throw new Error(
-            `clickup: target must look like "task:{id}", "list:{id}", or "doc:{id}"`,
+            `clickup: target must look like "task:{id}", "list:{id}", "doc:{id}", or "list-table:{id}"`,
         );
     }
     const kindRaw = target.slice(0, idx);
@@ -93,13 +149,18 @@ function parseTarget(target: string): { kind: TargetKind; id: string } {
     if (!id) {
         throw new Error('clickup: target id is empty');
     }
-    if (kindRaw !== 'task' && kindRaw !== 'list' && kindRaw !== 'doc') {
+    if (
+        kindRaw !== 'task' &&
+        kindRaw !== 'list' &&
+        kindRaw !== 'doc' &&
+        kindRaw !== 'list-table'
+    ) {
         throw new Error(`clickup: unsupported target kind: ${kindRaw}`);
     }
     return { kind: kindRaw, id };
 }
 
-function endpointFor(kind: TargetKind, id: string, baseUrl: string): string {
+function endpointFor(kind: Exclude<TargetKind, 'list-table'>, id: string, baseUrl: string): string {
     const safe = encodeURIComponent(id);
     switch (kind) {
         case 'task':
@@ -178,7 +239,7 @@ async function fetchWithRetry(
 }
 
 async function buildEntry(
-    kind: TargetKind,
+    kind: Exclude<TargetKind, 'list-table'>,
     id: string,
     response: Response,
 ): Promise<ExtractionEntry> {
@@ -201,6 +262,144 @@ async function buildEntry(
         content: stringifyJson(payload),
         contentType: 'application/json',
     };
+}
+
+interface FetchListTableArgs {
+    id: string;
+    token: string;
+    baseUrl: string;
+    timeoutMs: number;
+    maxRetries: number;
+    backoffBaseMs: number;
+    closedTaskCutoffMonths: number;
+    log: ExtractionContext['log'];
+}
+
+async function fetchListTable(args: FetchListTableArgs): Promise<ExtractionEntry | null> {
+    const safe = encodeURIComponent(args.id);
+
+    // 1. Fetch list metadata (for the title).
+    const listRes = await fetchWithRetry(`${args.baseUrl}/list/${safe}`, args.token, {
+        timeoutMs: args.timeoutMs,
+        maxRetries: args.maxRetries,
+        backoffBaseMs: args.backoffBaseMs,
+        log: args.log,
+        kind: 'list-table',
+        id: args.id,
+    });
+    if (listRes === 'not_found') {
+        return null;
+    }
+    const listPayload = (await listRes.json()) as { id?: string; name?: string };
+    const listName = typeof listPayload.name === 'string' ? listPayload.name : args.id;
+
+    // 2. Fetch tasks for the list. Include subtasks for parity with legacy.
+    const tasksRes = await fetchWithRetry(
+        `${args.baseUrl}/list/${safe}/task?subtasks=true&include_closed=true`,
+        args.token,
+        {
+            timeoutMs: args.timeoutMs,
+            maxRetries: args.maxRetries,
+            backoffBaseMs: args.backoffBaseMs,
+            log: args.log,
+            kind: 'list-table',
+            id: args.id,
+        },
+    );
+    // If the tasks endpoint 404s but the list exists, treat as an empty list.
+    const tasks: ClickUpTask[] =
+        tasksRes === 'not_found'
+            ? []
+            : (((await tasksRes.json()) as { tasks?: ClickUpTask[] }).tasks ?? []);
+
+    const cutoffMs = computeClosedCutoffMs(args.closedTaskCutoffMonths);
+    const filtered = tasks.filter((t) => !isStaleClosedTask(t, cutoffMs));
+
+    const markdown = renderTaskTable(listName, args.id, filtered);
+
+    return {
+        path: `lists/${args.id}.md`,
+        content: markdown,
+        contentType: 'text/markdown',
+    };
+}
+
+function computeClosedCutoffMs(months: number): number {
+    if (!Number.isFinite(months) || months <= 0) {
+        return 0;
+    }
+    const now = new Date();
+    const cutoff = new Date(now);
+    cutoff.setMonth(cutoff.getMonth() - months);
+    return cutoff.getTime();
+}
+
+function isStaleClosedTask(task: ClickUpTask, cutoffMs: number): boolean {
+    if (cutoffMs <= 0) return false;
+    const statusName = (task.status?.status ?? '').toLowerCase();
+    const statusType = task.status?.type;
+    const isClosed = statusType === 'closed' || CLOSED_STATUS_NAMES.has(statusName);
+    if (!isClosed) return false;
+
+    const tsStr = task.date_closed || task.date_updated;
+    if (!tsStr) return false;
+    const ts = parseInt(String(tsStr), 10);
+    if (!Number.isFinite(ts)) return false;
+    return ts < cutoffMs;
+}
+
+function renderTaskTable(listName: string, listId: string, tasks: ClickUpTask[]): string {
+    const header = `# ${listName}\n\nList ID: ${listId}\n`;
+
+    if (tasks.length === 0) {
+        return `${header}\n_No tasks._\n`;
+    }
+
+    const columns = [
+        'ID',
+        'Name',
+        'Status',
+        'Assignees',
+        'Priority',
+        'Tags',
+        'Updated',
+        'URL',
+    ];
+    const rows: string[] = [];
+    rows.push(`| ${columns.join(' | ')} |`);
+    rows.push(`| ${columns.map(() => '---').join(' | ')} |`);
+
+    for (const t of tasks) {
+        rows.push(
+            `| ${[
+                escapeCell(t.custom_id || t.id),
+                escapeCell(t.name ?? ''),
+                escapeCell(t.status?.status ?? ''),
+                escapeCell((t.assignees ?? []).map((a) => a.username ?? '').filter(Boolean).join(', ')),
+                escapeCell(t.priority?.priority ?? ''),
+                escapeCell((t.tags ?? []).map((tag) => tag.name ?? '').filter(Boolean).join(', ')),
+                escapeCell(formatTimestamp(t.date_updated)),
+                escapeCell(t.url ?? `https://app.clickup.com/t/${t.id}`),
+            ].join(' | ')} |`,
+        );
+    }
+
+    return `${header}\n${rows.join('\n')}\n`;
+}
+
+function escapeCell(value: string): string {
+    return String(value).replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+}
+
+function formatTimestamp(ts: string | null | undefined): string {
+    if (!ts) return '';
+    const n = parseInt(String(ts), 10);
+    if (!Number.isFinite(n)) return '';
+    try {
+        return new Date(n).toISOString();
+    } catch {
+        return '';
+    }
 }
 
 function stringifyJson(payload: unknown): string {

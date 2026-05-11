@@ -6,6 +6,13 @@
  *   - `sheet:<fileId>`   — Google Sheet, exported as CSV.
  *   - `folder:<folderId>` — Folder, recursively walked; each child doc/sheet
  *     becomes an entry. Nested folders are traversed.
+ *   - `pdf:<fileId>`     — PDF binary fetched via `files/{id}?alt=media`.
+ *     No in-process PDF parser is bundled (keeps deps light); the raw bytes
+ *     are returned as a base64 string with `contentType: 'application/pdf'`
+ *     so downstream consumers can decode and parse with whatever PDF library
+ *     they choose.
+ *   - `docx:<fileId>`    — DOCX exported as Markdown via Drive's `export`
+ *     endpoint (`mimeType=text/markdown`). Drive handles conversion server-side.
  *
  * Auth model:
  *   - Authorization: Bearer <accessToken> on every request.
@@ -41,6 +48,8 @@ const RATE_LIMIT_BASE_DELAY_MS = 500;
 const MIME_FOLDER = 'application/vnd.google-apps.folder';
 const MIME_DOC = 'application/vnd.google-apps.document';
 const MIME_SHEET = 'application/vnd.google-apps.spreadsheet';
+const MIME_PDF = 'application/pdf';
+const MIME_DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
 interface DriveFileMeta {
     id: string;
@@ -53,6 +62,7 @@ interface FetchOptions {
     headers?: Record<string, string>;
     body?: string;
     asText?: boolean;
+    asBinary?: boolean;
 }
 
 interface FetchOk<T> {
@@ -118,6 +128,12 @@ async function fetchDrive(
     } else if (target.kind === 'sheet') {
         const entry = await fetchSheetEntry(target.id, tokens, ctx);
         if (entry) entries.push(entry);
+    } else if (target.kind === 'pdf') {
+        const entry = await fetchPdfEntry(target.id, tokens, ctx);
+        if (entry) entries.push(entry);
+    } else if (target.kind === 'docx') {
+        const entry = await fetchDocxEntry(target.id, tokens, ctx);
+        if (entry) entries.push(entry);
     } else {
         await walkFolder(target.id, tokens, ctx, entries, seen);
     }
@@ -129,18 +145,20 @@ async function fetchDrive(
 }
 
 interface ParsedTarget {
-    kind: 'doc' | 'sheet' | 'folder';
+    kind: 'doc' | 'sheet' | 'folder' | 'pdf' | 'docx';
     id: string;
 }
 
 function parseTarget(target: string): ParsedTarget {
     const colon = target.indexOf(':');
     if (colon <= 0 || colon === target.length - 1) {
-        throw new Error(`drive: invalid target "${target}" (expected doc:<id>, sheet:<id>, or folder:<id>)`);
+        throw new Error(
+            `drive: invalid target "${target}" (expected doc:<id>, sheet:<id>, folder:<id>, pdf:<id>, or docx:<id>)`,
+        );
     }
     const kind = target.slice(0, colon);
     const id = target.slice(colon + 1);
-    if (kind !== 'doc' && kind !== 'sheet' && kind !== 'folder') {
+    if (kind !== 'doc' && kind !== 'sheet' && kind !== 'folder' && kind !== 'pdf' && kind !== 'docx') {
         throw new Error(`drive: unsupported target kind "${kind}"`);
     }
     return { kind, id };
@@ -181,6 +199,52 @@ async function fetchSheetEntry(
         path: `sheets/${slugify(meta.name)}.csv`,
         content: res.data,
         contentType: 'text/csv',
+    };
+}
+
+async function fetchPdfEntry(
+    fileId: string,
+    tokens: TokenState,
+    ctx: ExtractionContext,
+): Promise<ExtractionEntry | null> {
+    const meta = await fetchMeta(fileId, tokens, ctx);
+    if (!meta) return null;
+
+    // alt=media downloads the raw bytes for binary files (PDFs uploaded to Drive,
+    // not Google-native types). We don't bundle a PDF parser to keep the lib light;
+    // callers receive base64-encoded bytes and can decode/parse with whatever
+    // library suits their pipeline.
+    const url = `${DRIVE_FILES_API}/${encodeURIComponent(fileId)}?alt=media`;
+    const res = await driveRequest<ArrayBuffer>(url, tokens, ctx, { asBinary: true });
+    if (!res.ok) return null;
+
+    const base64 = Buffer.from(res.data).toString('base64');
+
+    return {
+        path: `pdfs/${slugify(meta.name)}.pdf`,
+        content: base64,
+        contentType: 'application/pdf',
+    };
+}
+
+async function fetchDocxEntry(
+    fileId: string,
+    tokens: TokenState,
+    ctx: ExtractionContext,
+): Promise<ExtractionEntry | null> {
+    const meta = await fetchMeta(fileId, tokens, ctx);
+    if (!meta) return null;
+
+    // Drive's `export` endpoint converts DOCX → markdown server-side, so we
+    // avoid pulling mammoth (or any docx parser) into the lib dep tree.
+    const url = `${DRIVE_FILES_API}/${encodeURIComponent(fileId)}/export?mimeType=${encodeURIComponent('text/markdown')}`;
+    const res = await driveRequest<string>(url, tokens, ctx, { asText: true });
+    if (!res.ok) return null;
+
+    return {
+        path: `docs/${slugify(meta.name)}.md`,
+        content: res.data,
+        contentType: 'text/markdown',
     };
 }
 
@@ -283,9 +347,14 @@ async function driveRequest<T>(
         }
 
         if (response.status >= 200 && response.status < 300) {
-            const data = options.asText
-                ? ((await response.text()) as unknown as T)
-                : ((await response.json()) as T);
+            let data: T;
+            if (options.asBinary) {
+                data = (await response.arrayBuffer()) as unknown as T;
+            } else if (options.asText) {
+                data = (await response.text()) as unknown as T;
+            } else {
+                data = (await response.json()) as T;
+            }
             return { ok: true, status: response.status, data };
         }
 
