@@ -1,0 +1,249 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { mkdtemp, rm, mkdir } from 'fs/promises';
+import { tmpdir } from 'os';
+import * as path from 'path';
+import { rehydrateWorkdir } from '../../workdir/boot';
+import { runGit } from '../../workdir/run-git';
+import { makeNodeFsAdapter } from '../../workdir/node-adapters';
+import { makeInMemoryWorkdirLock } from '../../workdir/lock';
+import type { LintFn, LintError, PushToMainFn, Workdir } from '../../workdir';
+import { handleSettle } from '../settle';
+import type { SettleVerbContext } from '../settle';
+
+const enc = (s: string) => new TextEncoder().encode(s);
+
+const allowAllLint: LintFn = async () => ({ ok: true });
+const denyLint = (errors: ReadonlyArray<LintError>): LintFn => async () => ({ ok: false, errors });
+const okPush: PushToMainFn = async ({ sha }) => ({ ok: true, sha });
+
+function makeLog() {
+    return { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+}
+
+describe('handleSettle', () => {
+    let tmpRoot: string;
+
+    beforeEach(async () => {
+        tmpRoot = await mkdtemp(path.join(tmpdir(), 'ernesto-verbs-settle-'));
+        await runGit(tmpRoot, ['init', '-q', '-b', 'main']);
+        await runGit(tmpRoot, ['config', 'user.email', 'poc@bitrefill.com']);
+        await runGit(tmpRoot, ['config', 'user.name', 'PoC']);
+        await runGit(tmpRoot, ['config', 'commit.gpgsign', 'false']);
+        await mkdir(path.join(tmpRoot, 'workspaces', 'hr'), { recursive: true });
+        await mkdir(path.join(tmpRoot, 'workspaces', 'cs'), { recursive: true });
+        await runGit(tmpRoot, ['commit', '-q', '--allow-empty', '-m', 'init']);
+    });
+
+    afterEach(async () => {
+        await rm(tmpRoot, { recursive: true, force: true });
+    });
+
+    function buildWorkdir(): Workdir {
+        const fs = makeNodeFsAdapter(tmpRoot);
+        return rehydrateWorkdir({
+            workdirId: 'wd1',
+            tier: 'managed',
+            workingTreeRoot: tmpRoot,
+            fs,
+            master: { resolve: async () => ({ kind: 'not-found' }) },
+            lock: makeInMemoryWorkdirLock('wd1'),
+        });
+    }
+
+    function makeCtx(overrides: Partial<SettleVerbContext> = {}): SettleVerbContext {
+        return {
+            user: { id: 'u1' },
+            scopes: new Set(['test:write']),
+            lint: allowAllLint,
+            pushToMain: okPush,
+            log: makeLog(),
+            ...overrides,
+        };
+    }
+
+    it('happy path: derives workspaces, pushes, fires onSettleSuccess', async () => {
+        const workdir = buildWorkdir();
+        await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# hr\n'));
+
+        const onSuccess = vi.fn(async () => {});
+        const onFailure = vi.fn(async () => {});
+        const ctx = makeCtx({ hooks: { onSettleSuccess: onSuccess, onSettleFailure: onFailure } });
+
+        const r = await handleSettle(workdir, { message: 'add hr' }, ctx);
+
+        expect(r.ok).toBe(true);
+        if (!r.ok) return;
+        expect(r.pushed).toBe(true);
+        expect(r.sha).toBeTruthy();
+        expect(onSuccess).toHaveBeenCalledTimes(1);
+        expect(onSuccess.mock.calls[0][0]).toEqual(['hr']);
+        expect(onSuccess.mock.calls[0][1]).toBe(r.sha);
+        expect(onSuccess.mock.calls[0][2]).toBe(true);
+        expect(onFailure).not.toHaveBeenCalled();
+    });
+
+    it('derives multiple workspaces from a multi-workspace diff', async () => {
+        const workdir = buildWorkdir();
+        await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# hr\n'));
+        await workdir.fs.writeFile('workspaces/cs/WORKSPACE.md', enc('# cs\n'));
+
+        const onSuccess = vi.fn(async () => {});
+        const ctx = makeCtx({ hooks: { onSettleSuccess: onSuccess } });
+
+        const r = await handleSettle(workdir, { message: 'add hr + cs' }, ctx);
+        expect(r.ok).toBe(true);
+        expect(onSuccess.mock.calls[0][0]).toEqual(['cs', 'hr']); // sorted
+    });
+
+    it('ignores out-of-workspace changes when deriving workspaces', async () => {
+        const workdir = buildWorkdir();
+        await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# hr\n'));
+        // A non-workspace file change is invisible to settle's workspace
+        // derivation. Settle only touches `workspaces/<name>/...`.
+        await workdir.fs.writeFile('README.md', enc('readme\n'));
+
+        const onSuccess = vi.fn(async () => {});
+        const ctx = makeCtx({ hooks: { onSettleSuccess: onSuccess } });
+
+        const r = await handleSettle(workdir, { message: 'add hr' }, ctx);
+        expect(r.ok).toBe(true);
+        expect(onSuccess.mock.calls[0][0]).toEqual(['hr']);
+    });
+
+    it('lint failure → returns lint_failed, fires onSettleFailure with workspaces + errors', async () => {
+        const workdir = buildWorkdir();
+        await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# bad\n'));
+
+        const errors: ReadonlyArray<LintError> = [
+            { code: 'bad', workspace: 'hr', message: 'nope' },
+        ];
+        const onSuccess = vi.fn(async () => {});
+        const onFailure = vi.fn(async () => {});
+        const ctx = makeCtx({
+            lint: denyLint(errors),
+            hooks: { onSettleSuccess: onSuccess, onSettleFailure: onFailure },
+        });
+
+        const r = await handleSettle(workdir, { message: 'add hr' }, ctx);
+
+        expect(r).toEqual({ ok: false, error: 'lint_failed', errors });
+        expect(onSuccess).not.toHaveBeenCalled();
+        expect(onFailure).toHaveBeenCalledTimes(1);
+        expect(onFailure.mock.calls[0][0]).toEqual(['hr']);
+        expect(onFailure.mock.calls[0][1]).toBe('lint_failed');
+        expect(onFailure.mock.calls[0][2]).toEqual(errors);
+    });
+
+    it('push failure (fast_forward_required) → returns error, fires onSettleFailure', async () => {
+        const workdir = buildWorkdir();
+        await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# hr\n'));
+
+        const pushFails: PushToMainFn = async () => ({
+            ok: false,
+            error: 'fast_forward_required',
+            currentSha: 'aaa',
+        });
+        const onFailure = vi.fn(async () => {});
+        const ctx = makeCtx({ pushToMain: pushFails, hooks: { onSettleFailure: onFailure } });
+
+        const r = await handleSettle(workdir, { message: 'add hr' }, ctx);
+        expect(r.ok).toBe(false);
+        if (r.ok) return;
+        expect(r.error).toBe('fast_forward_required');
+        expect(onFailure).toHaveBeenCalledTimes(1);
+        expect(onFailure.mock.calls[0][1]).toBe('fast_forward_required');
+    });
+
+    it('onSettleSuccess throw is caught and logged; settle result is unchanged', async () => {
+        const workdir = buildWorkdir();
+        await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# hr\n'));
+
+        const log = makeLog();
+        const onSuccess = vi.fn(async () => {
+            throw new Error('audit redis down');
+        });
+        const ctx = makeCtx({ log, hooks: { onSettleSuccess: onSuccess } });
+
+        const r = await handleSettle(workdir, { message: 'add hr' }, ctx);
+        expect(r.ok).toBe(true);
+        expect(log.warn).toHaveBeenCalledWith(
+            'onSettleSuccess hook failed',
+            expect.objectContaining({ errorMessage: 'audit redis down' }),
+        );
+    });
+
+    it('onSettleFailure throw is caught and logged; settle result is unchanged', async () => {
+        const workdir = buildWorkdir();
+        await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# bad\n'));
+
+        const log = makeLog();
+        const onFailure = vi.fn(async () => {
+            throw new Error('audit redis down');
+        });
+        const ctx = makeCtx({
+            log,
+            lint: denyLint([{ code: 'bad', message: 'no' }]),
+            hooks: { onSettleFailure: onFailure },
+        });
+
+        const r = await handleSettle(workdir, { message: 'add hr' }, ctx);
+        expect(r.ok).toBe(false);
+        expect(log.warn).toHaveBeenCalledWith(
+            'onSettleFailure hook failed',
+            expect.objectContaining({ errorMessage: 'audit redis down' }),
+        );
+    });
+
+    it('invalid input: empty message returns invalid_input', async () => {
+        const workdir = buildWorkdir();
+        await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# hr\n'));
+
+        const r = await handleSettle(workdir, { message: '' } as any, makeCtx());
+        expect(r.ok).toBe(false);
+        if (r.ok) return;
+        expect(r.error).toBe('invalid_input');
+    });
+
+    it('invalid input: > 500-char message returns invalid_input', async () => {
+        const workdir = buildWorkdir();
+        await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# hr\n'));
+
+        const longMsg = 'x'.repeat(501);
+        const r = await handleSettle(workdir, { message: longMsg }, makeCtx());
+        expect(r.ok).toBe(false);
+        if (r.ok) return;
+        expect(r.error).toBe('invalid_input');
+    });
+
+    it('nothing to settle → returns lint_failed with nothing_to_settle code', async () => {
+        const workdir = buildWorkdir();
+        // No working-tree changes at all.
+
+        const onFailure = vi.fn(async () => {});
+        const ctx = makeCtx({ hooks: { onSettleFailure: onFailure } });
+
+        const r = await handleSettle(workdir, { message: 'noop' }, ctx);
+        expect(r.ok).toBe(false);
+        if (r.ok) return;
+        expect(r.error).toBe('lint_failed');
+        if (r.error !== 'lint_failed') return;
+        expect(r.errors[0].code).toBe('nothing_to_settle');
+        expect(onFailure).toHaveBeenCalledTimes(1);
+        expect(onFailure.mock.calls[0][0]).toEqual([]);
+    });
+
+    it('applies trailers when supplied', async () => {
+        const workdir = buildWorkdir();
+        await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# hr\n'));
+
+        const ctx = makeCtx({
+            trailers: { 'Workdir-Id': 'wd1', 'User': 'u@b.com', 'Tier': 'A' },
+        });
+
+        const r = await handleSettle(workdir, { message: 'add hr' }, ctx);
+        expect(r.ok).toBe(true);
+        const log = await runGit(tmpRoot, ['log', '-1', '--format=%B']);
+        expect(log).toContain('Workdir-Id: wd1');
+        expect(log).toContain('Tier: A');
+    });
+});

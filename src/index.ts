@@ -74,6 +74,18 @@ export type {
     DispatchResult, DispatchErrorCode,
 } from './route';
 
+// ─── Agent verbs ─────────────────────────────────────────────────────────
+export {
+    executeInputSchema, executeOutputSchema, EXECUTE_DESCRIPTION, handleExecute,
+    settleInputSchema, settleOutputSchema, SETTLE_DESCRIPTION, handleSettle,
+} from './agent-verbs';
+export type {
+    ExecuteInput, ExecuteVerbContext, ExecuteVerbLogger,
+    SettleInput as SettleVerbInput,
+    SettleVerbContext, SettleVerbLogger, SettleVerbHooks, SettleVerbResult,
+    VerbLogger, VerbUser,
+} from './agent-verbs';
+
 // ─── Extractions ─────────────────────────────────────────────────────────
 export { defineExtraction, ExtractionRegistry, dispatchExtraction } from './extraction';
 export type {
