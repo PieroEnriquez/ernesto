@@ -64,3 +64,10 @@ export type {
 // ─── Lint (workspace settle gate) ────────────────────────────────────────
 export { lintWorkspace, makeLintWorkspace } from './lint';
 export type { LintPrincipal } from './lint';
+
+// ─── Routes ──────────────────────────────────────────────────────────────
+export { defineRoute, RouteRegistry, dispatchRoute } from './route';
+export type {
+    Route, RouteConfig, RouteContext, RouteLogger, RouteScope, RouteUser,
+    DispatchResult, DispatchErrorCode,
+} from './route';
