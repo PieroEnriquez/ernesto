@@ -59,3 +59,10 @@ await get([{ route: 'warehouse:investigate-orders', params: { day: '2026-02-18' 
 ## Status
 
 This repo now documents and implements the skill model directly.
+
+## Troubleshooting builds
+
+When switching between the legacy flat-file output (`dist/route.cjs`) and the
+current per-route directory layout (`dist/route/`), stale artifacts from the
+previous shape can shadow the new ones and surface as cryptic resolver errors.
+Always wipe `dist/` before rebuilding: `rm -rf dist && pnpm build`.
