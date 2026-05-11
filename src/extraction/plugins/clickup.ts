@@ -235,7 +235,7 @@ async function fetchWithRetry(
             res = await fetch(url, {
                 method: 'GET',
                 headers: {
-                    Authorization: `Bearer ${token}`,
+                    Authorization: token,
                     Accept: 'application/json',
                 },
                 signal: controller.signal,

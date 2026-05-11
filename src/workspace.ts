@@ -74,7 +74,7 @@ export interface ToolManifestParam {
     type: string;
     required: boolean;
     description?: string;
-    enum?: string[];
+    enum?: (string | number)[];
     default?: unknown;
 }
 
@@ -213,7 +213,7 @@ function schemaToParams(schema: z.ZodSchema): ToolManifestParam[] {
         }
 
         let type = 'string';
-        let enumValues: string[] | undefined;
+        let enumValues: (string | number)[] | undefined;
 
         if (base instanceof z.ZodString) type = 'string';
         else if (base instanceof z.ZodNumber) type = 'number';
