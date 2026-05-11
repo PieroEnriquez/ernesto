@@ -1,18 +1,20 @@
 /**
  * ClickUp extraction plugin.
  *
- * Fetches tasks, lists, and docs from ClickUp's REST API
- * (https://api.clickup.com/api/v2/...) and shapes them into ExtractionResult
- * entries. Token is captured by the factory — the lib's ExtractionContext does
- * not carry credentials.
+ * Fetches tasks, lists, and docs from ClickUp's REST API and shapes them into
+ * ExtractionResult entries. Tasks/lists hit v2 (https://api.clickup.com/api/v2);
+ * docs require v3 (https://api.clickup.com/api/v3/workspaces/{workspaceId}/docs/...)
+ * because ClickUp moved docs to a workspace-scoped v3 namespace — the v2
+ * `/doc/{id}` endpoint does not exist. Token is captured by the factory.
  *
  * Target syntax (matches frontmatter convention):
- *   - task:{id}           → tasks/{id}.json (raw JSON)
- *   - list:{id}           → lists/{id}.json (raw JSON list metadata)
- *   - doc:{id}            → docs/{id}.md   (markdown content)
+ *   - task:{id}           → tasks/{id}.json (raw JSON, v2)
+ *   - list:{id}           → lists/{id}.json (raw JSON list metadata, v2)
+ *   - doc:{id}            → docs/{id}/{slug}.md per page (markdown, v3,
+ *                            requires workspaceId option)
  *   - list-table:{id}     → lists/{id}.md  (markdown table of tasks, legacy
  *                            ClickUpListFormat parity; closed tasks older than
- *                            ~3 months are dropped)
+ *                            ~3 months are dropped, v2)
  *
  * Failure shape contract:
  *   - 404 → resolve with empty entries (target absent is not a fatal error)
@@ -32,6 +34,17 @@ import {
 export interface ClickUpPluginOptions {
     token: string;
     baseUrl?: string;
+    /**
+     * Base URL for the v3 ClickUp API used by doc-related endpoints.
+     * Defaults to `https://api.clickup.com/api/v3`.
+     */
+    baseUrlV3?: string;
+    /**
+     * Workspace (team) ID required to fetch docs from the v3 API. Optional
+     * at construction time so registering the plugin doesn't require it,
+     * but `doc:` targets will throw a clear error at fetch time when unset.
+     */
+    workspaceId?: string;
     timeoutMs?: number;
     maxRetries?: number;
     backoffBaseMs?: number;
@@ -47,6 +60,7 @@ export interface ClickUpPluginOptions {
 type TargetKind = 'task' | 'list' | 'doc' | 'list-table';
 
 const DEFAULT_BASE_URL = 'https://api.clickup.com/api/v2';
+const DEFAULT_BASE_URL_V3 = 'https://api.clickup.com/api/v3';
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_BACKOFF_BASE_MS = 500;
@@ -82,6 +96,8 @@ export function clickupPlugin(opts: ClickUpPluginOptions): ExtractionPlugin {
         throw new Error('clickupPlugin: token is required');
     }
     const baseUrl = (opts.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '');
+    const baseUrlV3 = (opts.baseUrlV3 ?? DEFAULT_BASE_URL_V3).replace(/\/+$/, '');
+    const workspaceId = opts.workspaceId;
     const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     const maxRetries = opts.maxRetries ?? DEFAULT_MAX_RETRIES;
     const backoffBaseMs = opts.backoffBaseMs ?? DEFAULT_BACKOFF_BASE_MS;
@@ -114,6 +130,29 @@ export function clickupPlugin(opts: ClickUpPluginOptions): ExtractionPlugin {
                     return { entries: [], fetchedAt };
                 }
                 return { entries: [entry], fetchedAt };
+            }
+
+            if (parsed.kind === 'doc') {
+                if (!workspaceId) {
+                    throw new Error(
+                        'clickup: workspaceId option required for doc: targets',
+                    );
+                }
+                const entries = await fetchDocPages({
+                    docId: parsed.id,
+                    workspaceId,
+                    token,
+                    baseUrlV3,
+                    timeoutMs,
+                    maxRetries,
+                    backoffBaseMs,
+                    log: ctx.log,
+                });
+                if (entries === 'not_found') {
+                    ctx.log.info('ClickUp target not found', { kind: parsed.kind });
+                    return { entries: [], fetchedAt };
+                }
+                return { entries, fetchedAt };
             }
 
             const endpoint = endpointFor(parsed.kind, parsed.id, baseUrl);
@@ -160,15 +199,15 @@ function parseTarget(target: string): { kind: TargetKind; id: string } {
     return { kind: kindRaw, id };
 }
 
-function endpointFor(kind: Exclude<TargetKind, 'list-table'>, id: string, baseUrl: string): string {
+type V2TaskOrListKind = 'task' | 'list';
+
+function endpointFor(kind: V2TaskOrListKind, id: string, baseUrl: string): string {
     const safe = encodeURIComponent(id);
     switch (kind) {
         case 'task':
             return `${baseUrl}/task/${safe}`;
         case 'list':
             return `${baseUrl}/list/${safe}`;
-        case 'doc':
-            return `${baseUrl}/doc/${safe}`;
     }
 }
 
@@ -239,23 +278,10 @@ async function fetchWithRetry(
 }
 
 async function buildEntry(
-    kind: Exclude<TargetKind, 'list-table'>,
+    kind: V2TaskOrListKind,
     id: string,
     response: Response,
 ): Promise<ExtractionEntry> {
-    if (kind === 'doc') {
-        const payload = (await response.json()) as { content?: unknown; name?: unknown };
-        const content =
-            typeof payload.content === 'string'
-                ? payload.content
-                : stringifyJson(payload);
-        return {
-            path: `docs/${id}.md`,
-            content,
-            contentType: 'text/markdown',
-        };
-    }
-
     const payload = (await response.json()) as unknown;
     return {
         path: `${kind === 'task' ? 'tasks' : 'lists'}/${id}.json`,
@@ -408,4 +434,130 @@ function stringifyJson(payload: unknown): string {
 
 function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+interface ClickUpPageListing {
+    id: string;
+    doc_id?: string;
+    parent_page_id?: string | null;
+    workspace_id?: number;
+    name: string;
+    pages?: ClickUpPageListing[];
+}
+
+interface ClickUpPage {
+    id: string;
+    doc_id?: string;
+    name?: string;
+    content?: string;
+}
+
+interface FetchDocPagesArgs {
+    docId: string;
+    workspaceId: string;
+    token: string;
+    baseUrlV3: string;
+    timeoutMs: number;
+    maxRetries: number;
+    backoffBaseMs: number;
+    log: ExtractionContext['log'];
+}
+
+async function fetchDocPages(
+    args: FetchDocPagesArgs,
+): Promise<ExtractionEntry[] | 'not_found'> {
+    const safeWorkspace = encodeURIComponent(args.workspaceId);
+    const safeDoc = encodeURIComponent(args.docId);
+    const listingUrl = `${args.baseUrlV3}/workspaces/${safeWorkspace}/docs/${safeDoc}/page_listing`;
+
+    const listingRes = await fetchWithRetry(listingUrl, args.token, {
+        timeoutMs: args.timeoutMs,
+        maxRetries: args.maxRetries,
+        backoffBaseMs: args.backoffBaseMs,
+        log: args.log,
+        kind: 'doc',
+        id: args.docId,
+    });
+    if (listingRes === 'not_found') {
+        return 'not_found';
+    }
+
+    const listingPayload = (await listingRes.json()) as
+        | ClickUpPageListing[]
+        | { pages?: ClickUpPageListing[] };
+    const tree: ClickUpPageListing[] = Array.isArray(listingPayload)
+        ? listingPayload
+        : (listingPayload.pages ?? []);
+    const flatPages = flattenPageListing(tree);
+
+    if (flatPages.length === 0) {
+        return [];
+    }
+
+    // Resolve slug collisions across the whole doc by appending the pageId.
+    const slugCounts = new Map<string, number>();
+    for (const p of flatPages) {
+        const s = slugify(p.name) || p.id;
+        slugCounts.set(s, (slugCounts.get(s) ?? 0) + 1);
+    }
+
+    const entries: ExtractionEntry[] = [];
+    for (const page of flatPages) {
+        const pageUrl = `${args.baseUrlV3}/workspaces/${safeWorkspace}/docs/${safeDoc}/pages/${encodeURIComponent(page.id)}?content_format=text%2Fmd`;
+        const pageRes = await fetchWithRetry(pageUrl, args.token, {
+            timeoutMs: args.timeoutMs,
+            maxRetries: args.maxRetries,
+            backoffBaseMs: args.backoffBaseMs,
+            log: args.log,
+            kind: 'doc',
+            id: page.id,
+        });
+        if (pageRes === 'not_found') {
+            args.log.warn('ClickUp doc page not found, skipping', {
+                docId: args.docId,
+                pageId: page.id,
+            });
+            continue;
+        }
+        const payload = (await pageRes.json()) as ClickUpPage;
+        const baseSlug = slugify(page.name) || page.id;
+        const slug =
+            (slugCounts.get(baseSlug) ?? 0) > 1
+                ? `${baseSlug}-${page.id}`
+                : baseSlug;
+        const content = typeof payload.content === 'string' ? payload.content : '';
+        entries.push({
+            path: `docs/${args.docId}/${slug}.md`,
+            content,
+            contentType: 'text/markdown',
+        });
+    }
+
+    return entries;
+}
+
+function flattenPageListing(
+    pages: ClickUpPageListing[],
+    acc: ClickUpPageListing[] = [],
+): ClickUpPageListing[] {
+    for (const p of pages) {
+        acc.push(p);
+        if (p.pages && p.pages.length > 0) {
+            flattenPageListing(p.pages, acc);
+        }
+    }
+    return acc;
+}
+
+function slugify(name: string | undefined): string {
+    if (!name) return '';
+    return String(name)
+        .toLowerCase()
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9\s-]+/g, '')
+        .trim()
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
 }

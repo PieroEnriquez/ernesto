@@ -83,24 +83,144 @@ describe('clickupPlugin – happy path per target kind', () => {
         expect(JSON.parse(result.entries[0].content)).toEqual(listPayload);
     });
 
-    it('fetches a doc and returns a markdown entry under docs/{id}.md', async () => {
-        const docPayload = { id: 'doc9', name: 'Spec', content: '# Title\n\nBody.' };
-        const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, docPayload));
+    it('fetches a doc via v3 page_listing and emits one markdown entry per page', async () => {
+        const listing = [
+            { id: 'p1', doc_id: 'doc9', workspace_id: 42, name: 'Intro' },
+            { id: 'p2', doc_id: 'doc9', workspace_id: 42, name: 'Setup Guide' },
+        ];
+        const page1 = { id: 'p1', doc_id: 'doc9', name: 'Intro', content: '# Intro\n\nBody.' };
+        const page2 = { id: 'p2', doc_id: 'doc9', name: 'Setup Guide', content: '# Setup\n' };
+
+        const fetchMock = vi
+            .fn()
+            .mockResolvedValueOnce(jsonResponse(200, listing))
+            .mockResolvedValueOnce(jsonResponse(200, page1))
+            .mockResolvedValueOnce(jsonResponse(200, page2));
         vi.stubGlobal('fetch', fetchMock);
 
-        const plugin = clickupPlugin({ token: TOKEN });
+        const plugin = clickupPlugin({ token: TOKEN, workspaceId: '42' });
         const result = await plugin.fetch(
             { target: 'doc:doc9' },
             makeCtx(),
         );
 
-        const [url] = fetchMock.mock.calls[0];
-        expect(url).toBe('https://api.clickup.com/api/v2/doc/doc9');
+        expect(fetchMock).toHaveBeenCalledTimes(3);
+        const [listingUrl] = fetchMock.mock.calls[0];
+        expect(listingUrl).toBe(
+            'https://api.clickup.com/api/v3/workspaces/42/docs/doc9/page_listing',
+        );
+        const [pageUrl1] = fetchMock.mock.calls[1];
+        expect(pageUrl1).toBe(
+            'https://api.clickup.com/api/v3/workspaces/42/docs/doc9/pages/p1?content_format=text%2Fmd',
+        );
+
+        expect(result.entries).toHaveLength(2);
         expect(result.entries[0]).toEqual({
-            path: 'docs/doc9.md',
-            content: '# Title\n\nBody.',
+            path: 'docs/doc9/intro.md',
+            content: '# Intro\n\nBody.',
             contentType: 'text/markdown',
         });
+        expect(result.entries[1]).toEqual({
+            path: 'docs/doc9/setup-guide.md',
+            content: '# Setup\n',
+            contentType: 'text/markdown',
+        });
+    });
+
+    it('flattens nested doc pages from the page_listing tree', async () => {
+        const listing = [
+            {
+                id: 'root',
+                doc_id: 'docX',
+                workspace_id: 7,
+                name: 'Root',
+                pages: [
+                    { id: 'child', doc_id: 'docX', workspace_id: 7, name: 'Child' },
+                ],
+            },
+        ];
+        const fetchMock = vi
+            .fn()
+            .mockResolvedValueOnce(jsonResponse(200, listing))
+            .mockResolvedValueOnce(jsonResponse(200, { content: 'root body' }))
+            .mockResolvedValueOnce(jsonResponse(200, { content: 'child body' }));
+        vi.stubGlobal('fetch', fetchMock);
+
+        const plugin = clickupPlugin({ token: TOKEN, workspaceId: '7' });
+        const result = await plugin.fetch({ target: 'doc:docX' }, makeCtx());
+
+        expect(result.entries.map((e) => e.path)).toEqual([
+            'docs/docX/root.md',
+            'docs/docX/child.md',
+        ]);
+    });
+
+    it('disambiguates slug collisions across pages with -{pageId}', async () => {
+        const listing = [
+            { id: 'a', doc_id: 'd', workspace_id: 1, name: 'Same Name' },
+            { id: 'b', doc_id: 'd', workspace_id: 1, name: 'Same Name' },
+        ];
+        const fetchMock = vi
+            .fn()
+            .mockResolvedValueOnce(jsonResponse(200, listing))
+            .mockResolvedValueOnce(jsonResponse(200, { content: 'A' }))
+            .mockResolvedValueOnce(jsonResponse(200, { content: 'B' }));
+        vi.stubGlobal('fetch', fetchMock);
+
+        const plugin = clickupPlugin({ token: TOKEN, workspaceId: '1' });
+        const result = await plugin.fetch({ target: 'doc:d' }, makeCtx());
+
+        expect(result.entries.map((e) => e.path)).toEqual([
+            'docs/d/same-name-a.md',
+            'docs/d/same-name-b.md',
+        ]);
+    });
+
+    it('throws a clear error when doc target is requested without workspaceId', async () => {
+        const plugin = clickupPlugin({ token: TOKEN });
+        await expect(
+            plugin.fetch({ target: 'doc:doc9' }, makeCtx()),
+        ).rejects.toThrow(/workspaceId option required for doc:/);
+    });
+
+    it('returns empty entries when the doc page_listing 404s', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(emptyResponse(404));
+        vi.stubGlobal('fetch', fetchMock);
+
+        const ctx = makeCtx();
+        const plugin = clickupPlugin({ token: TOKEN, workspaceId: '42' });
+        const result = await plugin.fetch({ target: 'doc:gone' }, ctx);
+
+        expect(result.entries).toEqual([]);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(ctx.log.info).toHaveBeenCalledWith(
+            'ClickUp target not found',
+            expect.objectContaining({ kind: 'doc' }),
+        );
+    });
+
+    it('skips a single page that 404s but keeps the rest', async () => {
+        const listing = [
+            { id: 'p1', doc_id: 'd', workspace_id: 1, name: 'One' },
+            { id: 'p2', doc_id: 'd', workspace_id: 1, name: 'Two' },
+        ];
+        const fetchMock = vi
+            .fn()
+            .mockResolvedValueOnce(jsonResponse(200, listing))
+            .mockResolvedValueOnce(emptyResponse(404))
+            .mockResolvedValueOnce(jsonResponse(200, { content: 'two body' }));
+        vi.stubGlobal('fetch', fetchMock);
+
+        const ctx = makeCtx();
+        const plugin = clickupPlugin({ token: TOKEN, workspaceId: '1' });
+        const result = await plugin.fetch({ target: 'doc:d' }, ctx);
+
+        expect(result.entries).toHaveLength(1);
+        expect(result.entries[0].path).toBe('docs/d/two.md');
+        expect(ctx.log.warn).toHaveBeenCalledWith(
+            'ClickUp doc page not found, skipping',
+            expect.objectContaining({ docId: 'd', pageId: 'p1' }),
+        );
     });
 });
 
