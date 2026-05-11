@@ -49,7 +49,7 @@ export {
     makeNodeFsAdapter, makeVolumeMasterFs,
     makeHttpsMasterFs,
     bootWorkdir, rehydrateWorkdir,
-    commitTurn, materializeFile, settleFromWorktree,
+    commitTurn, materializeFile, remirrorFile, settleFromWorktree,
 } from './workdir';
 export type {
     FsAdapter, MasterFsAdapter, MasterFsResolution,
