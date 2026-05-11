@@ -159,11 +159,13 @@ export async function handleSettle(
         return result;
     }
 
+    const pushToMain = wrapPushWithFastForwardRetry(workdir, ctx.pushToMain, ctx.log);
+
     const result = await settleFromWorktree(workdir, {
         workspaces,
         message: parsed.data.message,
         lint: ctx.lint,
-        pushToMain: ctx.pushToMain,
+        pushToMain,
         trailers: ctx.trailers,
     });
 
@@ -199,6 +201,73 @@ async function fireFailureHook(
             errorMessage: (err as Error).message,
         });
     }
+}
+
+/**
+ * Wrap a `PushToMainFn` with a single-shot fast-forward retry.
+ *
+ * Race we're closing: the derive worker's startup-sweep can land a commit on
+ * `origin/main` between our local commit and our bot push, which makes the
+ * push come back as `fast_forward_required`. Without a retry the agent's
+ * settle just fails — even though our changes are still cleanly rebaseable
+ * (workspace-scoped commits don't conflict across workers in practice).
+ *
+ * On `fast_forward_required` we:
+ *   1. Fetch `origin/main`.
+ *   2. Rebase the local single commit (HEAD) onto FETCH_HEAD.
+ *   3. Re-read HEAD's sha and retry the push exactly once.
+ *
+ * If the rebase fails (real conflict) or the second push also rejects, we
+ * propagate the second result. No infinite loop.
+ *
+ * The rebase replays our single local commit on top of the new main — same
+ * shape `settleFromWorktree` itself does on the success path (fetch + reset
+ * --hard FETCH_HEAD), just on the rejection path and with a `cherry-pick`
+ * to preserve our commit instead of dropping it.
+ */
+function wrapPushWithFastForwardRetry(
+    workdir: Workdir,
+    pushToMain: PushToMainFn,
+    log: VerbLogger,
+): PushToMainFn {
+    return async (input) => {
+        const first = await pushToMain(input);
+        if (first.ok || first.error !== 'fast_forward_required') return first;
+
+        log.info('settle verb: bot push rejected as non-fast-forward; rebasing on origin/main and retrying once', {
+            workdirId: workdir.workdirId,
+            attemptedSha: input.sha,
+            currentSha: first.currentSha,
+        });
+
+        const root = workdir.workingTreeRoot;
+        try {
+            await runGit(root, ['fetch', '--quiet', 'origin', 'main']);
+            // HEAD is already our single new commit (settleFromWorktree just
+            // made it). Rebasing onto FETCH_HEAD replays it on top of the new
+            // origin/main; if the rebase conflicts we abort and propagate.
+            await runGit(root, ['rebase', 'FETCH_HEAD']);
+        } catch (err) {
+            // Best-effort cleanup so the workdir isn't left mid-rebase.
+            try {
+                await runGit(root, ['rebase', '--abort']);
+            } catch {
+                // ignore
+            }
+            log.warn('settle verb: rebase on origin/main failed, propagating fast_forward_required', {
+                workdirId: workdir.workdirId,
+                errorMessage: (err as Error).message,
+            });
+            return first;
+        }
+
+        const newSha = (await runGit(root, ['rev-parse', 'HEAD'])).trim();
+        return pushToMain({
+            branchRef: input.branchRef,
+            sha: newSha,
+            message: input.message,
+        });
+    };
 }
 
 /**

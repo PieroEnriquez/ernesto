@@ -232,6 +232,71 @@ describe('handleSettle', () => {
         expect(onFailure.mock.calls[0][0]).toEqual([]);
     });
 
+    it('fast_forward_required → fetches origin/main, rebases, retries push once and succeeds', async () => {
+        // This test models the wave-6 race: the derive worker's startup-sweep
+        // landed a commit on origin/main between our local commit and the bot
+        // push. The first push is rejected as non-FF; settle must refresh
+        // from origin/main, replay the commit, and retry — exactly once.
+
+        // Set up a bare origin with one extra commit beyond what the workdir
+        // sees, so `git fetch origin main` actually advances FETCH_HEAD.
+        const bareRoot = await mkdtemp(path.join(tmpdir(), 'ernesto-verbs-settle-origin-'));
+        try {
+            await runGit(bareRoot, ['init', '-q', '--bare', '-b', 'main']);
+
+            // Seed bare from the workdir's initial commit so they share history.
+            await runGit(tmpRoot, ['remote', 'add', 'origin', bareRoot]);
+            await runGit(tmpRoot, ['push', '-q', 'origin', 'main']);
+
+            // Add the "concurrent worker" commit on origin/main via a side clone.
+            const sideRoot = await mkdtemp(path.join(tmpdir(), 'ernesto-verbs-settle-side-'));
+            try {
+                await runGit(sideRoot, ['clone', '-q', '-b', 'main', bareRoot, '.']);
+                await runGit(sideRoot, ['config', 'user.email', 'worker@bitrefill.com']);
+                await runGit(sideRoot, ['config', 'user.name', 'Worker']);
+                await runGit(sideRoot, ['config', 'commit.gpgsign', 'false']);
+                await runGit(sideRoot, ['commit', '-q', '--allow-empty', '-m', 'worker startup-sweep']);
+                await runGit(sideRoot, ['push', '-q', 'origin', 'main']);
+            } finally {
+                await rm(sideRoot, { recursive: true, force: true });
+            }
+
+            const workdir = buildWorkdir();
+            await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# hr\n'));
+
+            let pushCalls = 0;
+            const pushOnceFailThenOk: PushToMainFn = async ({ sha }) => {
+                pushCalls += 1;
+                if (pushCalls === 1) {
+                    return { ok: false, error: 'fast_forward_required', currentSha: 'aaa' };
+                }
+                return { ok: true, sha };
+            };
+
+            const log = makeLog();
+            const onSuccess = vi.fn(async () => {});
+            const ctx = makeCtx({
+                log,
+                pushToMain: pushOnceFailThenOk,
+                hooks: { onSettleSuccess: onSuccess },
+            });
+
+            const r = await handleSettle(workdir, { message: 'add hr' }, ctx);
+
+            expect(r.ok).toBe(true);
+            if (!r.ok) return;
+            expect(r.pushed).toBe(true);
+            expect(pushCalls).toBe(2);
+            expect(onSuccess).toHaveBeenCalledTimes(1);
+            expect(log.info).toHaveBeenCalledWith(
+                expect.stringContaining('non-fast-forward'),
+                expect.objectContaining({ workdirId: 'wd1' }),
+            );
+        } finally {
+            await rm(bareRoot, { recursive: true, force: true });
+        }
+    });
+
     it('applies trailers when supplied', async () => {
         const workdir = buildWorkdir();
         await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# hr\n'));
