@@ -349,15 +349,19 @@ function build({ principal, bypass }: BuildOptions): LintFn {
             }
         }
 
-        // forbidden_generated_path
-        for (const p of touchedPaths) {
-            if (isGeneratedPath(p)) {
-                errors.push({
-                    code: 'forbidden_generated_path',
-                    workspace: workspaceOf(p),
-                    path: p,
-                    message: `Path ${p} is under a generated subdirectory (routes/, extracted/) and cannot be edited by hand`,
-                });
+        // forbidden_generated_path — bypassed by the derive worker's
+        // privileged settle (`workspaces/{w}/routes/*` is settle-only and
+        // the worker IS the settle).
+        if (!isBypassed('forbidden_generated_path')) {
+            for (const p of touchedPaths) {
+                if (isGeneratedPath(p)) {
+                    errors.push({
+                        code: 'forbidden_generated_path',
+                        workspace: workspaceOf(p),
+                        path: p,
+                        message: `Path ${p} is under a generated subdirectory (routes/, extracted/) and cannot be edited by hand`,
+                    });
+                }
             }
         }
 

@@ -538,6 +538,39 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
         expect(ok).toEqual({ ok: true });
     });
 
+    it('bypass: { forbidden_generated_path } skips the rule for derive-worker settles', async () => {
+        await seedWorkspace(root, 'hr', VALID_HR);
+        await commitAll(root, 'seed');
+
+        const indexBody = '# Routes\n\n- [redshift://run-query](run-query.md)\n';
+        const routeBody = '# redshift://run-query\n';
+        await writeStagedFile(root, 'workspaces/hr/routes/_index.md', indexBody);
+        await writeStagedFile(root, 'workspaces/hr/routes/run-query.md', routeBody);
+        const diff =
+            diffAdd('workspaces/hr/routes/_index.md', indexBody) +
+            diffAdd('workspaces/hr/routes/run-query.md', routeBody);
+
+        // Without bypass: both files are rejected.
+        const blocked = await makeLintWorkspace({
+            scopes: new Set(['ernesto:agent-ops']),
+            email: 'ops@bitrefill.com',
+        })({ diff, workspaces: ['hr'], workingTreeRoot: root });
+        const blockedFailed = expectErrors(blocked);
+        const blockedPaths = blockedFailed.errors
+            .filter(e => e.code === 'forbidden_generated_path')
+            .map(e => e.path);
+        expect(blockedPaths).toContain('workspaces/hr/routes/_index.md');
+        expect(blockedPaths).toContain('workspaces/hr/routes/run-query.md');
+
+        // With bypass: rule is skipped, settle passes.
+        const lintBypass = makeLintWorkspace(
+            { scopes: new Set(['ernesto:agent-ops']), email: 'ops@bitrefill.com' },
+            { bypass: new Set(['forbidden_generated_path']) },
+        );
+        const ok = await lintBypass({ diff, workspaces: ['hr'], workingTreeRoot: root });
+        expect(ok).toEqual({ ok: true });
+    });
+
     it('changing the admin scope itself requires holding the OLD admin scope', async () => {
         await seedWorkspace(root, 'hr', VALID_HR);
         await commitAll(root, 'seed');
