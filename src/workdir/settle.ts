@@ -3,16 +3,22 @@ import { runGit } from './run-git';
 
 /**
  * Per-workspace subdirectories that are generated content (extraction worker,
- * derive worker, attach route). They live as hard-link mirrors of master-fs
- * placed at session boot (deployer-owned — see backend's
- * `ensureMasterFsOverlays`) and must never enter the git index. settle
- * excludes them from staging via git pathspec, regardless of any `.gitignore`
- * rules — the workspaces repo's `.gitignore` is deliberately empty of these
- * because ripgrep (the engine behind fs_glob/fs_grep) reads .gitignore and
- * would silently skip them, hiding master-fs-backed content from discovery.
- * Keep this list in sync with the lint's `forbidden_generated_path` rule.
+ * attach route). They live as hard-link mirrors of master-fs placed at
+ * session boot (deployer-owned — see backend's `ensureMasterFsOverlays`)
+ * and must never enter the git index. settle excludes them from staging via
+ * git pathspec, regardless of any `.gitignore` rules — the workspaces repo's
+ * `.gitignore` is deliberately empty of these because ripgrep (the engine
+ * behind fs_glob/fs_grep) reads .gitignore and would silently skip them,
+ * hiding master-fs-backed content from discovery. Keep this list in sync
+ * with the lint's `forbidden_generated_path` rule.
+ *
+ * `routes/` is not in this list: the earlier parallel route catalog
+ * (`routes/_index.md` + `routes/{slug}.md`) was removed in favour of two
+ * auto-blocks inside each workspace's WORKSPACE.md, so there is no routes
+ * subdir to exclude. WORKSPACE.md itself IS staged — the derive worker
+ * re-asserts the auto-blocks on the next push, so a stale block self-heals.
  */
-const GENERATED_SUBDIRS = ['extracted', 'routes', 'attached'] as const;
+const GENERATED_SUBDIRS = ['extracted', 'attached'] as const;
 
 export interface LintError {
     code: string;
@@ -82,9 +88,9 @@ export async function settleFromWorktree(
         const root = workdir.workingTreeRoot;
         const wsPaths = input.workspaces.map(w => `workspaces/${w}`);
 
-        // Stage each workspace minus its generated subtrees. `extracted/`,
-        // `routes/`, and `attached/` are hard-link mirrors of master-fs
-        // placed at session boot (deployer-owned: backend's
+        // Stage each workspace minus its generated subtrees. `extracted/`
+        // and `attached/` are hard-link mirrors of master-fs placed at
+        // session boot (deployer-owned: backend's
         // `ensureMasterFsOverlays`); they must never enter the git index.
         // Doing the exclusion here (instead of via the workspaces repo's
         // `.gitignore`) keeps the working tree discoverable to ripgrep-based

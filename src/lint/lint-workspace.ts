@@ -17,8 +17,9 @@
  *   forbidden_workspace_name      — new workspaces match
  *                                   `^[a-z][a-z0-9-]{0,39}$`. Reserved
  *                                   `_`-prefix: only `_platform` allowed.
- *   forbidden_generated_path      — `workspaces/{w}/{routes,extracted}/` is
- *                                   derived; agents must not write.
+ *   forbidden_generated_path      — `workspaces/{w}/{extracted,attached}/`
+ *                                   is master-fs-mirrored at session boot;
+ *                                   agents must not commit changes to it.
  *   forbidden_workspace_md_delete — `WORKSPACE.md` is the contract; never
  *                                   delete it.
  *   archived_workspace_edit       — workspaces with `archived: true` only
@@ -68,7 +69,7 @@ import { runGit } from '../workdir/run-git';
  *  alerting) can reference the key without stringly-typed duplicates. */
 export const UNREGISTERED_EXTRACTION_SOURCE = 'unregistered_extraction_source';
 
-const GENERATED_SUBDIRS = ['routes', 'extracted'] as const;
+const GENERATED_SUBDIRS = ['extracted', 'attached'] as const;
 const MAX_FILE_BYTES = 1024 * 1024;
 const WORKSPACE_NAME_REGEX = /^[a-z][a-z0-9-]{0,39}$/;
 const PLATFORM_WORKSPACE = '_platform';
@@ -364,9 +365,11 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
             }
         }
 
-        // forbidden_generated_path — bypassed by the derive worker's
-        // privileged settle (`workspaces/{w}/routes/*` is settle-only and
-        // the worker IS the settle).
+        // forbidden_generated_path — `extracted/` and `attached/` are
+        // master-fs mirrors placed at session boot and must never enter the
+        // git index. The lib's settleFromWorktree already excludes them via
+        // pathspec, but the lint catches any path that slipped past (e.g.
+        // a settleFromPatch with a hand-crafted diff).
         if (!isBypassed('forbidden_generated_path')) {
             for (const p of touchedPaths) {
                 if (isGeneratedPath(p)) {
@@ -374,7 +377,7 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
                         code: 'forbidden_generated_path',
                         workspace: workspaceOf(p),
                         path: p,
-                        message: `Path ${p} is under a generated subdirectory (routes/, extracted/) and cannot be edited by hand`,
+                        message: `Path ${p} is under a generated subdirectory (extracted/, attached/) and cannot be edited by hand`,
                     });
                 }
             }
