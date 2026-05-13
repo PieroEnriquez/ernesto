@@ -26,12 +26,6 @@ describe('Ernesto', () => {
       expect(ernesto.soul).toBe(soul);
     });
 
-    it('stores and provides access to heartbeat via getter', () => {
-      const heartbeat = { enabled: true, every: '30m' };
-      const ernesto = new Ernesto({ heartbeat, typesense: mockTypesense });
-      expect(ernesto.heartbeat).toBe(heartbeat);
-    });
-
     it('accepts injected SkillRegistry', () => {
       const registry = new SkillRegistry();
       const skill = createTestSkill({ name: 'injected-skill' });
@@ -59,12 +53,10 @@ describe('Ernesto', () => {
       const tool = createTestTool({ name: 'test-tool' });
       const skill = createTestSkill({ name: 'test-skill', tools: [tool] });
       const soul = { name: 'TestBot', persona: 'A helpful test bot' };
-      const heartbeat = { enabled: true, every: '30m' };
 
       const ernesto = new Ernesto({
         skills: [skill],
         soul,
-        heartbeat,
         typesense: mockTypesense,
       });
 
@@ -74,7 +66,6 @@ describe('Ernesto', () => {
       expect(snapshot.skills[0].name).toBe('test-skill');
       expect(snapshot.toolCount).toBe(1);
       expect(snapshot.soul).toBe(soul);
-      expect(snapshot.heartbeat).toBe(heartbeat);
     });
 
     it('handles missing optional fields', () => {
@@ -84,7 +75,6 @@ describe('Ernesto', () => {
       expect(snapshot.skills).toEqual([]);
       expect(snapshot.toolCount).toBe(0);
       expect(snapshot.soul).toBeNull();
-      expect(snapshot.heartbeat).toBeNull();
     });
   });
 });

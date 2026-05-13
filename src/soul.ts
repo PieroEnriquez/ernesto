@@ -24,26 +24,3 @@ export interface Soul {
     /** Hard boundaries (e.g., "Never share PII or credentials") */
     boundaries?: string;
 }
-
-/**
- * Render a soul into system prompt text
- */
-export function renderSoul(soul: Soul): string {
-    const parts: string[] = [];
-
-    parts.push(`# ${soul.emoji ? `${soul.emoji} ` : ''}${soul.name}`);
-    parts.push('');
-    parts.push(soul.persona);
-
-    if (soul.tone) {
-        parts.push('');
-        parts.push(`**Tone:** ${soul.tone}`);
-    }
-
-    if (soul.boundaries) {
-        parts.push('');
-        parts.push(`**Boundaries:** ${soul.boundaries}`);
-    }
-
-    return parts.join('\n');
-}

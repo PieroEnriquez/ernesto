@@ -14,7 +14,6 @@
 import { Skill } from './skill';
 import { SkillRegistry, SkillSnapshot } from './skill-registry';
 import { Soul } from './soul';
-import { HeartbeatConfig } from './heartbeat';
 import { Session, SessionUser, WorkspaceProvider } from './Session';
 import { SearchProvider } from './search';
 import * as crypto from 'crypto';
@@ -32,8 +31,6 @@ interface ErnestoOptions {
     skillRegistry?: SkillRegistry;
     /** Agent persona */
     soul?: Soul;
-    /** Periodic task configuration */
-    heartbeat?: HeartbeatConfig;
     /** Workspace git operations (setup/settle) — optional */
     workspaceOps?: WorkspaceProvider;
     /** Search provider — optional, deployer implements */
@@ -49,7 +46,6 @@ export interface ErnestoSnapshot {
     skills: SkillSnapshot[];
     toolCount: number;
     soul: Soul | null;
-    heartbeat: HeartbeatConfig | null;
 }
 
 export class Ernesto {
@@ -58,7 +54,6 @@ export class Ernesto {
     readonly usersPath: string;
 
     private _soul: Soul | null = null;
-    private _heartbeat: HeartbeatConfig | null = null;
     private _workspaceOps?: WorkspaceProvider;
 
     constructor(opts: ErnestoOptions) {
@@ -72,7 +67,6 @@ export class Ernesto {
         }
 
         this._soul = opts.soul ?? null;
-        this._heartbeat = opts.heartbeat ?? null;
         this._workspaceOps = opts.workspaceOps;
         this.search = opts.search;
         this.usersPath = opts.usersPath ?? DEFAULT_USERS_DIR;
@@ -82,7 +76,6 @@ export class Ernesto {
 
     get skills(): SkillRegistry { return this.skillRegistry; }
     get soul(): Soul | null { return this._soul; }
-    get heartbeat(): HeartbeatConfig | null { return this._heartbeat; }
 
     // ─── Sessions ─────────────────────────────────────────────────
 
@@ -128,7 +121,6 @@ export class Ernesto {
             skills: this.skillRegistry.toJSON(),
             toolCount: this.skillRegistry.getAllTools().length,
             soul: this._soul,
-            heartbeat: this._heartbeat,
         };
     }
 }

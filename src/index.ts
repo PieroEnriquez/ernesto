@@ -2,16 +2,13 @@
 
 // ─── Core ────────────────────────────────────────────────────────────────
 export { Ernesto } from './Ernesto';
-export type { ErnestoSnapshot } from './Ernesto';
 
 // ─── Skills ──────────────────────────────────────────────────────────────
 export { createSkill, createTool, defineSuggestions, toolResult, toolResultWithSuggestions } from './skill';
 export type {
     Skill, SkillTool, ToolContext, SkillContext, ToolResult, Suggestion, Freshness,
-    ToolConfig, SuggestionRule, SuggestionSchema, SuggestionTarget,
 } from './skill';
 export { SkillRegistry } from './skill-registry';
-export type { SkillSnapshot, ToolRef } from './skill-registry';
 
 // ─── Session ─────────────────────────────────────────────────────────────
 export type { SessionUser, WorkspaceProvider, SettleResult } from './Session';
@@ -19,16 +16,11 @@ export type { SessionUser, WorkspaceProvider, SettleResult } from './Session';
 // ─── Search (optional provider interface) ────────────────────────────────
 export type { SearchProvider, SearchOptions, SearchResult } from './search';
 
-// ─── Workspace Format ────────────────────────────────────────────────────
-export { skillToWorkspaceMd, skillToToolsJson, generateToolScript, generateAllToolScripts } from './workspace';
+// ─── Workspace Format (types only) ───────────────────────────────────────
 export type { ToolsManifest, ToolManifestEntry, ToolManifestParam } from './workspace';
 
 // ─── Soul ────────────────────────────────────────────────────────────────
-export { renderSoul } from './soul';
 export type { Soul } from './soul';
-
-// ─── Heartbeat ───────────────────────────────────────────────────────────
-export type { HeartbeatConfig, TimeWindow } from './heartbeat';
 
 // ─── Pipelines ───────────────────────────────────────────────────────────
 export { generateSourceId, ContentPipeline } from './pipelines';
@@ -39,7 +31,7 @@ export type { ResourceNode, RawContent, ContentFormat, ContentSource, PipelineCo
 
 // ─── Utilities ───────────────────────────────────────────────────────────
 export { formatZodSchemaForAgent } from './schema-formatter';
-export { truncateText, flattenResources } from './utils';
+export { flattenResources } from './utils';
 
 // ─── Workdir kernel (new) ────────────────────────────────────────────────
 export {
