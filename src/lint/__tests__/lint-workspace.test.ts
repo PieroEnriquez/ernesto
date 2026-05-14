@@ -189,15 +189,15 @@ describe('lintWorkspace (scope-less)', () => {
         )).toBe(true);
     });
 
-    it('flags forbidden_generated_path under routes/ or extracted/', async () => {
+    it('flags forbidden_generated_path under extracted/ or attached/', async () => {
         const diff =
-            diffAdd('workspaces/hr/routes/something.md', '# x\n') +
-            diffAdd('workspaces/hr/extracted/sheet.md', '# y\n');
+            diffAdd('workspaces/hr/extracted/sheet.md', '# y\n') +
+            diffAdd('workspaces/hr/attached/note.txt', 'x\n');
         const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
         const failed = expectErrors(result);
         const paths = failed.errors.filter(e => e.code === 'forbidden_generated_path').map(e => e.path);
-        expect(paths).toContain('workspaces/hr/routes/something.md');
         expect(paths).toContain('workspaces/hr/extracted/sheet.md');
+        expect(paths).toContain('workspaces/hr/attached/note.txt');
     });
 
     it('flags forbidden_workspace_md_delete when WORKSPACE.md is removed', async () => {
@@ -302,13 +302,6 @@ describe('lintWorkspace (scope-less)', () => {
         expect(result).toEqual({ ok: true });
     });
 
-    it('flags attachments_hand_edit on any user-initiated touch', async () => {
-        await writeStagedFile(root, 'workspaces/hr/attachments.yaml', '- url: http://example.com\n');
-        const diff = diffAdd('workspaces/hr/attachments.yaml', '- url: http://example.com\n');
-        const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
-        const failed = expectErrors(result);
-        expect(failed.errors.some(e => e.code === 'attachments_hand_edit')).toBe(true);
-    });
 });
 
 describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
@@ -519,40 +512,17 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
         expect(ok).toEqual({ ok: true });
     });
 
-    it('bypass: { attachments_hand_edit } skips the rule for privileged settles', async () => {
-        await seedWorkspace(root, 'hr', VALID_HR);
-        await commitAll(root, 'seed');
-        // Without bypass: any touch is rejected.
-        const lint = makeLintWorkspace({
-            scopes: new Set(['ernesto:agent-ops']),
-            email: 'ops@bitrefill.com',
-        });
-        await writeStagedFile(root, 'workspaces/hr/attachments.yaml', '- key: abc\n');
-        const diff = diffAdd('workspaces/hr/attachments.yaml', '- key: abc\n');
-        const blocked = await lint({ diff, workspaces: ['hr'], workingTreeRoot: root });
-        const blockedFailed = expectErrors(blocked);
-        expect(blockedFailed.errors.some(e => e.code === 'attachments_hand_edit')).toBe(true);
-
-        // With bypass: rule is skipped, settle passes.
-        const lintBypass = makeLintWorkspace(
-            { scopes: new Set(['ernesto:agent-ops']), email: 'ops@bitrefill.com' },
-            { bypass: new Set(['attachments_hand_edit']) },
-        );
-        const ok = await lintBypass({ diff, workspaces: ['hr'], workingTreeRoot: root });
-        expect(ok).toEqual({ ok: true });
-    });
-
     it('bypass: { forbidden_generated_path } skips the rule for derive-worker settles', async () => {
         await seedWorkspace(root, 'hr', VALID_HR);
         await commitAll(root, 'seed');
 
-        const indexBody = '# Routes\n\n- [redshift://run-query](run-query.md)\n';
-        const routeBody = '# redshift://run-query\n';
-        await writeStagedFile(root, 'workspaces/hr/routes/_index.md', indexBody);
-        await writeStagedFile(root, 'workspaces/hr/routes/run-query.md', routeBody);
+        const sheetBody = '# Sheet\n\nrow\n';
+        const noteBody = 'inline note\n';
+        await writeStagedFile(root, 'workspaces/hr/extracted/sheet.md', sheetBody);
+        await writeStagedFile(root, 'workspaces/hr/attached/note.txt', noteBody);
         const diff =
-            diffAdd('workspaces/hr/routes/_index.md', indexBody) +
-            diffAdd('workspaces/hr/routes/run-query.md', routeBody);
+            diffAdd('workspaces/hr/extracted/sheet.md', sheetBody) +
+            diffAdd('workspaces/hr/attached/note.txt', noteBody);
 
         // Without bypass: both files are rejected.
         const blocked = await makeLintWorkspace({
@@ -563,8 +533,8 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
         const blockedPaths = blockedFailed.errors
             .filter(e => e.code === 'forbidden_generated_path')
             .map(e => e.path);
-        expect(blockedPaths).toContain('workspaces/hr/routes/_index.md');
-        expect(blockedPaths).toContain('workspaces/hr/routes/run-query.md');
+        expect(blockedPaths).toContain('workspaces/hr/extracted/sheet.md');
+        expect(blockedPaths).toContain('workspaces/hr/attached/note.txt');
 
         // With bypass: rule is skipped, settle passes.
         const lintBypass = makeLintWorkspace(

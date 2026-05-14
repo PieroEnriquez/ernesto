@@ -27,21 +27,16 @@
  *   file_too_large                — any file > 1 MiB → fail.
  *   merge_markers                 — leftover git conflict markers from a
  *                                   stash pop or rebase.
- *   attachments_hand_edit         — `attachments.yaml` is route-only; any
- *                                   user-initiated edit is rejected.
- *                                   `_platform://attach` (write) and
- *                                   `_platform://detach` (admin) are the
- *                                   only paths.
  *   read_denied                   — diff touches `workspaces/{w}/**` and
  *                                   the principal lacks `{w}`'s `read:`
  *                                   scope (default: everyone). `write:`,
  *                                   `admin:`, and `ernesto:agent-ops` all
  *                                   satisfy.
  *   write_denied                  — diff modifies prose (anything other
- *                                   than WORKSPACE.md frontmatter or
- *                                   attachments.yaml) without `write:`.
- *                                   `write:` defaults to `read:`. `admin:`
- *                                   and `ernesto:agent-ops` satisfy.
+ *                                   than WORKSPACE.md frontmatter) without
+ *                                   `write:`. `write:` defaults to
+ *                                   `read:`. `admin:` and
+ *                                   `ernesto:agent-ops` satisfy.
  *   admin_denied                  — diff modifies a system path
  *                                   (WORKSPACE.md frontmatter — change
  *                                   detected vs HEAD; new WORKSPACE.md
@@ -52,7 +47,7 @@
  * Two surfaces:
  *   • `lintWorkspace` (default) — no principal info. Skips read/write/
  *     admin checks but enforces every shape and content rule, plus
- *     `attachments_hand_edit` and `merge_markers`.
+ *     `merge_markers`.
  *   • `makeLintWorkspace(principal)` — closes over the principal's live
  *     scope set. Enforces every rule.
  */
@@ -73,8 +68,17 @@ const GENERATED_SUBDIRS = ['extracted', 'attached'] as const;
 const MAX_FILE_BYTES = 1024 * 1024;
 const WORKSPACE_NAME_REGEX = /^[a-z][a-z0-9-]{0,39}$/;
 const PLATFORM_WORKSPACE = '_platform';
+
+/** Underscore-prefixed workspace names are reserved as system-only (rule
+ *  `forbidden_workspace_name`). This Set is the allowlist of reserved names
+ *  the platform does ship as real workspaces. Adding a name here is a
+ *  spec-level decision — every entry is a system-owned workspace whose
+ *  admin scope is `ernesto:workspace-admin`. */
+const RESERVED_SYSTEM_WORKSPACES: ReadonlySet<string> = new Set([
+    PLATFORM_WORKSPACE,
+    '_tmp',
+]);
 const AGENT_OPS_SCOPE = 'ernesto:agent-ops';
-const ATTACHMENTS_FILE = 'attachments.yaml';
 
 // ─── Diff parser ──────────────────────────────────────────────────────────
 
@@ -144,10 +148,6 @@ function isGeneratedPath(p: string): boolean {
 
 function isWorkspaceMd(p: string, w: string): boolean {
     return p === `workspaces/${w}/WORKSPACE.md`;
-}
-
-function isAttachmentsYaml(p: string, w: string): boolean {
-    return p === `workspaces/${w}/${ATTACHMENTS_FILE}`;
 }
 
 // ─── Frontmatter ──────────────────────────────────────────────────────────
@@ -321,10 +321,10 @@ interface BuildOptions {
      *  lint runs in scope-less mode: those rules are skipped but every
      *  shape/content rule still runs. */
     principal?: LintPrincipal;
-    /** Rule codes to skip. Wired by privileged-route settles that legitimately
-     *  modify route-only files (e.g. `_platform://attach` writes
-     *  `attachments.yaml`, so the surrounding settle bypasses
-     *  `attachments_hand_edit`). User-initiated settles must never set this. */
+    /** Rule codes to skip. Wired by privileged callers that legitimately
+     *  emit diffs the rule would otherwise reject (e.g. the derive worker's
+     *  `forbidden_generated_path` bypass). User-initiated settles must
+     *  never set this. */
     bypass?: ReadonlySet<string>;
     /** Resolver for the set of currently registered extraction sources.
      *  When provided, modified `WORKSPACE.md` files whose `extractions:`
@@ -399,29 +399,13 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
             }
         }
 
-        // attachments_hand_edit — always reject any touch (add, modify, delete).
-        // Bypassed only by privileged-route settles (e.g. `_platform://attach`).
-        if (!isBypassed('attachments_hand_edit')) {
-            for (const p of touchedPaths) {
-                const w = workspaceOf(p);
-                if (w && isAttachmentsYaml(p, w)) {
-                    errors.push({
-                        code: 'attachments_hand_edit',
-                        workspace: w,
-                        path: p,
-                        message: `attachments.yaml is route-only; use _platform://attach (write) or _platform://detach (admin) — hand-edits are rejected`,
-                    });
-                }
-            }
-        }
-
         // forbidden_workspace_name (new workspace creation only)
         for (const e of entries) {
             if (e.fromPath !== undefined) continue;
             if (!e.toPath) continue;
             const w = workspaceOf(e.toPath);
             if (!w || !isWorkspaceMd(e.toPath, w)) continue;
-            if (w === PLATFORM_WORKSPACE) continue;
+            if (RESERVED_SYSTEM_WORKSPACES.has(w)) continue;
             if (w.startsWith('_')) {
                 errors.push({
                     code: 'forbidden_workspace_name',
@@ -616,9 +600,6 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
             for (const e of wsEntries) {
                 const target = e.toPath ?? e.fromPath!;
 
-                // attachments.yaml already handled by attachments_hand_edit.
-                if (isAttachmentsYaml(target, w)) continue;
-
                 // WORKSPACE.md edits: frontmatter changed → admin; body-only → write.
                 if (isWorkspaceMd(target, w) && !e.isDelete) {
                     const isNewWs = !oldFmRead.exists;
@@ -669,7 +650,7 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
 
 /**
  * Default scope-less lint. Enforces every rule that does not depend on the
- * principal (shape, content, attachments_hand_edit, merge_markers). Suitable
+ * principal (shape, content, merge_markers). Suitable
  * for non-authoritative previews; the authoritative path always uses
  * `makeLintWorkspace(principal)`.
  *
@@ -690,9 +671,10 @@ export function makeScopelessLintWorkspace(
 }
 
 export interface MakeLintWorkspaceOptions {
-    /** Rule codes the caller is privileged to skip. Wire only from routes
-     *  that legitimately mutate route-only files (e.g. `_platform://attach`
-     *  bypasses `attachments_hand_edit`). User-initiated settles must not
+    /** Rule codes the caller is privileged to skip. Wire only from
+     *  privileged callers that legitimately emit diffs the rule would
+     *  otherwise reject (e.g. derive-worker settles that need to bypass
+     *  `forbidden_generated_path`). User-initiated settles must not
      *  pass this. */
     bypass?: ReadonlySet<string>;
     /** Live extraction registry resolver. When set, modified `WORKSPACE.md`
