@@ -51,7 +51,11 @@ export type {
 } from './agent-verbs';
 
 // ─── Extractions ─────────────────────────────────────────────────────────
-export { defineExtraction, ExtractionRegistry, dispatchExtraction, clickupPlugin, drivePlugin, qasePlugin, githubPlugin, slackPlugin } from './extraction';
+export {
+    defineExtraction, ExtractionRegistry, dispatchExtraction,
+    clickupPlugin, drivePlugin, qasePlugin, githubPlugin, slackPlugin,
+    crowdinPlugin, devinPlugin, redshiftSchemaPlugin,
+} from './extraction';
 export type {
     ExtractionPlugin, ExtractionPluginConfig, ExtractionContext, ExtractionLogger,
     ExtractionUser, ExtractionRequest, ExtractionResult, ExtractionEntry,
@@ -62,4 +66,8 @@ export type {
     QasePluginOptions,
     GitHubPluginOptions,
     SlackPluginOptions,
+    CrowdinPluginOptions,
+    DevinPluginOptions,
+    RedshiftSchemaPluginOptions,
+    RedshiftQueryFn,
 } from './extraction';

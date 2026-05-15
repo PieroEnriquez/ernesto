@@ -30,3 +30,12 @@ export type { GitHubPluginOptions } from './plugins/github';
 
 export { slackPlugin } from './plugins/slack';
 export type { SlackPluginOptions } from './plugins/slack';
+
+export { crowdinPlugin } from './plugins/crowdin';
+export type { CrowdinPluginOptions } from './plugins/crowdin';
+
+export { devinPlugin } from './plugins/devin';
+export type { DevinPluginOptions } from './plugins/devin';
+
+export { redshiftSchemaPlugin } from './plugins/redshift-schema';
+export type { RedshiftSchemaPluginOptions, RedshiftQueryFn } from './plugins/redshift-schema';
