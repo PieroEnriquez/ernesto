@@ -15,7 +15,6 @@ import { Skill } from './skill';
 import { SkillRegistry, SkillSnapshot } from './skill-registry';
 import { Soul } from './soul';
 import { Session, SessionUser, WorkspaceProvider } from './Session';
-import { SearchProvider } from './search';
 import * as crypto from 'crypto';
 import * as path from 'path';
 import { tmpdir } from 'os';
@@ -33,8 +32,6 @@ interface ErnestoOptions {
     soul?: Soul;
     /** Workspace git operations (setup/settle) — optional */
     workspaceOps?: WorkspaceProvider;
-    /** Search provider — optional, deployer implements */
-    search?: SearchProvider;
     /** Base directory for per-user workspaces (default: $TMPDIR/ernesto/users) */
     usersPath?: string;
 }
@@ -50,7 +47,6 @@ export interface ErnestoSnapshot {
 
 export class Ernesto {
     readonly skillRegistry: SkillRegistry;
-    readonly search?: SearchProvider;
     readonly usersPath: string;
 
     private _soul: Soul | null = null;
@@ -68,7 +64,6 @@ export class Ernesto {
 
         this._soul = opts.soul ?? null;
         this._workspaceOps = opts.workspaceOps;
-        this.search = opts.search;
         this.usersPath = opts.usersPath ?? DEFAULT_USERS_DIR;
     }
 
