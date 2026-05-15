@@ -51,8 +51,10 @@ describe('clickupPlugin – happy path per target kind', () => {
         expect(fetchMock).toHaveBeenCalledTimes(1);
         const [url, init] = fetchMock.mock.calls[0];
         expect(url).toBe('https://api.clickup.com/api/v2/task/abc123');
+        // ClickUp's REST API takes the raw token in `Authorization` (no Bearer
+        // prefix). See commit 6060e48 — the prefix 401s against both v2 and v3.
         expect((init as RequestInit).headers).toMatchObject({
-            Authorization: `Bearer ${TOKEN}`,
+            Authorization: TOKEN,
         });
 
         expect(result.entries).toHaveLength(1);
