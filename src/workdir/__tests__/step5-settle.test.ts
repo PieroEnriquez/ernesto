@@ -84,6 +84,28 @@ describe('settleFromWorktree', () => {
         expect(status).toContain('?? workspaces/hr/WORKSPACE.md');
     });
 
+    it('excludes attachments.yaml from staging — master-fs overlay, not author intent', async () => {
+        const workdir = buildWorkdir();
+        await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# hr\n'));
+        // Simulate an attach-time hardlink: a yaml file in the workdir that
+        // mirrors master-fs. Settle must treat it the same way it treats
+        // extracted/ and attached/ — invisible to staging.
+        await workdir.fs.writeFile('workspaces/hr/attachments.yaml', enc('- name: x\n'));
+
+        let seen: { diff: string } | null = null;
+        const captureLint: LintFn = async (input) => { seen = input; return { ok: true }; };
+
+        await settleFromWorktree(workdir, {
+            workspaces: ['hr'],
+            message: 'add hr',
+            lint: captureLint,
+        });
+
+        expect(seen).not.toBeNull();
+        expect(seen!.diff).toContain('workspaces/hr/WORKSPACE.md');
+        expect(seen!.diff).not.toContain('attachments.yaml');
+    });
+
     it('lint receives the staged diff scoped to workspaces[]', async () => {
         const workdir = buildWorkdir();
         await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# hr\n'));

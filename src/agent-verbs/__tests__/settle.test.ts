@@ -95,6 +95,25 @@ describe('handleSettle', () => {
         expect(onSuccess.mock.calls[0][0]).toEqual(['cs', 'hr']); // sorted
     });
 
+    it('ignores attachments.yaml + extracted/ + attached/ when deriving workspaces', async () => {
+        const workdir = buildWorkdir();
+        // The agent only edited hr. _tmp has a master-fs overlay
+        // (attachments.yaml from _platform://attach) and _platform has
+        // an empty `attached/` dir from the mirror — neither is author
+        // intent and neither should pull those workspaces into the
+        // settle set.
+        await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# hr\n'));
+        await workdir.fs.writeFile('workspaces/_tmp/attachments.yaml', enc('- name: x\n'));
+        await workdir.fs.writeFile('workspaces/_platform/attached/note.txt', enc('y\n'));
+
+        const onSuccess = vi.fn(async () => {});
+        const ctx = makeCtx({ hooks: { onSettleSuccess: onSuccess } });
+
+        const r = await handleSettle(workdir, { message: 'edit hr' }, ctx);
+        expect(r.ok).toBe(true);
+        expect(onSuccess.mock.calls[0][0]).toEqual(['hr']);
+    });
+
     it('ignores out-of-workspace changes when deriving workspaces', async () => {
         const workdir = buildWorkdir();
         await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# hr\n'));

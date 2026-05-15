@@ -143,7 +143,12 @@ function workspaceOf(p: string): string | undefined {
 function isGeneratedPath(p: string): boolean {
     const m = /^workspaces\/[^/]+\/([^/]+)(?:\/.*)?$/.exec(p);
     if (!m) return false;
-    return (GENERATED_SUBDIRS as readonly string[]).includes(m[1]);
+    if ((GENERATED_SUBDIRS as readonly string[]).includes(m[1])) return true;
+    // `attachments.yaml` is a single-file master-fs overlay, authored only
+    // by `_platform://attach` and `_platform://detach`. Same rule as the
+    // generated subdirs: settle's pathspec excludes it, but lint catches
+    // hand-crafted diffs (settleFromPatch) too.
+    return /^workspaces\/[^/]+\/attachments\.yaml$/.test(p);
 }
 
 function isWorkspaceMd(p: string, w: string): boolean {

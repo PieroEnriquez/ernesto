@@ -20,6 +20,17 @@ import { runGit } from './run-git';
  */
 const GENERATED_SUBDIRS = ['extracted', 'attached'] as const;
 
+/**
+ * Per-workspace single-file overlays mirrored from master-fs. Like
+ * `GENERATED_SUBDIRS` but for individual files. `attachments.yaml` is
+ * authored only by `_platform://attach` and `_platform://detach`, which
+ * write atomically to master-fs; the workdir copy is a hard link mirrored
+ * by `ensureMasterFsOverlays` at session boot and `remirrorFile`
+ * mid-session. Settle must not stage it — the bytes the agent might see
+ * in git status are master-fs state, not author intent.
+ */
+const GENERATED_FILES = ['attachments.yaml'] as const;
+
 export interface LintError {
     code: string;
     workspace?: string;
@@ -88,20 +99,24 @@ export async function settleFromWorktree(
         const root = workdir.workingTreeRoot;
         const wsPaths = input.workspaces.map(w => `workspaces/${w}`);
 
-        // Stage each workspace minus its generated subtrees. `extracted/`
-        // and `attached/` are hard-link mirrors of master-fs placed at
-        // session boot (deployer-owned: backend's
-        // `ensureMasterFsOverlays`); they must never enter the git index.
-        // Doing the exclusion here (instead of via the workspaces repo's
-        // `.gitignore`) keeps the working tree discoverable to ripgrep-based
-        // tools (`fs_glob`, `fs_grep`) — ripgrep reads .gitignore and would
-        // silently skip these subtrees, hiding the mirrored master-fs content.
-        // Only git treats these paths as out-of-bounds.
+        // Stage each workspace minus its master-fs overlays. `extracted/`
+        // and `attached/` (subdirs) and `attachments.yaml` (file) are
+        // hard-link mirrors of master-fs placed at session boot (deployer-
+        // owned: backend's `ensureMasterFsOverlays`); they must never enter
+        // the git index. Doing the exclusion here (instead of via the
+        // workspaces repo's `.gitignore`) keeps the working tree
+        // discoverable to ripgrep-based tools (`fs_glob`, `fs_grep`) —
+        // ripgrep reads .gitignore and would silently skip these paths,
+        // hiding the mirrored master-fs content. Only git treats them as
+        // out-of-bounds.
         const addArgs = ['add', '--'];
         for (const ws of input.workspaces) {
             addArgs.push(`workspaces/${ws}`);
             for (const sub of GENERATED_SUBDIRS) {
                 addArgs.push(`:(exclude)workspaces/${ws}/${sub}`);
+            }
+            for (const file of GENERATED_FILES) {
+                addArgs.push(`:(exclude)workspaces/${ws}/${file}`);
             }
         }
         await runGit(root, addArgs);
