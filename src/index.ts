@@ -1,35 +1,6 @@
 // Library entry point
 
-// ─── Core ────────────────────────────────────────────────────────────────
-export { Ernesto } from './Ernesto';
-
-// ─── Skills ──────────────────────────────────────────────────────────────
-export { createSkill, createTool, defineSuggestions, toolResult, toolResultWithSuggestions } from './skill';
-export type {
-    Skill, SkillTool, ToolContext, SkillContext, ToolResult, Suggestion, Freshness,
-} from './skill';
-export { SkillRegistry } from './skill-registry';
-
-// ─── Session ─────────────────────────────────────────────────────────────
-export type { SessionUser, WorkspaceProvider, SettleResult } from './Session';
-
-// ─── Workspace Format (types only) ───────────────────────────────────────
-export type { ToolsManifest, ToolManifestEntry, ToolManifestParam } from './workspace';
-
-// ─── Soul ────────────────────────────────────────────────────────────────
-export type { Soul } from './soul';
-
-// ─── Pipelines ───────────────────────────────────────────────────────────
-export { generateSourceId, ContentPipeline } from './pipelines';
-
-// ─── Types ───────────────────────────────────────────────────────────────
-export { DEFAULT_CACHE_TTL_MS } from './types';
-export type { ResourceNode, RawContent, ContentFormat, ContentSource, PipelineConfig, RawDocument } from './types';
-
-// ─── Utilities ───────────────────────────────────────────────────────────
-export { flattenResources } from './utils';
-
-// ─── Workdir kernel (new) ────────────────────────────────────────────────
+// ─── Workdir kernel ──────────────────────────────────────────────────────
 export {
     runGit, makeInMemoryWorkdirLock,
     makeRedisWorkdirLock, WorkdirLockAcquireTimeout,

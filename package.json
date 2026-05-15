@@ -9,9 +9,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc",
-    "format": "prettier --check ./src ./example",
-    "build": "rollup -c rollup.config.js",
-    "example": "DEBUG=ernesto:* tsx --env-file .env --watch example/index.ts"
+    "format": "prettier --check ./src",
+    "build": "rollup -c rollup.config.js"
   },
   "type": "module",
   "exports": {
