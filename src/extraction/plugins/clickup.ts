@@ -8,13 +8,29 @@
  * `/doc/{id}` endpoint does not exist. Token is captured by the factory.
  *
  * Target syntax (matches frontmatter convention):
- *   - task:{id}           → tasks/{id}.json (raw JSON, v2)
- *   - list:{id}           → lists/{id}.json (raw JSON list metadata, v2)
- *   - doc:{id}            → docs/{id}/{slug}.md per page (markdown, v3,
- *                            requires workspaceId option)
- *   - list-table:{id}     → lists/{id}.md  (markdown table of tasks, legacy
- *                            ClickUpListFormat parity; closed tasks older than
- *                            ~3 months are dropped, v2)
+ *   - task:{id}                 → tasks/{id}.json (raw JSON, v2)
+ *   - list:{id}                 → lists/{id}.json (raw JSON list metadata, v2)
+ *   - doc:{id}                  → docs/{id}/{slug}.md per page (markdown, v3,
+ *                                  requires workspaceId option)
+ *   - doc:{id}:{rootPageId}     → same shape, but pages outside the subtree
+ *                                  rooted at {rootPageId} are dropped.
+ *   - list-table:{id}           → lists/{id}.md (markdown table of tasks, legacy
+ *                                  ClickUpListFormat parity; closed tasks older
+ *                                  than ~3 months are dropped, v2)
+ *   - folder:{id}               → walk every non-archived list + doc under the
+ *                                  folder and emit one entry per child (uses v2
+ *                                  for the folder and v3 for docs, requires
+ *                                  workspaceId).
+ *   - space:{id}                → same as folder: but rooted at a space (folder-
+ *                                  less lists + every folder's lists/docs +
+ *                                  space-level docs), requires workspaceId.
+ *
+ * Per-request `includePaths` / `excludePaths` filters, when present, apply to
+ * the logical path of each discovered child resource (e.g.
+ * `/code-quality/list/agent-ops`, `/draft-specifications/doc/spec-1`). Filters
+ * run before content fetching, so excluded items don't burn API quota. They are
+ * ignored for `task:`, `list:`, `doc:`, and `list-table:` targets — those
+ * resolve to a single explicit resource where filtering is meaningless.
  *
  * Failure shape contract:
  *   - 404 → resolve with empty entries (target absent is not a fatal error)
@@ -57,7 +73,7 @@ export interface ClickUpPluginOptions {
     closedTaskCutoffMonths?: number;
 }
 
-type TargetKind = 'task' | 'list' | 'doc' | 'list-table';
+type TargetKind = 'task' | 'list' | 'doc' | 'list-table' | 'folder' | 'space';
 
 const DEFAULT_BASE_URL = 'https://api.clickup.com/api/v2';
 const DEFAULT_BASE_URL_V3 = 'https://api.clickup.com/api/v3';
@@ -109,7 +125,7 @@ export function clickupPlugin(opts: ClickUpPluginOptions): ExtractionPlugin {
         source: 'clickup',
         scope: 'extraction:clickup:read',
         description:
-            'Fetch ClickUp tasks, lists, and docs by id. Targets: task:{id}, list:{id}, doc:{id}, list-table:{id}.',
+            'Fetch ClickUp tasks, lists, and docs by id. Targets: task:{id}, list:{id}, doc:{id}, doc:{id}:{rootPageId}, list-table:{id}, folder:{id}, space:{id}.',
         fetch: async (req: ExtractionRequest, ctx: ExtractionContext): Promise<ExtractionResult> => {
             const parsed = parseTarget(req.target);
             const fetchedAt = new Date().toISOString();
@@ -141,6 +157,7 @@ export function clickupPlugin(opts: ClickUpPluginOptions): ExtractionPlugin {
                 const entries = await fetchDocPages({
                     docId: parsed.id,
                     workspaceId,
+                    rootPageId: parsed.rootPageId,
                     token,
                     baseUrlV3,
                     timeoutMs,
@@ -151,6 +168,35 @@ export function clickupPlugin(opts: ClickUpPluginOptions): ExtractionPlugin {
                 if (entries === 'not_found') {
                     ctx.log.info('ClickUp target not found', { kind: parsed.kind });
                     return { entries: [], fetchedAt };
+                }
+                return { entries, fetchedAt };
+            }
+
+            if (parsed.kind === 'folder' || parsed.kind === 'space') {
+                if (!workspaceId) {
+                    throw new Error(
+                        `clickup: workspaceId option required for ${parsed.kind}: targets`,
+                    );
+                }
+                const walkCtx: WalkContext = {
+                    workspaceId,
+                    token,
+                    baseUrl,
+                    baseUrlV3,
+                    timeoutMs,
+                    maxRetries,
+                    backoffBaseMs,
+                    log: ctx.log,
+                };
+                const discovered =
+                    parsed.kind === 'folder'
+                        ? await discoverFolder(parsed.id, '', walkCtx)
+                        : await discoverSpace(parsed.id, walkCtx);
+                const filtered = applyPathFilters(discovered, req);
+                const entries: ExtractionEntry[] = [];
+                for (const item of filtered) {
+                    const itemEntries = await emitDiscoveredItem(item, walkCtx);
+                    entries.push(...itemEntries);
                 }
                 return { entries, fetchedAt };
             }
@@ -176,27 +222,47 @@ export function clickupPlugin(opts: ClickUpPluginOptions): ExtractionPlugin {
     });
 }
 
-function parseTarget(target: string): { kind: TargetKind; id: string } {
+interface ParsedTarget {
+    kind: TargetKind;
+    id: string;
+    /** Only set for `doc:{id}:{rootPageId}` — restricts to a page subtree. */
+    rootPageId?: string;
+}
+
+function parseTarget(target: string): ParsedTarget {
     const idx = target.indexOf(':');
     if (idx < 0) {
         throw new Error(
-            `clickup: target must look like "task:{id}", "list:{id}", "doc:{id}", or "list-table:{id}"`,
+            `clickup: target must look like "task:{id}", "list:{id}", "doc:{id}", "doc:{id}:{rootPageId}", "list-table:{id}", "folder:{id}", or "space:{id}"`,
         );
     }
     const kindRaw = target.slice(0, idx);
-    const id = target.slice(idx + 1).trim();
-    if (!id) {
+    const rest = target.slice(idx + 1).trim();
+    if (!rest) {
         throw new Error('clickup: target id is empty');
     }
     if (
         kindRaw !== 'task' &&
         kindRaw !== 'list' &&
         kindRaw !== 'doc' &&
-        kindRaw !== 'list-table'
+        kindRaw !== 'list-table' &&
+        kindRaw !== 'folder' &&
+        kindRaw !== 'space'
     ) {
         throw new Error(`clickup: unsupported target kind: ${kindRaw}`);
     }
-    return { kind: kindRaw, id };
+    if (kindRaw === 'doc') {
+        // doc:{id} OR doc:{id}:{rootPageId} — split on the first remaining colon.
+        const subIdx = rest.indexOf(':');
+        if (subIdx >= 0) {
+            const id = rest.slice(0, subIdx).trim();
+            const rootPageId = rest.slice(subIdx + 1).trim();
+            if (!id) throw new Error('clickup: doc target docId is empty');
+            if (!rootPageId) throw new Error('clickup: doc target rootPageId is empty');
+            return { kind: 'doc', id, rootPageId };
+        }
+    }
+    return { kind: kindRaw, id: rest };
 }
 
 type V2TaskOrListKind = 'task' | 'list';
@@ -455,6 +521,8 @@ interface ClickUpPage {
 interface FetchDocPagesArgs {
     docId: string;
     workspaceId: string;
+    /** When set, only pages within the subtree rooted at this page id are emitted. */
+    rootPageId?: string;
     token: string;
     baseUrlV3: string;
     timeoutMs: number;
@@ -488,7 +556,10 @@ async function fetchDocPages(
     const tree: ClickUpPageListing[] = Array.isArray(listingPayload)
         ? listingPayload
         : (listingPayload.pages ?? []);
-    const flatPages = flattenPageListing(tree);
+    const allPages = flattenPageListing(tree);
+    const flatPages = args.rootPageId
+        ? filterToSubtree(allPages, args.rootPageId)
+        : allPages;
 
     if (flatPages.length === 0) {
         return [];
@@ -549,6 +620,43 @@ function flattenPageListing(
     return acc;
 }
 
+/**
+ * Keep only the page at `rootPageId` and its descendants.
+ *
+ * Reads `parent_page_id` from the flattened listing to reconstruct the tree.
+ * Pages with no parent are top-level; any page whose ancestry chain reaches
+ * `rootPageId` survives. The root page itself is included so the subtree has a
+ * head. If `rootPageId` doesn't appear in the listing, returns `[]` rather than
+ * throwing — matches how missing targets degrade to empty entries elsewhere.
+ */
+function filterToSubtree(
+    pages: ClickUpPageListing[],
+    rootPageId: string,
+): ClickUpPageListing[] {
+    const childrenByParent = new Map<string, ClickUpPageListing[]>();
+    for (const p of pages) {
+        const parent = p.parent_page_id ?? '';
+        const bucket = childrenByParent.get(parent);
+        if (bucket) bucket.push(p);
+        else childrenByParent.set(parent, [p]);
+    }
+    const root = pages.find((p) => p.id === rootPageId);
+    if (!root) return [];
+    const kept: ClickUpPageListing[] = [];
+    const queue: string[] = [rootPageId];
+    const seen = new Set<string>();
+    while (queue.length > 0) {
+        const id = queue.shift() as string;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const page = pages.find((p) => p.id === id);
+        if (page) kept.push(page);
+        const children = childrenByParent.get(id) ?? [];
+        for (const child of children) queue.push(child.id);
+    }
+    return kept;
+}
+
 function slugify(name: string | undefined): string {
     if (!name) return '';
     return String(name)
@@ -560,4 +668,296 @@ function slugify(name: string | undefined): string {
         .replace(/\s+/g, '-')
         .replace(/-+/g, '-')
         .replace(/^-|-$/g, '');
+}
+
+// ─── Folder / Space walkers ────────────────────────────────────────────────
+
+interface WalkContext {
+    workspaceId: string;
+    token: string;
+    baseUrl: string;
+    baseUrlV3: string;
+    timeoutMs: number;
+    maxRetries: number;
+    backoffBaseMs: number;
+    log: ExtractionContext['log'];
+}
+
+/**
+ * Lightweight discovered-resource record. The walker emits one of these per
+ * child (list / doc) under a folder or space, with a logical path used for
+ * include/exclude filtering. Content fetching is deferred to `emitDiscoveredItem`
+ * so excluded items don't burn API quota.
+ */
+interface DiscoveredItem {
+    kind: 'list' | 'doc';
+    id: string;
+    name: string;
+    logicalPath: string;
+}
+
+interface ClickUpListMeta {
+    id: string;
+    name: string;
+    archived?: boolean;
+}
+
+interface ClickUpFolderMeta {
+    id: string;
+    name: string;
+    hidden?: boolean;
+    archived?: boolean;
+    lists?: ClickUpListMeta[];
+}
+
+interface ClickUpDocMeta {
+    id: string;
+    name: string;
+}
+
+async function discoverFolder(
+    folderId: string,
+    basePath: string,
+    walkCtx: WalkContext,
+    /**
+     * Pre-fetched folder metadata, when the caller has it from a parent
+     * response. Skips the `/folder/{id}` round-trip — `GET /space/{id}/folder`
+     * already returns each folder with its lists embedded, so re-fetching would
+     * just burn quota.
+     */
+    preFetchedFolder?: ClickUpFolderMeta,
+): Promise<DiscoveredItem[]> {
+    const items: DiscoveredItem[] = [];
+
+    let folder: ClickUpFolderMeta;
+    if (preFetchedFolder) {
+        folder = preFetchedFolder;
+    } else {
+        const folderRes = await fetchWithRetry(
+            `${walkCtx.baseUrl}/folder/${encodeURIComponent(folderId)}`,
+            walkCtx.token,
+            {
+                timeoutMs: walkCtx.timeoutMs,
+                maxRetries: walkCtx.maxRetries,
+                backoffBaseMs: walkCtx.backoffBaseMs,
+                log: walkCtx.log,
+                kind: 'folder',
+                id: folderId,
+            },
+        );
+        if (folderRes === 'not_found') {
+            walkCtx.log.info('ClickUp folder not found', { folderId });
+            return [];
+        }
+        folder = (await folderRes.json()) as ClickUpFolderMeta;
+    }
+
+    for (const list of folder.lists ?? []) {
+        if (list.archived) continue;
+        items.push({
+            kind: 'list',
+            id: list.id,
+            name: list.name,
+            logicalPath: `${basePath}/list/${slugify(list.name) || list.id}`,
+        });
+    }
+
+    const docs = await listDocsForParent(folderId, walkCtx);
+    for (const doc of docs) {
+        items.push({
+            kind: 'doc',
+            id: doc.id,
+            name: doc.name,
+            logicalPath: `${basePath}/doc/${slugify(doc.name) || doc.id}`,
+        });
+    }
+
+    return items;
+}
+
+async function discoverSpace(
+    spaceId: string,
+    walkCtx: WalkContext,
+): Promise<DiscoveredItem[]> {
+    const items: DiscoveredItem[] = [];
+
+    // Folderless lists.
+    const listsRes = await fetchWithRetry(
+        `${walkCtx.baseUrl}/space/${encodeURIComponent(spaceId)}/list?archived=false`,
+        walkCtx.token,
+        {
+            timeoutMs: walkCtx.timeoutMs,
+            maxRetries: walkCtx.maxRetries,
+            backoffBaseMs: walkCtx.backoffBaseMs,
+            log: walkCtx.log,
+            kind: 'space',
+            id: spaceId,
+        },
+    );
+    if (listsRes !== 'not_found') {
+        const payload = (await listsRes.json()) as { lists?: ClickUpListMeta[] };
+        for (const list of payload.lists ?? []) {
+            if (list.archived) continue;
+            items.push({
+                kind: 'list',
+                id: list.id,
+                name: list.name,
+                logicalPath: `/list/${slugify(list.name) || list.id}`,
+            });
+        }
+    }
+
+    // Folders + each folder's lists/docs.
+    const foldersRes = await fetchWithRetry(
+        `${walkCtx.baseUrl}/space/${encodeURIComponent(spaceId)}/folder?archived=false`,
+        walkCtx.token,
+        {
+            timeoutMs: walkCtx.timeoutMs,
+            maxRetries: walkCtx.maxRetries,
+            backoffBaseMs: walkCtx.backoffBaseMs,
+            log: walkCtx.log,
+            kind: 'space',
+            id: spaceId,
+        },
+    );
+    if (foldersRes !== 'not_found') {
+        const payload = (await foldersRes.json()) as { folders?: ClickUpFolderMeta[] };
+        for (const folder of payload.folders ?? []) {
+            if (folder.hidden || folder.archived) continue;
+            const folderBase = `/${slugify(folder.name) || folder.id}`;
+            const folderItems = await discoverFolder(folder.id, folderBase, walkCtx, folder);
+            items.push(...folderItems);
+        }
+    }
+
+    // Space-level docs (not under any folder).
+    const docs = await listDocsForParent(spaceId, walkCtx);
+    for (const doc of docs) {
+        items.push({
+            kind: 'doc',
+            id: doc.id,
+            name: doc.name,
+            logicalPath: `/doc/${slugify(doc.name) || doc.id}`,
+        });
+    }
+
+    return items;
+}
+
+/**
+ * Paginate `${baseUrlV3}/workspaces/{ws}/docs?parent_id={parentId}` and return
+ * non-archived/non-deleted doc metadata. Each page carries `next_cursor` (or
+ * `cursor`, depending on the ClickUp release); we walk until empty.
+ *
+ * Returns an empty array on 404 — the parent may legitimately have no docs.
+ */
+async function listDocsForParent(
+    parentId: string,
+    walkCtx: WalkContext,
+): Promise<ClickUpDocMeta[]> {
+    const collected: ClickUpDocMeta[] = [];
+    let cursor: string | undefined;
+    const safeWs = encodeURIComponent(walkCtx.workspaceId);
+
+    do {
+        const params = new URLSearchParams({
+            parent_id: parentId,
+            archived: 'false',
+            deleted: 'false',
+            limit: '100',
+        });
+        if (cursor) params.set('cursor', cursor);
+        const url = `${walkCtx.baseUrlV3}/workspaces/${safeWs}/docs?${params.toString()}`;
+
+        const res = await fetchWithRetry(url, walkCtx.token, {
+            timeoutMs: walkCtx.timeoutMs,
+            maxRetries: walkCtx.maxRetries,
+            backoffBaseMs: walkCtx.backoffBaseMs,
+            log: walkCtx.log,
+            kind: 'doc',
+            id: parentId,
+        });
+        if (res === 'not_found') return collected;
+
+        const payload = (await res.json()) as {
+            docs?: ClickUpDocMeta[];
+            next_cursor?: string;
+            cursor?: string;
+            last_page?: boolean;
+        };
+        for (const doc of payload.docs ?? []) {
+            collected.push({ id: doc.id, name: doc.name });
+        }
+        const nextCursor = payload.next_cursor ?? payload.cursor;
+        if (payload.last_page === true || !nextCursor) break;
+        cursor = nextCursor;
+    } while (cursor);
+
+    return collected;
+}
+
+/**
+ * Case-insensitive substring filter. `includePaths` is allow-list (entry kept
+ * iff any include substring is present in the logical path). `excludePaths` is
+ * deny-list (entry dropped iff any exclude substring matches). Includes are
+ * evaluated first; an empty `includePaths` is treated as "match everything",
+ * matching the v1 ClickUpSource semantics.
+ */
+function applyPathFilters(
+    items: DiscoveredItem[],
+    req: ExtractionRequest,
+): DiscoveredItem[] {
+    const includes = (req.includePaths ?? []).map((s) => s.toLowerCase()).filter((s) => s.length > 0);
+    const excludes = (req.excludePaths ?? []).map((s) => s.toLowerCase()).filter((s) => s.length > 0);
+    return items.filter((item) => {
+        const lp = item.logicalPath.toLowerCase();
+        if (includes.length > 0 && !includes.some((s) => lp.includes(s))) return false;
+        if (excludes.length > 0 && excludes.some((s) => lp.includes(s))) return false;
+        return true;
+    });
+}
+
+/**
+ * Resolve a discovered child (list or doc) into the same entry shape its
+ * corresponding `list:` or `doc:` target would produce.
+ */
+async function emitDiscoveredItem(
+    item: DiscoveredItem,
+    walkCtx: WalkContext,
+): Promise<ExtractionEntry[]> {
+    if (item.kind === 'list') {
+        const res = await fetchWithRetry(
+            `${walkCtx.baseUrl}/list/${encodeURIComponent(item.id)}`,
+            walkCtx.token,
+            {
+                timeoutMs: walkCtx.timeoutMs,
+                maxRetries: walkCtx.maxRetries,
+                backoffBaseMs: walkCtx.backoffBaseMs,
+                log: walkCtx.log,
+                kind: 'list',
+                id: item.id,
+            },
+        );
+        if (res === 'not_found') return [];
+        const payload = (await res.json()) as unknown;
+        return [
+            {
+                path: `lists/${item.id}.json`,
+                content: stringifyJson(payload),
+                contentType: 'application/json',
+            },
+        ];
+    }
+    // doc — walk pages exactly as the `doc:` target does.
+    const entries = await fetchDocPages({
+        docId: item.id,
+        workspaceId: walkCtx.workspaceId,
+        token: walkCtx.token,
+        baseUrlV3: walkCtx.baseUrlV3,
+        timeoutMs: walkCtx.timeoutMs,
+        maxRetries: walkCtx.maxRetries,
+        backoffBaseMs: walkCtx.backoffBaseMs,
+        log: walkCtx.log,
+    });
+    return entries === 'not_found' ? [] : entries;
 }

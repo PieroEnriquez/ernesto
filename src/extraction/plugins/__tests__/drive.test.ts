@@ -337,4 +337,80 @@ describe('drivePlugin', () => {
         await expect(plugin.fetch({ target: 'bogus' }, makeCtx())).rejects.toThrow();
         await expect(plugin.fetch({ target: 'video:abc' }, makeCtx())).rejects.toThrow();
     });
+
+    describe('Shared Drive support (driveId option)', () => {
+        it('appends supportsAllDrives + corpora/driveId/includeItemsFromAllDrives on a folder walk', async () => {
+            const plugin = drivePlugin({ accessToken: 'tok', driveId: 'shared-1' });
+            const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+                const url = String(input);
+                // List query inside the folder — empty children, terminates the walk.
+                if (url.startsWith(driveUrl('?'))) {
+                    return jsonResponse({ body: { files: [] } });
+                }
+                throw new Error(`unexpected url: ${url}`);
+            });
+            vi.stubGlobal('fetch', fetchMock);
+
+            await plugin.fetch({ target: 'folder:folder-1' }, makeCtx());
+
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+            const url = new URL(String(fetchMock.mock.calls[0][0]));
+            expect(url.searchParams.get('supportsAllDrives')).toBe('true');
+            expect(url.searchParams.get('corpora')).toBe('drive');
+            expect(url.searchParams.get('driveId')).toBe('shared-1');
+            expect(url.searchParams.get('includeItemsFromAllDrives')).toBe('true');
+            // The plugin's original q= filter must survive the rewrite.
+            expect(url.searchParams.get('q')).toContain("'folder-1' in parents");
+        });
+
+        it('appends only supportsAllDrives on get/export (no corpora/driveId)', async () => {
+            const plugin = drivePlugin({ accessToken: 'tok', driveId: 'shared-1' });
+            const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+                const url = String(input);
+                if (url.includes('/files/doc-1?') && !url.includes('/export')) {
+                    return jsonResponse({ body: { id: 'doc-1', name: 'Shared Doc', mimeType: 'application/vnd.google-apps.document' } });
+                }
+                if (url.includes('/files/doc-1/export')) {
+                    return textResponse('# Shared Doc');
+                }
+                throw new Error(`unexpected url: ${url}`);
+            });
+            vi.stubGlobal('fetch', fetchMock);
+
+            await plugin.fetch({ target: 'doc:doc-1' }, makeCtx());
+
+            expect(fetchMock).toHaveBeenCalledTimes(2);
+            for (const [input] of fetchMock.mock.calls) {
+                const url = new URL(String(input));
+                expect(url.searchParams.get('supportsAllDrives')).toBe('true');
+                // get/export must NOT carry the list-only params.
+                expect(url.searchParams.has('corpora')).toBe(false);
+                expect(url.searchParams.has('driveId')).toBe(false);
+                expect(url.searchParams.has('includeItemsFromAllDrives')).toBe(false);
+            }
+        });
+
+        it('does not rewrite URLs when driveId is unset', async () => {
+            const plugin = drivePlugin({ accessToken: 'tok' });
+            const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+                const url = String(input);
+                if (url.includes('/files/doc-1?') && !url.includes('/export')) {
+                    return jsonResponse({ body: { id: 'doc-1', name: 'Plain', mimeType: 'application/vnd.google-apps.document' } });
+                }
+                if (url.includes('/files/doc-1/export')) {
+                    return textResponse('# Plain');
+                }
+                throw new Error(`unexpected url: ${url}`);
+            });
+            vi.stubGlobal('fetch', fetchMock);
+
+            await plugin.fetch({ target: 'doc:doc-1' }, makeCtx());
+
+            for (const [input] of fetchMock.mock.calls) {
+                const url = new URL(String(input));
+                expect(url.searchParams.has('supportsAllDrives')).toBe(false);
+                expect(url.searchParams.has('driveId')).toBe(false);
+            }
+        });
+    });
 });

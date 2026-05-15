@@ -83,6 +83,7 @@ interface TokenState {
     refreshToken?: string;
     clientId?: string;
     clientSecret?: string;
+    driveId?: string;
 }
 
 export interface DrivePluginOptions {
@@ -91,6 +92,14 @@ export interface DrivePluginOptions {
     /** Used together with refreshToken for the refresh request body. */
     clientId?: string;
     clientSecret?: string;
+    /**
+     * Shared Drive ID. When set, list queries scope to this Shared Drive
+     * (`corpora=drive&driveId=<id>&includeItemsFromAllDrives=true`) and every
+     * call carries `supportsAllDrives=true`, which is required for content
+     * stored in a Shared Drive. Items in personal "My Drive" 404 under this
+     * config — set per-plugin instance, not per-call.
+     */
+    driveId?: string;
 }
 
 export function drivePlugin(opts: DrivePluginOptions) {
@@ -106,6 +115,30 @@ export function drivePlugin(opts: DrivePluginOptions) {
     });
 }
 
+/**
+ * Append the Shared-Drive query params to a Drive API URL when a driveId is set.
+ *
+ *   - `supportsAllDrives=true` is required on every call that touches a file in
+ *     a Shared Drive (get / export / list / media).
+ *   - `corpora=drive`, `driveId=<id>`, and `includeItemsFromAllDrives=true` are
+ *     additionally required on list-style calls so the query scopes to the
+ *     correct Shared Drive's corpus. We append them only when the URL is the
+ *     bare files endpoint with a query (`?q=…`); for `/files/{id}` and
+ *     `/files/{id}/export` only the support flag is needed.
+ */
+function withSharedDriveParams(url: string, driveId: string | undefined): string {
+    if (!driveId) return url;
+    const u = new URL(url);
+    u.searchParams.set('supportsAllDrives', 'true');
+    const isListQuery = u.pathname.endsWith('/files') && u.searchParams.has('q');
+    if (isListQuery) {
+        u.searchParams.set('corpora', 'drive');
+        u.searchParams.set('driveId', driveId);
+        u.searchParams.set('includeItemsFromAllDrives', 'true');
+    }
+    return u.toString();
+}
+
 async function fetchDrive(
     req: ExtractionRequest,
     ctx: ExtractionContext,
@@ -117,6 +150,7 @@ async function fetchDrive(
         refreshToken: opts.refreshToken,
         clientId: opts.clientId,
         clientSecret: opts.clientSecret,
+        driveId: opts.driveId,
     };
 
     const entries: ExtractionEntry[] = [];
@@ -328,10 +362,11 @@ async function driveRequest<T>(
     options: FetchOptions = {},
 ): Promise<FetchOutcome<T>> {
     let refreshed = false;
+    const finalUrl = withSharedDriveParams(url, tokens.driveId);
 
     // eslint-disable-next-line no-constant-condition
     while (true) {
-        const response = await doFetchWithRateLimit(url, tokens.accessToken, ctx, options);
+        const response = await doFetchWithRateLimit(finalUrl, tokens.accessToken, ctx, options);
 
         if (response.status === 404) {
             return { ok: false, status: 404 };

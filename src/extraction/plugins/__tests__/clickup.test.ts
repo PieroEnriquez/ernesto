@@ -257,7 +257,7 @@ describe('clickupPlugin – error paths', () => {
     it('rejects unsupported target prefixes', async () => {
         const plugin = clickupPlugin({ token: TOKEN });
         await expect(
-            plugin.fetch({ target: 'space:xyz' }, makeCtx()),
+            plugin.fetch({ target: 'video:xyz' }, makeCtx()),
         ).rejects.toThrow(/unsupported target kind/);
     });
 });
@@ -467,5 +467,212 @@ describe('clickupPlugin – 429 retry behaviour', () => {
             (c) => (c[1] as { delayMs: number }).delayMs,
         );
         expect(delays).toEqual([500, 1000]);
+    });
+});
+
+describe('clickupPlugin – doc subtree filter', () => {
+    it('drops pages outside the rootPageId subtree', async () => {
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.endsWith('/page_listing')) {
+                // Tree shape:
+                //   root-A (kept)
+                //     child-A1 (kept — parent is root-A)
+                //   root-B (dropped — sibling of root-A, target is root-A)
+                //     child-B1 (dropped)
+                return jsonResponse(200, [
+                    { id: 'root-A', name: 'Root A', pages: [
+                        { id: 'child-A1', name: 'A1', parent_page_id: 'root-A' },
+                    ] },
+                    { id: 'root-B', name: 'Root B', pages: [
+                        { id: 'child-B1', name: 'B1', parent_page_id: 'root-B' },
+                    ] },
+                ]);
+            }
+            // Per-page fetch
+            const m = url.match(/\/pages\/([^?]+)/);
+            if (m) {
+                return jsonResponse(200, { id: m[1], content: `body of ${m[1]}` });
+            }
+            throw new Error(`unexpected url: ${url}`);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        const plugin = clickupPlugin({ token: TOKEN, workspaceId: 'ws-1' });
+        const result = await plugin.fetch(
+            { target: 'doc:doc-1:root-A' },
+            makeCtx(),
+        );
+
+        const paths = result.entries.map((e) => e.path).sort();
+        // Only root-A and child-A1 should produce entries; root-B subtree is filtered out.
+        expect(paths).toEqual(['docs/doc-1/a1.md', 'docs/doc-1/root-a.md']);
+        // Per-page calls must have been made only for the kept pages.
+        const pageCalls = fetchMock.mock.calls.filter(([u]) => String(u).includes('/pages/'));
+        const pageIds = pageCalls.map(([u]) => (String(u).match(/\/pages\/([^?]+)/) as RegExpMatchArray)[1]).sort();
+        expect(pageIds).toEqual(['child-A1', 'root-A']);
+    });
+
+    it('returns empty entries when rootPageId is missing from the listing', async () => {
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.endsWith('/page_listing')) {
+                return jsonResponse(200, [
+                    { id: 'root-A', name: 'Root A', pages: [] },
+                ]);
+            }
+            throw new Error(`unexpected url: ${url}`);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        const plugin = clickupPlugin({ token: TOKEN, workspaceId: 'ws-1' });
+        const result = await plugin.fetch(
+            { target: 'doc:doc-1:missing-root' },
+            makeCtx(),
+        );
+
+        expect(result.entries).toEqual([]);
+    });
+});
+
+describe('clickupPlugin – folder walk', () => {
+    it('emits lists + docs under a folder, applying excludePaths', async () => {
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const url = String(input);
+            // Folder metadata — has two embedded lists, one of which we'll exclude.
+            if (/\/folder\/folder-1$/.test(url)) {
+                return jsonResponse(200, {
+                    id: 'folder-1',
+                    name: 'Code Quality',
+                    lists: [
+                        { id: 'L1', name: 'general', archived: false },
+                        { id: 'L2', name: 'agent-ops', archived: false },
+                    ],
+                });
+            }
+            // Doc search in folder.
+            if (url.includes('/workspaces/ws-1/docs?') && url.includes('parent_id=folder-1')) {
+                return jsonResponse(200, { docs: [{ id: 'D1', name: 'Coding Style' }], last_page: true });
+            }
+            // List fetch (only L1 should be fetched, L2 is filtered out).
+            if (/\/list\/L1$/.test(url)) {
+                return jsonResponse(200, { id: 'L1', name: 'general' });
+            }
+            // Doc page listing + per-page fetch.
+            if (url.endsWith('/docs/D1/page_listing')) {
+                return jsonResponse(200, [{ id: 'P1', name: 'page 1' }]);
+            }
+            if (url.includes('/docs/D1/pages/P1')) {
+                return jsonResponse(200, { id: 'P1', content: '# page 1' });
+            }
+            throw new Error(`unexpected url: ${url}`);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        const plugin = clickupPlugin({ token: TOKEN, workspaceId: 'ws-1' });
+        const result = await plugin.fetch(
+            { target: 'folder:folder-1', excludePaths: ['/list/agent-ops'] },
+            makeCtx(),
+        );
+
+        const paths = result.entries.map((e) => e.path).sort();
+        expect(paths).toEqual(['docs/D1/page-1.md', 'lists/L1.json']);
+        // L2 must never have been fetched — its emit was skipped by the filter.
+        const calledL2 = fetchMock.mock.calls.some(([u]) => /\/list\/L2$/.test(String(u)));
+        expect(calledL2).toBe(false);
+    });
+
+    it('respects includePaths (allow-list)', async () => {
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const url = String(input);
+            if (/\/folder\/folder-1$/.test(url)) {
+                return jsonResponse(200, {
+                    id: 'folder-1',
+                    name: 'Specs',
+                    lists: [
+                        { id: 'L1', name: 'draft', archived: false },
+                        { id: 'L2', name: 'archived-but-listed', archived: false },
+                    ],
+                });
+            }
+            if (url.includes('/workspaces/ws-1/docs?')) {
+                return jsonResponse(200, { docs: [], last_page: true });
+            }
+            if (/\/list\/L1$/.test(url)) {
+                return jsonResponse(200, { id: 'L1', name: 'draft' });
+            }
+            throw new Error(`unexpected url: ${url}`);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        const plugin = clickupPlugin({ token: TOKEN, workspaceId: 'ws-1' });
+        const result = await plugin.fetch(
+            { target: 'folder:folder-1', includePaths: ['draft'] },
+            makeCtx(),
+        );
+
+        const paths = result.entries.map((e) => e.path);
+        expect(paths).toEqual(['lists/L1.json']);
+    });
+
+    it('requires workspaceId for folder: targets', async () => {
+        const plugin = clickupPlugin({ token: TOKEN });
+        vi.stubGlobal('fetch', vi.fn());
+        await expect(
+            plugin.fetch({ target: 'folder:folder-1' }, makeCtx()),
+        ).rejects.toThrow(/workspaceId/);
+    });
+});
+
+describe('clickupPlugin – space walk', () => {
+    it('walks folderless lists + folders + space-level docs', async () => {
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const url = String(input);
+
+            // Folderless lists in space.
+            if (/\/space\/space-1\/list/.test(url)) {
+                return jsonResponse(200, { lists: [{ id: 'FL1', name: 'inbox', archived: false }] });
+            }
+            // Folders in space.
+            if (/\/space\/space-1\/folder/.test(url)) {
+                return jsonResponse(200, {
+                    folders: [
+                        {
+                            id: 'F1',
+                            name: 'Engineering',
+                            hidden: false,
+                            archived: false,
+                            lists: [{ id: 'L1', name: 'tasks', archived: false }],
+                        },
+                    ],
+                });
+            }
+            // Folder-scoped docs (folder F1) — none here.
+            if (url.includes('parent_id=F1')) {
+                return jsonResponse(200, { docs: [], last_page: true });
+            }
+            // Space-level docs.
+            if (url.includes('parent_id=space-1')) {
+                return jsonResponse(200, { docs: [{ id: 'D1', name: 'README' }], last_page: true });
+            }
+            // List metadata fetch.
+            if (/\/list\/FL1$/.test(url)) return jsonResponse(200, { id: 'FL1', name: 'inbox' });
+            if (/\/list\/L1$/.test(url)) return jsonResponse(200, { id: 'L1', name: 'tasks' });
+            // Doc page listing + per-page fetch.
+            if (url.endsWith('/docs/D1/page_listing')) return jsonResponse(200, [{ id: 'P1', name: 'home' }]);
+            if (url.includes('/docs/D1/pages/P1')) return jsonResponse(200, { id: 'P1', content: '# home' });
+            throw new Error(`unexpected url: ${url}`);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        const plugin = clickupPlugin({ token: TOKEN, workspaceId: 'ws-1' });
+        const result = await plugin.fetch({ target: 'space:space-1' }, makeCtx());
+
+        const paths = result.entries.map((e) => e.path).sort();
+        expect(paths).toEqual([
+            'docs/D1/home.md',
+            'lists/FL1.json',
+            'lists/L1.json',
+        ]);
     });
 });

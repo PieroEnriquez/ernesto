@@ -37,6 +37,16 @@ export interface ExtractionContext {
 export interface ExtractionRequest {
     target: string;
     refresh?: boolean;
+    /**
+     * Optional case-insensitive substring filters applied to the path of each
+     * produced entry. `includePaths` is allow-list semantics (entry survives
+     * iff at least one substring matches); `excludePaths` is deny-list semantics
+     * (entry is dropped iff at least one substring matches), applied after
+     * `includePaths`. Plugins that walk multiple resources interpret these;
+     * plugins targeting a single resource may ignore them.
+     */
+    includePaths?: ReadonlyArray<string>;
+    excludePaths?: ReadonlyArray<string>;
 }
 
 export interface ExtractionEntry {
