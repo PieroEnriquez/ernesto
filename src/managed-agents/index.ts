@@ -7,6 +7,7 @@ export type {
     DiscoverManagedAgentsError,
     DiscoverManagedAgentsResult,
 } from './discover';
+export { gitBlobShaOf, verifyContentMatchesFileSha } from './file-sha';
 export type {
     AgentDeclaration,
     AgentContext,

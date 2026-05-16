@@ -48,6 +48,7 @@ export {
     compileAgent,
     parseManagedAgentMd, toAgentDeclaration,
     discoverManagedAgents,
+    gitBlobShaOf, verifyContentMatchesFileSha,
 } from './managed-agents';
 export type {
     AgentDeclaration, AgentContext, CompiledAgent,
