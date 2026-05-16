@@ -43,6 +43,13 @@ export type {
     DispatchResult, DispatchErrorCode,
 } from './route';
 
+// ─── Managed agents (declaration + composition) ──────────────────────────
+export { compileAgent } from './managed-agents';
+export type {
+    AgentDeclaration, AgentContext, CompiledAgent,
+    SystemPromptConfig, JsonSchemaOutputFormat,
+} from './managed-agents';
+
 // ─── Agent verbs ─────────────────────────────────────────────────────────
 export {
     executeInputSchema, executeOutputSchema, EXECUTE_DESCRIPTION, handleExecute,
