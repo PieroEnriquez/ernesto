@@ -4,7 +4,10 @@ export type {
     LayoutEntry, BootInput, BootResult,
 } from './types';
 
-export { runGit } from './run-git';
+export { runGit, tryRunGit } from './run-git';
+export { probeWorkdirHealth, bootstrapWorkdir } from './health';
+export type { WorkdirHealth, BootstrapWorkdirInput } from './health';
+export { buildSettlePatch } from './build-patch';
 export { makeInMemoryWorkdirLock, makeRedisWorkdirLock, WorkdirLockAcquireTimeout } from './lock';
 export type { RedisLockClient } from './lock';
 export { makeInMemoryFsAdapter, makeInMemoryMasterFs } from './in-memory-adapters';
@@ -21,3 +24,5 @@ export type {
     SettleInput, SettleResult,
     LintFn, LintInput, LintError, PushToMainFn,
 } from './settle';
+export { settleFromPatch } from './settle-from-patch';
+export type { SettleFromPatchInput, SettleFromPatchResult } from './settle-from-patch';

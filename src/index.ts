@@ -2,13 +2,16 @@
 
 // ─── Workdir kernel ──────────────────────────────────────────────────────
 export {
-    runGit, makeInMemoryWorkdirLock,
+    runGit, tryRunGit,
+    probeWorkdirHealth, bootstrapWorkdir, buildSettlePatch,
+    makeInMemoryWorkdirLock,
     makeRedisWorkdirLock, WorkdirLockAcquireTimeout,
     makeInMemoryFsAdapter, makeInMemoryMasterFs,
     makeNodeFsAdapter, makeVolumeMasterFs,
     makeHttpsMasterFs,
     bootWorkdir, rehydrateWorkdir,
     commitTurn, materializeFile, remirrorFile, settleFromWorktree,
+    settleFromPatch,
 } from './workdir';
 export type {
     FsAdapter, MasterFsAdapter, MasterFsResolution,
@@ -17,9 +20,11 @@ export type {
     CommitTurnInput, CommitTurnResult,
     MaterializeResult,
     SettleInput, SettleResult as WorkdirSettleResult,
+    SettleFromPatchInput, SettleFromPatchResult,
     LintFn, LintInput, LintError, PushToMainFn,
     RedisLockClient,
     HttpsMasterFsOptions,
+    WorkdirHealth, BootstrapWorkdirInput,
 } from './workdir';
 
 // ─── Lint (workspace settle gate) ────────────────────────────────────────
