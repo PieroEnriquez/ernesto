@@ -44,10 +44,16 @@ export type {
 } from './route';
 
 // ─── Managed agents (declaration + composition) ──────────────────────────
-export { compileAgent } from './managed-agents';
+export {
+    compileAgent,
+    parseManagedAgentMd, toAgentDeclaration,
+    discoverManagedAgents,
+} from './managed-agents';
 export type {
     AgentDeclaration, AgentContext, CompiledAgent,
     SystemPromptConfig, JsonSchemaOutputFormat,
+    ManagedAgentMd,
+    DiscoveredAgent, DiscoverManagedAgentsError, DiscoverManagedAgentsResult,
 } from './managed-agents';
 
 // ─── Agent verbs ─────────────────────────────────────────────────────────
