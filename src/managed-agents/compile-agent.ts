@@ -5,14 +5,28 @@ import type {
     AgentContext,
     CompiledAgent,
     SystemPromptConfig,
+    TierId,
 } from './types';
 
 /**
  * Pure composer (§7.1). Turns an `AgentDeclaration` + threading
  * `AgentContext` into a transport-agnostic `CompiledAgent`. The only
- * I/O is reading `workspaces/_platform/WORKSPACE.md` from the bound
- * workdir cwd to append the platform's editorial guardrails (§3.5 /
- * §13) — sub-ms, fails silently if absent.
+ * I/O is reading the platform body from the bound workdir cwd to
+ * append the editorial guardrails (§3.5 / §13) — sub-ms, fails
+ * silently if absent.
+ *
+ * Platform body composition (§7.3 stop):
+ *   `<cwd>/workspaces/_platform/WORKSPACE.md`         (universal)
+ *   `<cwd>/workspaces/_platform/tier-{a|b|c}.md`      (tier-specific,
+ *                                                      appended when
+ *                                                      `ctx.tier` set)
+ *
+ * Tier-specific files describe how the Ernesto system itself behaves
+ * on that tier (workdir mechanics, settle pathway, what `execute`
+ * looks like). The per-tier file is loaded *in addition to* the
+ * universal body — never instead of it. Tier frontends pass
+ * `ctx.tier = 'A' | 'B' | 'C'`. Frontends that haven't been migrated
+ * (or scripts / tests without a workdir) keep working unchanged.
  *
  * Stop 2 of §7 phase 1. Subsequent stops layer in:
  * - §7.3 L1-L5 cache discipline (returns layered fragments instead of
@@ -21,16 +35,13 @@ import type {
  * - §7.6 schema refs (`route:` / `schema:` inlining).
  * - §7.12 subagent context (`subagentDepth`, `parent.scope ∩
  *   decl.scope`).
- *
- * Today the job is just to be the single home for this composition so
- * Tier A / B / C don't each reimplement it.
  */
 export function compileAgent(
     decl: AgentDeclaration,
     ctx: AgentContext,
     defaults: { disallowedTools?: string[] } = {},
 ): CompiledAgent {
-    const platformBody = readPlatformBody(ctx.session.cwd);
+    const platformBody = composePlatformBody(ctx.session.cwd, ctx.tier);
     const systemPrompt = platformBody
         ? appendPlatformBody(decl.systemPrompt, platformBody)
         : decl.systemPrompt;
@@ -46,6 +57,38 @@ export function compileAgent(
 }
 
 /**
+ * Compose the universal platform body + (optionally) the tier-specific
+ * body from a bound workdir cwd. Returns the concatenated markdown or
+ * `null` if neither file resolves to non-empty content.
+ *
+ * This is the single home for the composition across all three tier
+ * frontends:
+ *
+ * - **Tier A** (backend): `compileAgent` calls this; result becomes
+ *   the SDK `Options.systemPrompt` append.
+ * - **Tier B** (claude.ai MCP): the MCP server calls this directly;
+ *   result becomes the `instructions:` field.
+ * - **Tier C** (laptop CLI / Claude Code skill): the CLI calls this
+ *   when regenerating `~/.claude/skills/ernesto/SKILL.md`.
+ *
+ * All three reach for the same files, so behavioral drift between
+ * tiers can only come from authoring drift in the markdown — not from
+ * the loaders interpreting things differently.
+ *
+ * Frontmatter is stripped from each file. Empty/absent files are
+ * skipped silently (callers don't need to branch).
+ */
+export function composePlatformBody(
+    cwd: string | undefined,
+    tier?: TierId,
+): string | null {
+    const universal = readPlatformBody(cwd);
+    const tierBody = tier ? readTierBody(cwd, tier) : null;
+    if (universal && tierBody) return universal + '\n\n' + tierBody;
+    return universal ?? tierBody ?? null;
+}
+
+/**
  * Read `<cwd>/workspaces/_platform/WORKSPACE.md` body, frontmatter
  * stripped. Sync on purpose — ~4 KB, one read per session boot,
  * sub-ms. Async would ripple through every Tier-frontend caller
@@ -57,10 +100,24 @@ export function compileAgent(
  */
 function readPlatformBody(cwd: string | undefined): string | null {
     if (!cwd) return null;
-    const p = join(cwd, 'workspaces', '_platform', 'WORKSPACE.md');
+    return readMarkdownBody(join(cwd, 'workspaces', '_platform', 'WORKSPACE.md'));
+}
+
+/**
+ * Read `<cwd>/workspaces/_platform/tier-{a|b|c}.md` body, frontmatter
+ * stripped. Optional — absent files are not an error (a tier that
+ * hasn't authored its file yet inherits only the universal body).
+ */
+function readTierBody(cwd: string | undefined, tier: TierId): string | null {
+    if (!cwd) return null;
+    const slug = tier.toLowerCase();
+    return readMarkdownBody(join(cwd, 'workspaces', '_platform', `tier-${slug}.md`));
+}
+
+function readMarkdownBody(path: string): string | null {
     let raw: string;
     try {
-        raw = readFileSync(p, 'utf8');
+        raw = readFileSync(path, 'utf8');
     } catch {
         return null;
     }

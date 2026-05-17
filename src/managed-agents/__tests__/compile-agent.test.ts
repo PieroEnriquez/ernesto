@@ -15,7 +15,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { compileAgent } from '../compile-agent';
+import { compileAgent, composePlatformBody } from '../compile-agent';
 import type { AgentDeclaration, AgentContext } from '../types';
 
 const baseDecl: AgentDeclaration = {
@@ -168,5 +168,82 @@ describe('compileAgent — L2 platform body append', () => {
     it('non-existent cwd is a silent no-op (not a throw)', () => {
         const r = compileAgent(baseDecl, { session: { id: 'x', cwd: '/definitely/not/a/real/path/zzz' } });
         expect(r.systemPrompt).toBe('You are a test agent.');
+    });
+});
+
+describe('compileAgent — tier-specific platform body', () => {
+    let tmp: string;
+
+    beforeEach(() => {
+        tmp = mkdtempSync(join(tmpdir(), 'lib-compile-agent-tier-'));
+        mkdirSync(join(tmp, 'workspaces', '_platform'), { recursive: true });
+    });
+
+    afterEach(() => {
+        rmSync(tmp, { recursive: true, force: true });
+    });
+
+    function writePlatformFile(name: string, body: string): void {
+        writeFileSync(join(tmp, 'workspaces', '_platform', name), body, 'utf8');
+    }
+
+    it('appends universal body + tier-a body when tier: "A" is set', () => {
+        writePlatformFile('WORKSPACE.md', 'Universal rules.');
+        writePlatformFile('tier-a.md', 'Tier A specifics.');
+        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, tier: 'A' });
+        expect(r.systemPrompt).toBe(
+            'You are a test agent.\n\nUniversal rules.\n\nTier A specifics.',
+        );
+    });
+
+    it('uses tier-b.md when tier: "B"', () => {
+        writePlatformFile('WORKSPACE.md', 'Universal.');
+        writePlatformFile('tier-a.md', 'A only.');
+        writePlatformFile('tier-b.md', 'B only.');
+        writePlatformFile('tier-c.md', 'C only.');
+        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, tier: 'B' });
+        expect(r.systemPrompt).toBe('You are a test agent.\n\nUniversal.\n\nB only.');
+    });
+
+    it('skips tier append when tier is omitted (legacy callers unaffected)', () => {
+        writePlatformFile('WORKSPACE.md', 'Universal.');
+        writePlatformFile('tier-a.md', 'A only.');
+        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp } });
+        expect(r.systemPrompt).toBe('You are a test agent.\n\nUniversal.');
+    });
+
+    it('missing tier-{tier}.md falls back to universal only', () => {
+        writePlatformFile('WORKSPACE.md', 'Universal.');
+        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, tier: 'C' });
+        expect(r.systemPrompt).toBe('You are a test agent.\n\nUniversal.');
+    });
+
+    it('missing universal but present tier file emits just the tier body', () => {
+        writePlatformFile('tier-a.md', 'Tier A solo.');
+        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, tier: 'A' });
+        expect(r.systemPrompt).toBe('You are a test agent.\n\nTier A solo.');
+    });
+
+    it('strips frontmatter from the tier file too', () => {
+        writePlatformFile('WORKSPACE.md', 'Universal.');
+        writePlatformFile('tier-a.md', '---\nname: tier-a\n---\nFrontmatter-stripped tier body.');
+        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, tier: 'A' });
+        expect(r.systemPrompt).toBe(
+            'You are a test agent.\n\nUniversal.\n\nFrontmatter-stripped tier body.',
+        );
+    });
+
+    it('composePlatformBody returns the concatenated body for direct (non-compileAgent) callers', () => {
+        writePlatformFile('WORKSPACE.md', 'U.');
+        writePlatformFile('tier-c.md', 'C.');
+        expect(composePlatformBody(tmp, 'C')).toBe('U.\n\nC.');
+    });
+
+    it('composePlatformBody returns null when both files are absent', () => {
+        expect(composePlatformBody(tmp, 'A')).toBeNull();
+    });
+
+    it('composePlatformBody returns null when cwd is undefined', () => {
+        expect(composePlatformBody(undefined, 'A')).toBeNull();
     });
 });

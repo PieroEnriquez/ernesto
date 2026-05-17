@@ -45,7 +45,7 @@ export type {
 
 // ─── Managed agents (declaration + composition) ──────────────────────────
 export {
-    compileAgent,
+    compileAgent, composePlatformBody,
     parseManagedAgentMd, toAgentDeclaration,
     discoverManagedAgents,
     gitBlobShaOf, verifyContentMatchesFileSha,
@@ -53,7 +53,7 @@ export {
 export type {
     AgentDeclaration, AgentContext, CompiledAgent,
     SystemPromptConfig, JsonSchemaOutputFormat,
-    ManagedAgentMd,
+    ManagedAgentMd, TierId,
     DiscoveredAgent, DiscoverManagedAgentsError, DiscoverManagedAgentsResult,
 } from './managed-agents';
 

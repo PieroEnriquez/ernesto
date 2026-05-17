@@ -56,7 +56,34 @@ export interface AgentDeclaration {
     mcpServers: string[];
     outputFormat?: JsonSchemaOutputFormat;
     disallowedTools?: string[];
+    /**
+     * Managed-agents §7.4 — declared scope set the agent runs with.
+     * At dispatch the runtime narrows to `caller ∩ scope`; if `scope`
+     * contains any scope the caller lacks, the call fails (the MD
+     * cannot escalate beyond what the caller could authorize).
+     * Absent ≡ inherit caller scopes unchanged (legacy TS workflows).
+     */
+    scope?: string[];
+    /**
+     * Managed-agents §7.12 — opt-in tags. `'subagent'` permits invocation
+     * via the `_platform://task` route. Default (absent) means the agent
+     * is NOT callable as a subagent — workspaces curate their public menu,
+     * cron-only agents stay off it.
+     */
+    callableAs?: string[];
 }
+
+/**
+ * Tier the dispatcher is running on. Threaded through to `compileAgent`
+ * so the per-tier `_platform/tier-{a|b|c}.md` body is appended on top
+ * of the universal `_platform/WORKSPACE.md`. Absent ≡ skip the tier
+ * append (legacy callers, tests, scripts without a workdir).
+ *
+ * - `A` — server-side (Slack backend, cron, managed-agent runtime).
+ * - `B` — claude.ai MCP integration.
+ * - `C` — laptop CLI / Claude Code `/ernesto` skill.
+ */
+export type TierId = 'A' | 'B' | 'C';
 
 /**
  * The single threaded value every dispatcher (Slack adapter, cron
@@ -74,6 +101,13 @@ export interface AgentContext {
         id: string;
         cwd?: string;
     };
+    /**
+     * Which tier frontend is composing this agent. Drives the
+     * `_platform/tier-{a|b|c}.md` append. Optional for backwards
+     * compatibility — callers that haven't migrated still get the
+     * universal body only.
+     */
+    tier?: TierId;
 }
 
 /**
