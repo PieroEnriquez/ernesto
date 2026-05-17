@@ -9,8 +9,8 @@ import type {
  * Raw parsed shape of a `workspaces/<w>/managed-agents/<slug>.md` file.
  *
  * Keeping `frontMatter` as a raw `Record<string, unknown>` (instead of
- * projecting straight to `AgentDeclaration`) preserves the fields stop
- * 6+ will read — `trigger`, `scope`, `requires`, `callableAs`,
+ * projecting straight to `AgentDeclaration`) preserves the reserved
+ * fields stops 7+ will read — `trigger`, `requires`, `callableAs`,
  * `consumes` — without round-tripping through a narrower type today.
  */
 export interface ManagedAgentMd {
@@ -20,6 +20,22 @@ export interface ManagedAgentMd {
     /** Body text below the closing `---`, trimmed. */
     body: string;
 }
+
+/**
+ * Strict allowlist of frontmatter keys. Anything else throws at parse
+ * time — catches typos (`scopes:` vs `scope:`, `mcpServer:` vs
+ * `mcpServers:`) that would otherwise silently parse to the wrong
+ * semantics. Reserved keys are kept on `ManagedAgentMd.frontMatter`
+ * for stops 7+ but rejected nowhere else.
+ */
+const PROJECTED_FRONTMATTER_KEYS = new Set([
+    'slug', 'name', 'description', 'provider', 'model',
+    'systemPrompt', 'maxTurns', 'mcpServers', 'outputFormat',
+    'disallowedTools', 'scope', 'callableAs',
+]);
+const RESERVED_FRONTMATTER_KEYS = new Set([
+    'trigger', 'requires', 'consumes',
+]);
 
 /**
  * Parse a managed-agent markdown file.
@@ -67,12 +83,26 @@ export function parseManagedAgentMd(
  *
  * Other frontmatter fields map 1:1: `slug → id`, `name`, `description`,
  * `provider?`, `model`, `mcpServers?`, `maxTurns`, `disallowedTools?`,
- * `outputFormat?`. Managed-agents-only fields (`trigger`, `scope`,
- * `requires`, `callableAs`, `consumes`) are NOT projected — they're
- * kept in `ManagedAgentMd.frontMatter` for stops 6+ to consume.
+ * `outputFormat?`, `scope?`. Reserved keys (`trigger`, `requires`,
+ * `callableAs`, `consumes`) are preserved on `ManagedAgentMd.frontMatter`
+ * for stops 7+ but not projected today.
+ *
+ * Frontmatter is strict: any key outside the projected + reserved
+ * allowlist throws. This catches typos (`scopes:` for `scope:`,
+ * `mcpServer:` for `mcpServers:`) that would otherwise silently parse
+ * to the wrong semantics.
  */
 export function toAgentDeclaration(md: ManagedAgentMd): AgentDeclaration {
     const fm = md.frontMatter;
+
+    for (const key of Object.keys(fm)) {
+        if (!PROJECTED_FRONTMATTER_KEYS.has(key) && !RESERVED_FRONTMATTER_KEYS.has(key)) {
+            throw new Error(
+                `managed-agents/${md.slug}.md: unknown frontmatter key "${key}" ` +
+                `(allowed: ${[...PROJECTED_FRONTMATTER_KEYS, ...RESERVED_FRONTMATTER_KEYS].sort().join(', ')})`,
+            );
+        }
+    }
 
     const slug = strField(fm, 'slug', md.slug);
     if (slug !== md.slug) {
@@ -89,6 +119,8 @@ export function toAgentDeclaration(md: ManagedAgentMd): AgentDeclaration {
     const provider = providerField(fm, slug);
     const systemPrompt = composeSystemPrompt(fm.systemPrompt, md.body, slug);
     const outputFormat = outputFormatField(fm, slug);
+    const scope = strArrayField(fm, 'scope');
+    const callableAs = strArrayField(fm, 'callableAs');
 
     return {
         id: slug,
@@ -101,6 +133,8 @@ export function toAgentDeclaration(md: ManagedAgentMd): AgentDeclaration {
         mcpServers: strArrayField(fm, 'mcpServers') ?? [],
         outputFormat,
         disallowedTools: strArrayField(fm, 'disallowedTools'),
+        ...(scope !== undefined ? { scope } : {}),
+        ...(callableAs !== undefined ? { callableAs } : {}),
     };
 }
 

@@ -41,6 +41,47 @@ export interface RouteContext {
      *  error — there is no implicit fallback. */
     workdirRoot?: string;
     log: RouteLogger;
+    /**
+     * Slug of the agent currently running this dispatch — populated by
+     * the backend MCP server adapter at session creation time. Absent
+     * for HTTP/admin call sites where there is no "agent" running. The
+     * §7.12 `_platform://task` route reads this to detect self-recursion
+     * (rejecting same-slug subagent calls). */
+    agentSlug?: string;
+    /**
+     * §7.12 — how many `task()` invocations deep this dispatch is.
+     * 0 (or absent) means the call is from the top-level agent;
+     * incremented by the task route before spawning the subagent. Hard
+     * cap of 2 enforced in `_platform://task` — beyond that, `task()`
+     * returns `"subagent failed: max_depth"` without invocation.
+     */
+    subagentDepth?: number;
+    /**
+     * Optional heartbeat that long-running routes (notably
+     * `_platform://task`) call when they observe internal activity. The
+     * Slack adapter wires this into its inactivity watchdog so a
+     * subagent's SDK events count as "still working" on the parent's
+     * stream — without it, a multi-minute subagent looks like silence
+     * and gets aborted by the parent's 3-minute watchdog. Routes that
+     * are themselves quick can ignore this field.
+     */
+    onActivity?: () => void;
+    /**
+     * Optional sink for subagent step text. `_platform://task` forwards
+     * each formatted child SDK assistant message here so the parent's
+     * UI (Slack progress display) can render nested activity as it
+     * happens, instead of getting a single final blob. Adapters that
+     * don't render progress can ignore it.
+     */
+    onSubagentStep?: (text: string) => void;
+    /**
+     * Optional sink for subagent cost. `_platform://task` calls this
+     * with `metadata.costUsd` after each subagent finishes so the
+     * parent's UI (Slack thinking-card) can show the *session* cost —
+     * parent cost + sum of all subagent costs — instead of just the
+     * parent's. Adapters that don't track cost can ignore it.
+     */
+    onSubagentCost?: (costUsd: number) => void;
 }
 
 export interface RouteConfig<

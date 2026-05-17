@@ -8,9 +8,11 @@
  * - Field validation: slug regex, slug-filename agreement, provider
  *   enum, maxTurns positive int, mcpServers/disallowedTools shape,
  *   outputFormat shape.
- * - Forward compatibility: frontmatter-only fields (`trigger`, `scope`,
- *   `requires`, `callableAs`, `consumes`) are preserved on the parsed
- *   `ManagedAgentMd` but not projected — stops 6+ will read them.
+ * - Strict frontmatter: unknown keys throw; reserved-but-unprojected
+ *   keys (`trigger`, `requires`, `callableAs`, `consumes`) are accepted
+ *   and kept on `ManagedAgentMd.frontMatter` for stops 7+.
+ * - `scope` is projected onto `AgentDeclaration.scope` (§7.4 runtime
+ *   narrowing).
  */
 import { describe, it, expect } from 'vitest';
 import { parseManagedAgentMd, toAgentDeclaration } from '../from-md';
@@ -35,7 +37,7 @@ describe('parseManagedAgentMd', () => {
         expect(md.body).toBe('You are a test agent. Be concise.');
     });
 
-    it('preserves forward-compat frontmatter fields without projecting them', () => {
+    it('preserves reserved-but-unprojected frontmatter keys on the parsed shape', () => {
         const raw = `---
 slug: a
 name: A
@@ -45,9 +47,7 @@ maxTurns: 1
 trigger:
   kind: cron
   schedule: "0 9 * * 1"
-scope: ["payments:read"]
 requires: ["config.foo"]
-callableAs: [subagent]
 consumes:
   - agent: someOther
 ---
@@ -55,9 +55,7 @@ body
 `;
         const md = parseManagedAgentMd(raw, { slug: 'a', workspace: 'payments' });
         expect(md.frontMatter.trigger).toEqual({ kind: 'cron', schedule: '0 9 * * 1' });
-        expect(md.frontMatter.scope).toEqual(['payments:read']);
         expect(md.frontMatter.requires).toEqual(['config.foo']);
-        expect(md.frontMatter.callableAs).toEqual(['subagent']);
         expect(md.frontMatter.consumes).toEqual([{ agent: 'someOther' }]);
     });
 
@@ -263,6 +261,45 @@ describe('toAgentDeclaration — validation', () => {
         const raw = minimalRaw('\noutputFormat:\n  schema: {type: object}');
         expect(() => toAgentDeclaration(parseManagedAgentMd(raw, { slug: 'test-agent', workspace: 'w' }))).toThrow(
             /outputFormat must be/,
+        );
+    });
+
+    it('rejects unknown frontmatter keys (catches typos like `scopes`)', () => {
+        const raw = minimalRaw('\nscopes: ["payments:read"]');
+        expect(() => toAgentDeclaration(parseManagedAgentMd(raw, { slug: 'test-agent', workspace: 'w' }))).toThrow(
+            /unknown frontmatter key "scopes"/,
+        );
+    });
+
+    it('accepts reserved-but-unprojected keys without throwing', () => {
+        const raw = minimalRaw('\ntrigger: {kind: manual}\nrequires: []\nconsumes: []');
+        const decl = toAgentDeclaration(parseManagedAgentMd(raw, { slug: 'test-agent', workspace: 'w' }));
+        expect(decl.id).toBe('test-agent');
+        expect(decl.scope).toBeUndefined();
+    });
+
+    it('projects callableAs onto AgentDeclaration.callableAs (§7.12)', () => {
+        const raw = minimalRaw('\ncallableAs: [subagent]');
+        const decl = toAgentDeclaration(parseManagedAgentMd(raw, { slug: 'test-agent', workspace: 'w' }));
+        expect(decl.callableAs).toEqual(['subagent']);
+    });
+
+    it('leaves callableAs undefined when absent (default: not callable as subagent)', () => {
+        const md = parseManagedAgentMd(minimalRaw(), { slug: 'test-agent', workspace: 'w' });
+        const decl = toAgentDeclaration(md);
+        expect(decl.callableAs).toBeUndefined();
+    });
+
+    it('projects scope onto AgentDeclaration.scope', () => {
+        const raw = minimalRaw('\nscope: ["payments:read", "payments:write"]');
+        const decl = toAgentDeclaration(parseManagedAgentMd(raw, { slug: 'test-agent', workspace: 'w' }));
+        expect(decl.scope).toEqual(['payments:read', 'payments:write']);
+    });
+
+    it('rejects scope that is not a string array', () => {
+        const raw = minimalRaw('\nscope: "payments:read"');
+        expect(() => toAgentDeclaration(parseManagedAgentMd(raw, { slug: 'test-agent', workspace: 'w' }))).toThrow(
+            /must be an array of strings/,
         );
     });
 });

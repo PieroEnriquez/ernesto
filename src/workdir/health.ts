@@ -47,6 +47,15 @@ export interface BootstrapWorkdirInput {
      * Defaults to none — caller decides identity.
      */
     gitConfig?: Record<string, string>;
+    /**
+     * When set, passed to `git clone` as `--depth=<n>`. A depth of 1 makes
+     * the clone shallow — no history, just the tip of `branch` — which is
+     * dramatically faster for throwaway workdirs (e.g. §7.12 subagent
+     * runs) that never need to walk history. Persistent session workdirs
+     * leave this unset; they may later want `git log`, `git blame`, or
+     * to settle a rebase that requires fetching common ancestors.
+     */
+    depth?: number;
 }
 
 /**
@@ -62,12 +71,13 @@ export interface BootstrapWorkdirInput {
  * are identical and live here.
  */
 export async function bootstrapWorkdir(input: BootstrapWorkdirInput): Promise<void> {
-    const { workingTreeRoot, repoUrl, branch, gitConfig } = input;
+    const { workingTreeRoot, repoUrl, branch, gitConfig, depth } = input;
     await fsp.rm(workingTreeRoot, { recursive: true, force: true });
     await fsp.mkdir(workingTreeRoot, { recursive: true });
-    await runGit(workingTreeRoot, [
-        'clone', '--branch', branch, '--single-branch', repoUrl, '.',
-    ]);
+    const cloneArgs = ['clone', '--branch', branch, '--single-branch'];
+    if (depth !== undefined) cloneArgs.push(`--depth=${depth}`);
+    cloneArgs.push(repoUrl, '.');
+    await runGit(workingTreeRoot, cloneArgs);
     for (const [k, v] of Object.entries(gitConfig ?? {})) {
         await runGit(workingTreeRoot, ['config', k, v]);
     }

@@ -191,4 +191,44 @@ describe('handleExecute', () => {
         expect(call[1]).toEqual({ uri: 'test://echo', userId: 'u1' });
         expect(JSON.stringify(call[1])).not.toContain('@bitrefill.com');
     });
+
+    it('JSON-decodes stringified params (LLM serialization quirk on nested object params)', async () => {
+        // Some models JSON-stringify nested object params instead of
+        // sending them as objects in the tool-call envelope. The execute
+        // verb normalizes this at the system boundary so every route's
+        // Zod schema sees a parsed object.
+        const reg = new RouteRegistry();
+        reg.register(echoRoute);
+        const ctx = makeCtx(['test:read']);
+
+        const result = await handleExecute(
+            makeFakeWorkdir(),
+            reg,
+            { uri: 'test://echo', params: '{"msg":"hi from a string"}' },
+            ctx,
+        );
+
+        expect(result).toEqual({ ok: true, data: { msg: 'hi from a string' } });
+    });
+
+    it('leaves non-JSON string params alone (route schema decides)', async () => {
+        // If the model passes a non-JSON string AND the route's schema
+        // accepts strings, the call still works. If the schema rejects
+        // strings, the route returns invalid_input cleanly.
+        const reg = new RouteRegistry();
+        reg.register(echoRoute);
+        const ctx = makeCtx(['test:read']);
+
+        const result = await handleExecute(
+            makeFakeWorkdir(),
+            reg,
+            { uri: 'test://echo', params: 'not json — just words' },
+            ctx,
+        );
+
+        // echoRoute expects {msg: string}; raw string is rejected by route schema.
+        expect(result.ok).toBe(false);
+        if (result.ok) return;
+        expect(result.error).toBe('invalid_input');
+    });
 });

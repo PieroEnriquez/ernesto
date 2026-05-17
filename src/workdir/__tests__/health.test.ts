@@ -120,4 +120,64 @@ describe('bootstrapWorkdir', () => {
 
         expect(await probeWorkdirHealth(root)).toBe('healthy');
     });
+
+    it('depth: 1 produces a shallow clone with exactly one walkable commit', async () => {
+        // Seed origin with multiple commits so the difference between
+        // shallow and full is observable.
+        const { tmp, origin } = await makeBareOrigin();
+        const second = join(tmp, 'seed2');
+        await fsp.mkdir(second, { recursive: true });
+        await git(second, ['clone', '--branch', 'main', '--single-branch', origin, '.']);
+        await git(second, ['config', 'user.email', 't@b.com']);
+        await git(second, ['config', 'user.name', 't']);
+        await git(second, ['config', 'commit.gpgsign', 'false']);
+        for (let i = 0; i < 3; i++) {
+            await fsp.writeFile(join(second, `f${i}.txt`), `content ${i}\n`);
+            await git(second, ['add', '-A']);
+            await git(second, ['commit', '-q', '-m', `commit ${i}`]);
+        }
+        await git(second, ['push', '-q', 'origin', 'main']);
+
+        const root = join(tmp, 'shallow');
+        // Git silently ignores `--depth` for local-protocol clones. The
+        // `file://` URL forces the remote protocol so the shallow flag
+        // actually applies — production uses https:// which respects it.
+        await bootstrapWorkdir({
+            workingTreeRoot: root,
+            repoUrl: `file://${origin}`,
+            branch: 'main',
+            depth: 1,
+        });
+
+        expect(await probeWorkdirHealth(root)).toBe('healthy');
+        const count = (await git(root, ['rev-list', '--count', 'HEAD'])).trim();
+        expect(count).toBe('1');
+    });
+
+    it('omitting depth yields a full clone (full history walkable)', async () => {
+        const { tmp, origin } = await makeBareOrigin();
+        const second = join(tmp, 'seed2');
+        await fsp.mkdir(second, { recursive: true });
+        await git(second, ['clone', '--branch', 'main', '--single-branch', origin, '.']);
+        await git(second, ['config', 'user.email', 't@b.com']);
+        await git(second, ['config', 'user.name', 't']);
+        await git(second, ['config', 'commit.gpgsign', 'false']);
+        for (let i = 0; i < 3; i++) {
+            await fsp.writeFile(join(second, `f${i}.txt`), `content ${i}\n`);
+            await git(second, ['add', '-A']);
+            await git(second, ['commit', '-q', '-m', `commit ${i}`]);
+        }
+        await git(second, ['push', '-q', 'origin', 'main']);
+
+        const root = join(tmp, 'full');
+        await bootstrapWorkdir({
+            workingTreeRoot: root,
+            repoUrl: origin,
+            branch: 'main',
+        });
+
+        expect(await probeWorkdirHealth(root)).toBe('healthy');
+        const count = parseInt((await git(root, ['rev-list', '--count', 'HEAD'])).trim(), 10);
+        expect(count).toBeGreaterThan(1);
+    });
 });
