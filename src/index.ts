@@ -48,12 +48,13 @@ export type {
 export {
     compileAgent, composePlatformBody,
     parseManagedAgentMd, toAgentDeclaration,
+    composeExtends, MAX_EXTENDS_DEPTH,
     gitBlobShaOf, verifyContentMatchesFileSha,
 } from './managed-agents';
 export type {
     AgentDeclaration, AgentContext, CompiledAgent,
     SystemPromptConfig, JsonSchemaOutputFormat,
-    ManagedAgentMd, TierId,
+    ManagedAgentMd, ExtendsResolver, TierId,
 } from './managed-agents';
 
 // ─── Agent verbs ─────────────────────────────────────────────────────────

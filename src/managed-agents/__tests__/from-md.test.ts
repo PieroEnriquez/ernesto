@@ -15,7 +15,14 @@
  *   narrowing).
  */
 import { describe, it, expect } from 'vitest';
-import { parseManagedAgentMd, toAgentDeclaration } from '../from-md';
+import {
+    parseManagedAgentMd,
+    toAgentDeclaration,
+    composeExtends,
+    MAX_EXTENDS_DEPTH,
+    type ManagedAgentMd,
+    type ExtendsResolver,
+} from '../from-md';
 
 const minimalRaw = (extra = ''): string => `---
 slug: test-agent
@@ -300,6 +307,476 @@ describe('toAgentDeclaration — validation', () => {
         const raw = minimalRaw('\nscope: "payments:read"');
         expect(() => toAgentDeclaration(parseManagedAgentMd(raw, { slug: 'test-agent', workspace: 'w' }))).toThrow(
             /must be an array of strings/,
+        );
+    });
+});
+
+// ─── §7.13.5 composeExtends ───────────────────────────────────────────────
+
+describe('composeExtends (§7.13.5)', () => {
+    // Helper to make a resolver from a list of base files.
+    const resolverFrom = (bases: ManagedAgentMd[]): ExtendsResolver =>
+        (ws, slug) => bases.find((b) => b.workspace === ws && b.slug === slug);
+
+    const baseRaw = (slug: string, body = 'Base body line.'): string => `---
+slug: ${slug}
+name: ${slug} base
+description: shared base
+model: claude-haiku-4-5
+maxTurns: 8
+mcpServers: [ernesto]
+outputFormat:
+  type: json_schema
+  name: base_schema
+  schema:
+    type: object
+    properties:
+      ok: { type: boolean }
+    required: [ok]
+---
+
+${body}
+`;
+
+    it('returns input unchanged when no extends key is set', () => {
+        const md = parseManagedAgentMd(minimalRaw(), { slug: 'test-agent', workspace: 'w' });
+        const out = composeExtends(md, { resolveBase: () => undefined });
+        expect(out).toBe(md);
+    });
+
+    it('rejects extends as a non-string value', () => {
+        const md = parseManagedAgentMd(minimalRaw('\nextends: 42'), {
+            slug: 'test-agent',
+            workspace: 'w',
+        });
+        expect(() => composeExtends(md, { resolveBase: () => undefined })).toThrow(
+            /"extends" must be a non-empty string slug/,
+        );
+    });
+
+    it('throws extends_target_not_found when the resolver returns undefined', () => {
+        const md = parseManagedAgentMd(minimalRaw('\nextends: missing-base'), {
+            slug: 'test-agent',
+            workspace: 'w',
+        });
+        expect(() => composeExtends(md, { resolveBase: () => undefined })).toThrow(
+            /extends_target_not_found: w\/missing-base/,
+        );
+    });
+
+    it('rejects a resolver that returns a base in another workspace', () => {
+        const base = parseManagedAgentMd(baseRaw('shared-base'), {
+            slug: 'shared-base',
+            workspace: 'other',
+        });
+        const md = parseManagedAgentMd(minimalRaw('\nextends: shared-base'), {
+            slug: 'test-agent',
+            workspace: 'w',
+        });
+        expect(() =>
+            composeExtends(md, { resolveBase: () => base }),
+        ).toThrow(/cross-workspace extends not allowed/);
+    });
+
+    it('concatenates base body and local body with a blank line', () => {
+        const base = parseManagedAgentMd(baseRaw('shared-base', 'BASE PROSE.'), {
+            slug: 'shared-base',
+            workspace: 'w',
+        });
+        const local = parseManagedAgentMd(
+            `---
+slug: ext
+name: Ext
+description: extends shared-base
+extends: shared-base
+---
+
+LOCAL PROSE.
+`,
+            { slug: 'ext', workspace: 'w' },
+        );
+        const composed = composeExtends(local, { resolveBase: resolverFrom([base]) });
+        expect(composed.body).toBe('BASE PROSE.\n\nLOCAL PROSE.');
+    });
+
+    it('falls back to base body alone when extender has empty body', () => {
+        const base = parseManagedAgentMd(baseRaw('shared-base', 'BASE PROSE.'), {
+            slug: 'shared-base',
+            workspace: 'w',
+        });
+        // Local body is whitespace-only — parser trims to empty string.
+        const local = parseManagedAgentMd(
+            `---
+slug: ext
+name: Ext
+description: pure-override case
+model: claude-sonnet-4-6
+extends: shared-base
+---
+
+
+`,
+            { slug: 'ext', workspace: 'w' },
+        );
+        const composed = composeExtends(local, { resolveBase: resolverFrom([base]) });
+        expect(composed.body).toBe('BASE PROSE.');
+        // The local override on model still applies through the merge.
+        expect(composed.frontMatter.model).toBe('claude-sonnet-4-6');
+    });
+
+    it('strips the extends key from the composed frontmatter', () => {
+        const base = parseManagedAgentMd(baseRaw('shared-base'), {
+            slug: 'shared-base',
+            workspace: 'w',
+        });
+        const local = parseManagedAgentMd(
+            `---
+slug: ext
+name: Ext
+description: d
+extends: shared-base
+---
+
+local
+`,
+            { slug: 'ext', workspace: 'w' },
+        );
+        const composed = composeExtends(local, { resolveBase: resolverFrom([base]) });
+        expect(composed.frontMatter.extends).toBeUndefined();
+    });
+
+    it('inherits model/maxTurns/mcpServers/outputFormat when extender omits them', () => {
+        const base = parseManagedAgentMd(baseRaw('shared-base'), {
+            slug: 'shared-base',
+            workspace: 'w',
+        });
+        const local = parseManagedAgentMd(
+            `---
+slug: ext
+name: Ext
+description: d
+extends: shared-base
+---
+
+local
+`,
+            { slug: 'ext', workspace: 'w' },
+        );
+        const composed = composeExtends(local, { resolveBase: resolverFrom([base]) });
+        const decl = toAgentDeclaration(composed);
+        expect(decl.model).toBe('claude-haiku-4-5');
+        expect(decl.maxTurns).toBe(8);
+        expect(decl.mcpServers).toEqual(['ernesto']);
+        expect(decl.outputFormat?.name).toBe('base_schema');
+    });
+
+    it('local overrides win for outputFormat (atomic, no deep merge)', () => {
+        const base = parseManagedAgentMd(baseRaw('shared-base'), {
+            slug: 'shared-base',
+            workspace: 'w',
+        });
+        const local = parseManagedAgentMd(
+            `---
+slug: ext
+name: Ext
+description: d
+extends: shared-base
+outputFormat:
+  type: json_schema
+  name: local_schema
+  schema:
+    type: object
+    properties:
+      different: { type: string }
+---
+
+local
+`,
+            { slug: 'ext', workspace: 'w' },
+        );
+        const composed = composeExtends(local, { resolveBase: resolverFrom([base]) });
+        const decl = toAgentDeclaration(composed);
+        expect(decl.outputFormat?.name).toBe('local_schema');
+        expect(decl.outputFormat?.schema).toEqual({
+            type: 'object',
+            properties: { different: { type: 'string' } },
+        });
+    });
+
+    it('local overrides win for mcpServers (no array concat)', () => {
+        const base = parseManagedAgentMd(baseRaw('shared-base'), {
+            slug: 'shared-base',
+            workspace: 'w',
+        });
+        const local = parseManagedAgentMd(
+            `---
+slug: ext
+name: Ext
+description: d
+extends: shared-base
+mcpServers: [firecrawl, playwright]
+---
+
+local
+`,
+            { slug: 'ext', workspace: 'w' },
+        );
+        const composed = composeExtends(local, { resolveBase: resolverFrom([base]) });
+        const decl = toAgentDeclaration(composed);
+        expect(decl.mcpServers).toEqual(['firecrawl', 'playwright']);
+    });
+
+    it('local overrides win for scope (no union)', () => {
+        const baseSrc = `---
+slug: shared-base
+name: shared-base base
+description: shared base
+model: claude-haiku-4-5
+maxTurns: 5
+scope: ["payments:read"]
+---
+
+base
+`;
+        const base = parseManagedAgentMd(baseSrc, { slug: 'shared-base', workspace: 'w' });
+        const local = parseManagedAgentMd(
+            `---
+slug: ext
+name: Ext
+description: d
+extends: shared-base
+scope: ["payments:write"]
+---
+
+local
+`,
+            { slug: 'ext', workspace: 'w' },
+        );
+        const composed = composeExtends(local, { resolveBase: resolverFrom([base]) });
+        const decl = toAgentDeclaration(composed);
+        expect(decl.scope).toEqual(['payments:write']);
+    });
+
+    it('requires the extender to set its own slug', () => {
+        const base = parseManagedAgentMd(baseRaw('shared-base'), {
+            slug: 'shared-base',
+            workspace: 'w',
+        });
+        const raw = `---
+name: Ext
+description: d
+extends: shared-base
+---
+
+local
+`;
+        const md = parseManagedAgentMd(raw, { slug: 'ext', workspace: 'w' });
+        expect(() =>
+            composeExtends(md, { resolveBase: resolverFrom([base]) }),
+        ).toThrow(/"slug" must be set on the extending file/);
+    });
+
+    it('requires the extender to set its own name', () => {
+        const base = parseManagedAgentMd(baseRaw('shared-base'), {
+            slug: 'shared-base',
+            workspace: 'w',
+        });
+        const raw = `---
+slug: ext
+description: d
+extends: shared-base
+---
+
+local
+`;
+        const md = parseManagedAgentMd(raw, { slug: 'ext', workspace: 'w' });
+        expect(() =>
+            composeExtends(md, { resolveBase: resolverFrom([base]) }),
+        ).toThrow(/"name" must be set on the extending file/);
+    });
+
+    it('requires the extender to set its own description', () => {
+        const base = parseManagedAgentMd(baseRaw('shared-base'), {
+            slug: 'shared-base',
+            workspace: 'w',
+        });
+        const raw = `---
+slug: ext
+name: Ext
+extends: shared-base
+---
+
+local
+`;
+        const md = parseManagedAgentMd(raw, { slug: 'ext', workspace: 'w' });
+        expect(() =>
+            composeExtends(md, { resolveBase: resolverFrom([base]) }),
+        ).toThrow(/"description" must be set on the extending file/);
+    });
+
+    it('detects A → B → A cycles and prints the full path', () => {
+        const aSrc = `---
+slug: a
+name: A
+description: d
+extends: b
+---
+
+a body
+`;
+        const bSrc = `---
+slug: b
+name: B
+description: d
+model: claude-haiku-4-5
+maxTurns: 5
+extends: a
+---
+
+b body
+`;
+        const a = parseManagedAgentMd(aSrc, { slug: 'a', workspace: 'w' });
+        const b = parseManagedAgentMd(bSrc, { slug: 'b', workspace: 'w' });
+        expect(() =>
+            composeExtends(a, { resolveBase: resolverFrom([a, b]) }),
+        ).toThrow(/extends cycle detected \(w\/a → w\/b → w\/a\)/);
+    });
+
+    it('detects self-cycles (A extends A)', () => {
+        const aSrc = `---
+slug: a
+name: A
+description: d
+model: claude-haiku-4-5
+maxTurns: 5
+extends: a
+---
+
+body
+`;
+        const a = parseManagedAgentMd(aSrc, { slug: 'a', workspace: 'w' });
+        expect(() =>
+            composeExtends(a, { resolveBase: resolverFrom([a]) }),
+        ).toThrow(/extends cycle detected \(w\/a → w\/a\)/);
+    });
+
+    it(`enforces the MAX_EXTENDS_DEPTH (${MAX_EXTENDS_DEPTH}) cap`, () => {
+        // Build a linear chain of MAX+2 files: a → b → c → d → e.
+        // a..d each "extends" the next; e is plain. The 4th hop (d→e)
+        // breaches the cap when MAX_EXTENDS_DEPTH=3.
+        const mkChain = (slug: string, ext?: string) => {
+            const extLine = ext ? `\nextends: ${ext}` : '';
+            return parseManagedAgentMd(
+                `---
+slug: ${slug}
+name: ${slug.toUpperCase()}
+description: d
+model: claude-haiku-4-5
+maxTurns: 5${extLine}
+---
+
+${slug} body
+`,
+                { slug, workspace: 'w' },
+            );
+        };
+        const e = mkChain('e');
+        const d = mkChain('d', 'e');
+        const c = mkChain('c', 'd');
+        const b = mkChain('b', 'c');
+        const a = mkChain('a', 'b');
+        expect(() =>
+            composeExtends(a, { resolveBase: resolverFrom([a, b, c, d, e]) }),
+        ).toThrow(/extends chain exceeds max_extends_depth=3/);
+    });
+
+    it('allows a chain at the cap (3 hops)', () => {
+        const mkChain = (slug: string, ext?: string) => {
+            const extLine = ext ? `\nextends: ${ext}` : '';
+            return parseManagedAgentMd(
+                `---
+slug: ${slug}
+name: ${slug.toUpperCase()}
+description: d
+model: claude-haiku-4-5
+maxTurns: 5${extLine}
+---
+
+${slug} body
+`,
+                { slug, workspace: 'w' },
+            );
+        };
+        const d = mkChain('d');
+        const c = mkChain('c', 'd');
+        const b = mkChain('b', 'c');
+        const a = mkChain('a', 'b');
+        const composed = composeExtends(a, {
+            resolveBase: resolverFrom([a, b, c, d]),
+        });
+        // Body order: deepest first, extender last.
+        expect(composed.body).toBe('d body\n\nc body\n\nb body\n\na body');
+    });
+
+    it('composes transitively (A → B → C; C contributes the schema)', () => {
+        const cSrc = `---
+slug: c
+name: C base
+description: deep base
+model: claude-haiku-4-5
+maxTurns: 10
+outputFormat:
+  type: json_schema
+  name: deep_schema
+  schema: { type: object }
+---
+
+C prose.
+`;
+        const bSrc = `---
+slug: b
+name: B middle
+description: middle
+extends: c
+mcpServers: [ernesto]
+---
+
+B prose.
+`;
+        const aSrc = `---
+slug: a
+name: A extender
+description: top
+extends: b
+---
+
+A prose.
+`;
+        const c = parseManagedAgentMd(cSrc, { slug: 'c', workspace: 'w' });
+        const b = parseManagedAgentMd(bSrc, { slug: 'b', workspace: 'w' });
+        const a = parseManagedAgentMd(aSrc, { slug: 'a', workspace: 'w' });
+        const composed = composeExtends(a, { resolveBase: resolverFrom([a, b, c]) });
+        const decl = toAgentDeclaration(composed);
+        expect(composed.body).toBe('C prose.\n\nB prose.\n\nA prose.');
+        expect(decl.outputFormat?.name).toBe('deep_schema');
+        expect(decl.mcpServers).toEqual(['ernesto']);
+    });
+
+    it('toAgentDeclaration rejects un-composed extends with a clear error', () => {
+        const raw = `---
+slug: ext
+name: Ext
+description: d
+model: claude-haiku-4-5
+maxTurns: 5
+extends: some-base
+---
+
+body
+`;
+        const md = parseManagedAgentMd(raw, { slug: 'ext', workspace: 'w' });
+        expect(() => toAgentDeclaration(md)).toThrow(
+            /"extends" must be resolved by composeExtends/,
         );
     });
 });

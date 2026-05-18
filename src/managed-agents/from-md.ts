@@ -38,6 +38,15 @@ const RESERVED_FRONTMATTER_KEYS = new Set([
 ]);
 
 /**
+ * §7.13.5 — `extends:` is parsed and kept on `frontMatter` until
+ * `composeExtends` resolves the chain. After composition the key is
+ * stripped; reaching `toAgentDeclaration` with `extends:` still set
+ * throws (the allowlist below excludes it) so callers can't forget
+ * to compose.
+ */
+const COMPOSITION_FRONTMATTER_KEYS = new Set(['extends']);
+
+/**
  * Parse a managed-agent markdown file.
  *
  * The file must begin with a `---\n…\n---\n` YAML frontmatter block;
@@ -96,7 +105,15 @@ export function toAgentDeclaration(md: ManagedAgentMd): AgentDeclaration {
     const fm = md.frontMatter;
 
     for (const key of Object.keys(fm)) {
-        if (!PROJECTED_FRONTMATTER_KEYS.has(key) && !RESERVED_FRONTMATTER_KEYS.has(key)) {
+        if (
+            !PROJECTED_FRONTMATTER_KEYS.has(key) &&
+            !RESERVED_FRONTMATTER_KEYS.has(key)
+        ) {
+            if (COMPOSITION_FRONTMATTER_KEYS.has(key)) {
+                throw new Error(
+                    `managed-agents/${md.slug}.md: "extends" must be resolved by composeExtends before toAgentDeclaration (§7.13.5)`,
+                );
+            }
             throw new Error(
                 `managed-agents/${md.slug}.md: unknown frontmatter key "${key}" ` +
                 `(allowed: ${[...PROJECTED_FRONTMATTER_KEYS, ...RESERVED_FRONTMATTER_KEYS].sort().join(', ')})`,
@@ -240,5 +257,156 @@ function outputFormatField(
         type: 'json_schema',
         ...(typeof o.name === 'string' ? { name: o.name } : {}),
         schema: o.schema as Record<string, unknown>,
+    };
+}
+
+// ─── §7.13.5 extends resolver ─────────────────────────────────────────────
+
+/**
+ * Caller-supplied lookup for `extends:` resolution. Returns the parsed
+ * `ManagedAgentMd` for `<workspace>/<slug>`, or `undefined` if the base
+ * isn't authored / approved / loaded in the caller's source-of-truth.
+ *
+ * The backend registry resolves against an in-memory map of all active
+ * `ManagedAgentApproval` rows; the approve route resolves against a
+ * pre-fetched chain pulled from Mongo. Either way the resolver is sync
+ * — `composeExtends` is structural composition, not I/O.
+ */
+export type ExtendsResolver = (
+    workspace: string,
+    slug: string,
+) => ManagedAgentMd | undefined;
+
+/**
+ * §7.13.5 — max length of an `extends:` chain (hops between files).
+ * `A extends B extends C extends D` is 3 hops; one further hop throws.
+ * The cap is intentionally low: deeper trees suggest the base itself
+ * wants splitting, not a longer chain.
+ */
+export const MAX_EXTENDS_DEPTH = 3;
+
+/**
+ * §7.13.5 — resolve the `extends:` chain on `md` and return a
+ * synthetic, fully-composed `ManagedAgentMd` ready for `toAgentDeclaration`.
+ * If `md` has no `extends:` key, returns `md` unchanged.
+ *
+ * **Composition semantics.**
+ * - Body: `<base.body>\n\n<local.body>`. An empty local body falls
+ *   back to the base body alone (pure-override case: same prompt,
+ *   different model).
+ * - Frontmatter: local overrides per-key. `outputFormat`, `mcpServers`,
+ *   `disallowedTools`, `maxTurns`, `provider`, `model`, `scope`,
+ *   `callableAs`, `trigger`, `requires`, `consumes` all follow the
+ *   same rule — atomic override, no deep merge. The `extends:` key
+ *   itself is stripped from the composed result.
+ * - `slug`, `name`, `description` MUST be set on the extending file
+ *   (no inheritance). These identify the agent in the registry.
+ *
+ * **Guards.**
+ * - Cycle detection on `<workspace>/<slug>` path; throws with the
+ *   full path printed (`ws/a → ws/b → ws/a`).
+ * - Depth cap `MAX_EXTENDS_DEPTH`; throws on overflow.
+ * - Same-workspace only; the resolver may not return a base from a
+ *   different workspace.
+ * - Missing base → `extends_target_not_found: <workspace>/<slug>`.
+ */
+export function composeExtends(
+    md: ManagedAgentMd,
+    opts: { resolveBase: ExtendsResolver },
+): ManagedAgentMd {
+    return composeExtendsInner(md, opts.resolveBase, []);
+}
+
+function composeExtendsInner(
+    md: ManagedAgentMd,
+    resolveBase: ExtendsResolver,
+    chain: string[],
+): ManagedAgentMd {
+    const nodeKey = `${md.workspace}/${md.slug}`;
+    if (chain.includes(nodeKey)) {
+        throw new Error(
+            `managed-agents/${md.slug}.md: extends cycle detected ` +
+            `(${[...chain, nodeKey].join(' → ')})`,
+        );
+    }
+
+    const extendsKey = md.frontMatter.extends;
+    if (extendsKey === undefined) {
+        return md;
+    }
+    if (typeof extendsKey !== 'string' || extendsKey.length === 0) {
+        throw new Error(
+            `managed-agents/${md.slug}.md: "extends" must be a non-empty string slug ` +
+            `(got ${JSON.stringify(extendsKey)})`,
+        );
+    }
+    if (chain.length >= MAX_EXTENDS_DEPTH) {
+        throw new Error(
+            `managed-agents/${md.slug}.md: extends chain exceeds ` +
+            `max_extends_depth=${MAX_EXTENDS_DEPTH} ` +
+            `(${[...chain, nodeKey, `${md.workspace}/${extendsKey}`].join(' → ')})`,
+        );
+    }
+
+    const baseRaw = resolveBase(md.workspace, extendsKey);
+    if (!baseRaw) {
+        throw new Error(
+            `managed-agents/${md.slug}.md: extends_target_not_found: ${md.workspace}/${extendsKey}`,
+        );
+    }
+    if (baseRaw.workspace !== md.workspace) {
+        throw new Error(
+            `managed-agents/${md.slug}.md: cross-workspace extends not allowed ` +
+            `(${md.workspace} → ${baseRaw.workspace}/${extendsKey})`,
+        );
+    }
+
+    // Required-on-local: slug/name/description identify the agent and
+    // must be set on the extending file directly. We check this on the
+    // extender's *own* frontmatter (pre-merge); after merge the values
+    // would always appear (inherited from base) and the validation in
+    // toAgentDeclaration would pass silently against the wrong values.
+    for (const key of ['slug', 'name', 'description']) {
+        const v = md.frontMatter[key];
+        if (typeof v !== 'string' || v.length === 0) {
+            throw new Error(
+                `managed-agents/${md.slug}.md: "${key}" must be set on the extending file ` +
+                `(no inheritance from "${baseRaw.workspace}/${baseRaw.slug}")`,
+            );
+        }
+    }
+
+    // Recurse first so the base is itself fully composed (transitive
+    // chains: A extends B extends C → base passed to the merge below
+    // already has C's body + frontmatter folded into B's).
+    const base = composeExtendsInner(baseRaw, resolveBase, [...chain, nodeKey]);
+
+    // Frontmatter merge: local overrides per key. The `extends:` key
+    // itself is stripped — it's already been resolved into this very
+    // composition and is not inheritable (§7.13.5).
+    const merged: Record<string, unknown> = { ...base.frontMatter };
+    delete merged.extends;
+    for (const [k, v] of Object.entries(md.frontMatter)) {
+        if (k === 'extends') continue;
+        merged[k] = v;
+    }
+
+    // Body merge. Empty extender body → base body alone (allows the
+    // "same prompt, different model" pattern). Empty base body →
+    // extender body alone. Both populated → join with a blank line.
+    let composedBody: string;
+    if (md.body.length === 0) {
+        composedBody = base.body;
+    } else if (base.body.length === 0) {
+        composedBody = md.body;
+    } else {
+        composedBody = `${base.body}\n\n${md.body}`;
+    }
+
+    return {
+        slug: md.slug,
+        workspace: md.workspace,
+        frontMatter: merged,
+        body: composedBody,
     };
 }
