@@ -73,10 +73,14 @@ const PLATFORM_WORKSPACE = '_platform';
  *  `forbidden_workspace_name`). This Set is the allowlist of reserved names
  *  the platform does ship as real workspaces. Adding a name here is a
  *  spec-level decision — every entry is a system-owned workspace whose
- *  admin scope is `ernesto:workspace-admin`. */
-const RESERVED_SYSTEM_WORKSPACES: ReadonlySet<string> = new Set([
+ *  admin scope is `ernesto:workspace-admin`.
+ *
+ *  Exported so other layers (visibility, editor surface) treat the same
+ *  set as system without duplicating the constant. */
+export const RESERVED_SYSTEM_WORKSPACES: ReadonlySet<string> = new Set([
     PLATFORM_WORKSPACE,
     '_tmp',
+    '_example',
 ]);
 const AGENT_OPS_SCOPE = 'ernesto:agent-ops';
 
