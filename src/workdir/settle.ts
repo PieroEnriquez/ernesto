@@ -28,6 +28,11 @@ const GENERATED_SUBDIRS = ['extracted', 'attached'] as const;
  * by `ensureMasterFsOverlays` at session boot and `remirrorFile`
  * mid-session. Settle must not stage it — the bytes the agent might see
  * in git status are master-fs state, not author intent.
+ *
+ * Spec §3.5 describes the target state where `attachments.yaml` lives in
+ * git (workdir-authored, settled normally). The route still writes the
+ * yaml to master-fs today, so the exclusion stays until the route flip
+ * lands; otherwise sibling-session attaches would leak via the overlay.
  */
 const GENERATED_FILES = ['attachments.yaml'] as const;
 

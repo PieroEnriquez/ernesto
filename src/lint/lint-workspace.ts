@@ -151,7 +151,9 @@ function isGeneratedPath(p: string): boolean {
     // `attachments.yaml` is a single-file master-fs overlay, authored only
     // by `_platform://attach` and `_platform://detach`. Same rule as the
     // generated subdirs: settle's pathspec excludes it, but lint catches
-    // hand-crafted diffs (settleFromPatch) too.
+    // hand-crafted diffs (settleFromPatch) too. Spec §3.5 describes the
+    // target state where the yaml lives in git; until the route flip
+    // lands this guard stays.
     return /^workspaces\/[^/]+\/attachments\.yaml$/.test(p);
 }
 
