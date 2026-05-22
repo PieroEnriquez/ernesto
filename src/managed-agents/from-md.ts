@@ -286,6 +286,45 @@ export type ExtendsResolver = (
 export const MAX_EXTENDS_DEPTH = 3;
 
 /**
+ * §7.13.5 — the only workspace permitted as a cross-workspace `extends:`
+ * base. `_platform` is already the canonical "library" workspace
+ * (it owns `_platform://task`, `_platform://list-dashboards`, etc.),
+ * so re-using it for shared agent bases keeps the boundary in one
+ * place. Any other cross-workspace extends is rejected.
+ */
+export const PLATFORM_WORKSPACE = '_platform';
+
+/**
+ * §7.13.5 — parse an `extends:` value into a (workspace, slug) pair.
+ *
+ * Two accepted forms:
+ *   - `<slug>`                — resolves in the extender's own workspace.
+ *   - `<workspace>/<slug>`    — resolves in the named workspace. Only
+ *                               `_platform` is accepted as a non-self
+ *                               workspace; any other prefix throws.
+ *
+ * Slug-only is the historical form and stays the recommendation for
+ * same-workspace bases (legibility + grep). The qualified form is the
+ * only way to reach the platform-level shared bases.
+ */
+function parseExtendsKey(
+    extendsKey: string,
+    md: ManagedAgentMd,
+): { workspace: string; slug: string } {
+    if (!extendsKey.includes('/')) {
+        return { workspace: md.workspace, slug: extendsKey };
+    }
+    const parts = extendsKey.split('/');
+    if (parts.length !== 2 || parts[0].length === 0 || parts[1].length === 0) {
+        throw new Error(
+            `managed-agents/${md.slug}.md: "extends" must be "<slug>" or "<workspace>/<slug>" ` +
+            `(got ${JSON.stringify(extendsKey)})`,
+        );
+    }
+    return { workspace: parts[0], slug: parts[1] };
+}
+
+/**
  * §7.13.5 — resolve the `extends:` chain on `md` and return a
  * synthetic, fully-composed `ManagedAgentMd` ready for `toAgentDeclaration`.
  * If `md` has no `extends:` key, returns `md` unchanged.
@@ -306,8 +345,10 @@ export const MAX_EXTENDS_DEPTH = 3;
  * - Cycle detection on `<workspace>/<slug>` path; throws with the
  *   full path printed (`ws/a → ws/b → ws/a`).
  * - Depth cap `MAX_EXTENDS_DEPTH`; throws on overflow.
- * - Same-workspace only; the resolver may not return a base from a
- *   different workspace.
+ * - Same-workspace by default; `_platform` (`PLATFORM_WORKSPACE`) is
+ *   the one accepted cross-workspace base, reachable via the
+ *   `_platform/<slug>` qualified form. Any other cross-workspace
+ *   target throws.
  * - Missing base → `extends_target_not_found: <workspace>/<slug>`.
  */
 export function composeExtends(
@@ -340,24 +381,37 @@ function composeExtendsInner(
             `(got ${JSON.stringify(extendsKey)})`,
         );
     }
+    const { workspace: baseWorkspace, slug: baseSlug } = parseExtendsKey(extendsKey, md);
+
+    if (baseWorkspace !== md.workspace && baseWorkspace !== PLATFORM_WORKSPACE) {
+        throw new Error(
+            `managed-agents/${md.slug}.md: cross-workspace extends only allowed from ` +
+            `"${PLATFORM_WORKSPACE}" (got ${md.workspace} → ${baseWorkspace}/${baseSlug})`,
+        );
+    }
+
     if (chain.length >= MAX_EXTENDS_DEPTH) {
         throw new Error(
             `managed-agents/${md.slug}.md: extends chain exceeds ` +
             `max_extends_depth=${MAX_EXTENDS_DEPTH} ` +
-            `(${[...chain, nodeKey, `${md.workspace}/${extendsKey}`].join(' → ')})`,
+            `(${[...chain, nodeKey, `${baseWorkspace}/${baseSlug}`].join(' → ')})`,
         );
     }
 
-    const baseRaw = resolveBase(md.workspace, extendsKey);
+    const baseRaw = resolveBase(baseWorkspace, baseSlug);
     if (!baseRaw) {
         throw new Error(
-            `managed-agents/${md.slug}.md: extends_target_not_found: ${md.workspace}/${extendsKey}`,
+            `managed-agents/${md.slug}.md: extends_target_not_found: ${baseWorkspace}/${baseSlug}`,
         );
     }
-    if (baseRaw.workspace !== md.workspace) {
+    // Resolver integrity: returned base must match what we asked for.
+    // Catches buggy resolvers that silently return a wrong-workspace row
+    // (the same shape the old "cross-workspace extends not allowed"
+    // check guarded against — kept here as a hard assertion).
+    if (baseRaw.workspace !== baseWorkspace || baseRaw.slug !== baseSlug) {
         throw new Error(
-            `managed-agents/${md.slug}.md: cross-workspace extends not allowed ` +
-            `(${md.workspace} → ${baseRaw.workspace}/${extendsKey})`,
+            `managed-agents/${md.slug}.md: resolver returned wrong base ` +
+            `(asked for ${baseWorkspace}/${baseSlug}, got ${baseRaw.workspace}/${baseRaw.slug})`,
         );
     }
 

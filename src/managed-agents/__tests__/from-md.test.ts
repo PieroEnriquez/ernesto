@@ -364,7 +364,7 @@ ${body}
         );
     });
 
-    it('rejects a resolver that returns a base in another workspace', () => {
+    it('rejects a buggy resolver that returns a base in a different workspace from what was asked for', () => {
         const base = parseManagedAgentMd(baseRaw('shared-base'), {
             slug: 'shared-base',
             workspace: 'other',
@@ -375,7 +375,75 @@ ${body}
         });
         expect(() =>
             composeExtends(md, { resolveBase: () => base }),
-        ).toThrow(/cross-workspace extends not allowed/);
+        ).toThrow(/resolver returned wrong base/);
+    });
+
+    it('allows extends from _platform via the qualified form', () => {
+        const base = parseManagedAgentMd(baseRaw('shared-base', 'PLATFORM BASE PROSE.'), {
+            slug: 'shared-base',
+            workspace: '_platform',
+        });
+        const local = parseManagedAgentMd(
+            `---
+slug: ext
+name: Ext
+description: pulls shared base from _platform
+extends: _platform/shared-base
+---
+
+LOCAL PROSE.
+`,
+            { slug: 'ext', workspace: 'marketing' },
+        );
+        const composed = composeExtends(local, { resolveBase: resolverFrom([base]) });
+        expect(composed.body).toBe('PLATFORM BASE PROSE.\n\nLOCAL PROSE.');
+        // model/mcpServers/outputFormat were inherited from the platform base.
+        expect(composed.frontMatter.model).toBe('claude-haiku-4-5');
+        expect(composed.frontMatter.mcpServers).toEqual(['ernesto']);
+    });
+
+    it('rejects cross-workspace extends to a non-platform workspace', () => {
+        const base = parseManagedAgentMd(baseRaw('shared-base'), {
+            slug: 'shared-base',
+            workspace: 'payments',
+        });
+        const md = parseManagedAgentMd(minimalRaw('\nextends: payments/shared-base'), {
+            slug: 'test-agent',
+            workspace: 'legal',
+        });
+        expect(() =>
+            composeExtends(md, { resolveBase: resolverFrom([base]) }),
+        ).toThrow(/cross-workspace extends only allowed from "_platform"/);
+    });
+
+    it('emits extends_target_not_found with the qualified workspace when the platform base is missing', () => {
+        const md = parseManagedAgentMd(minimalRaw('\nextends: _platform/missing-base'), {
+            slug: 'test-agent',
+            workspace: 'marketing',
+        });
+        expect(() =>
+            composeExtends(md, { resolveBase: () => undefined }),
+        ).toThrow(/extends_target_not_found: _platform\/missing-base/);
+    });
+
+    it('rejects malformed qualified extends (too many slashes)', () => {
+        const md = parseManagedAgentMd(minimalRaw('\nextends: a/b/c'), {
+            slug: 'test-agent',
+            workspace: 'w',
+        });
+        expect(() =>
+            composeExtends(md, { resolveBase: () => undefined }),
+        ).toThrow(/"extends" must be "<slug>" or "<workspace>\/<slug>"/);
+    });
+
+    it('rejects malformed qualified extends (empty workspace or slug part)', () => {
+        const md = parseManagedAgentMd(minimalRaw('\nextends: "/no-workspace"'), {
+            slug: 'test-agent',
+            workspace: 'w',
+        });
+        expect(() =>
+            composeExtends(md, { resolveBase: () => undefined }),
+        ).toThrow(/"extends" must be "<slug>" or "<workspace>\/<slug>"/);
     });
 
     it('concatenates base body and local body with a blank line', () => {
