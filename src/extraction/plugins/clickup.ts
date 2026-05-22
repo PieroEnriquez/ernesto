@@ -9,14 +9,20 @@
  *
  * Target syntax (matches frontmatter convention):
  *   - task:{id}                 → tasks/{id}.json (raw JSON, v2)
- *   - list:{id}                 → lists/{id}.json (raw JSON list metadata, v2)
+ *   - list:{id}                 → lists/{slug}-{id}.json (raw JSON list metadata, v2).
+ *                                  `{slug}` is the list's name slugified; the literal
+ *                                  list id is appended so the filename is unique even
+ *                                  when two lists share a name and the id stays one
+ *                                  Grep away. Falls back to bare `lists/{id}.json` if
+ *                                  the list has no name.
  *   - doc:{id}                  → docs/{id}/{slug}.md per page (markdown, v3,
  *                                  requires workspaceId option)
  *   - doc:{id}:{rootPageId}     → same shape, but pages outside the subtree
  *                                  rooted at {rootPageId} are dropped.
- *   - list-table:{id}           → lists/{id}.md (markdown table of tasks, legacy
- *                                  ClickUpListFormat parity; closed tasks older
- *                                  than ~3 months are dropped, v2)
+ *   - list-table:{id}           → lists/{slug}-{id}.md (markdown table of tasks, legacy
+ *                                  ClickUpListFormat parity; closed tasks older than
+ *                                  ~3 months are dropped, v2). Same `{slug}-{id}` shape
+ *                                  as `list:` — only the leaf extension differs.
  *   - folder:{id}               → walk every non-archived list + doc under the
  *                                  folder and emit one entry per child (uses v2
  *                                  for the folder and v3 for docs, requires
@@ -349,8 +355,17 @@ async function buildEntry(
     response: Response,
 ): Promise<ExtractionEntry> {
     const payload = (await response.json()) as unknown;
+    let path: string;
+    if (kind === 'task') {
+        path = `tasks/${id}.json`;
+    } else {
+        const name = typeof (payload as { name?: unknown }).name === 'string'
+            ? (payload as { name: string }).name
+            : undefined;
+        path = `lists/${listPathStem(name, id)}.json`;
+    }
     return {
-        path: `${kind === 'task' ? 'tasks' : 'lists'}/${id}.json`,
+        path,
         content: stringifyJson(payload),
         contentType: 'application/json',
     };
@@ -410,7 +425,7 @@ async function fetchListTable(args: FetchListTableArgs): Promise<ExtractionEntry
     const markdown = renderTaskTable(listName, args.id, filtered);
 
     return {
-        path: `lists/${args.id}.md`,
+        path: `lists/${listPathStem(listName, args.id)}.md`,
         content: markdown,
         contentType: 'text/markdown',
     };
@@ -655,6 +670,22 @@ function filterToSubtree(
         for (const child of children) queue.push(child.id);
     }
     return kept;
+}
+
+/**
+ * Per-list filename stem: `{slug}-{id}` when the list has a usable
+ * name, the raw id otherwise. The id is kept in full — every ClickUp
+ * list id is 9–12 digits, so the overhead is small and the audit
+ * value of seeing the literal id in the filename is high.
+ *
+ * On rename in ClickUp the slug part changes; the id suffix survives.
+ * Worker writes the new path; the old file becomes an orphan in
+ * master-fs until a later GC sweep cleans it.
+ */
+function listPathStem(name: string | undefined, id: string): string {
+    const slug = slugify(name);
+    if (!slug) return id;
+    return `${slug}-${id}`;
 }
 
 function slugify(name: string | undefined): string {
@@ -942,7 +973,7 @@ async function emitDiscoveredItem(
         const payload = (await res.json()) as unknown;
         return [
             {
-                path: `lists/${item.id}.json`,
+                path: `lists/${listPathStem(item.name, item.id)}.json`,
                 content: stringifyJson(payload),
                 contentType: 'application/json',
             },

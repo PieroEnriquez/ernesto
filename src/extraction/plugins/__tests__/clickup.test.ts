@@ -65,7 +65,7 @@ describe('clickupPlugin – happy path per target kind', () => {
         expect(typeof result.fetchedAt).toBe('string');
     });
 
-    it('fetches a list and returns a JSON entry under lists/{id}.json', async () => {
+    it('fetches a list and returns a JSON entry under lists/{slug}-{id}.json', async () => {
         const listPayload = { id: 'list_42', name: 'Backlog' };
         const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, listPayload));
         vi.stubGlobal('fetch', fetchMock);
@@ -79,10 +79,23 @@ describe('clickupPlugin – happy path per target kind', () => {
         const [url] = fetchMock.mock.calls[0];
         expect(url).toBe('https://api.clickup.com/api/v2/list/list_42');
         expect(result.entries[0]).toMatchObject({
-            path: 'lists/list_42.json',
+            path: 'lists/backlog-list_42.json',
             contentType: 'application/json',
         });
         expect(JSON.parse(result.entries[0].content)).toEqual(listPayload);
+    });
+
+    it('falls back to lists/{id}.json when the list has no usable name', async () => {
+        const listPayload = { id: 'list_42' };
+        const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, listPayload));
+        vi.stubGlobal('fetch', fetchMock);
+
+        const plugin = clickupPlugin({ token: TOKEN });
+        const result = await plugin.fetch(
+            { target: 'list:list_42' },
+            makeCtx(),
+        );
+        expect(result.entries[0].path).toBe('lists/list_42.json');
     });
 
     it('fetches a doc via v3 page_listing and emits one markdown entry per page', async () => {
@@ -275,7 +288,7 @@ describe('clickupPlugin – list-table target', () => {
         return String(d.getTime());
     };
 
-    it('renders a markdown table under lists/{id}.md with the legacy columns', async () => {
+    it('renders a markdown table under lists/{slug}-{id}.md with the legacy columns', async () => {
         const tasks = [
             {
                 id: 't1',
@@ -339,7 +352,7 @@ describe('clickupPlugin – list-table target', () => {
 
         expect(result.entries).toHaveLength(1);
         const entry = result.entries[0];
-        expect(entry.path).toBe('lists/list_99.md');
+        expect(entry.path).toBe('lists/sprint-2026-q2-list_99.md');
         expect(entry.contentType).toBe('text/markdown');
         // Header carries the list name.
         expect(entry.content).toContain('# Sprint 2026-Q2');
@@ -369,7 +382,7 @@ describe('clickupPlugin – list-table target', () => {
 
         expect(result.entries).toHaveLength(1);
         const entry = result.entries[0];
-        expect(entry.path).toBe('lists/list_99.md');
+        expect(entry.path).toBe('lists/sprint-2026-q2-list_99.md');
         expect(entry.content).toContain('# Sprint 2026-Q2');
         expect(entry.content).toContain('_No tasks._');
         // No table header rendered for an empty list.
@@ -578,7 +591,7 @@ describe('clickupPlugin – folder walk', () => {
         );
 
         const paths = result.entries.map((e) => e.path).sort();
-        expect(paths).toEqual(['docs/D1/page-1.md', 'lists/L1.json']);
+        expect(paths).toEqual(['docs/D1/page-1.md', 'lists/general-L1.json']);
         // L2 must never have been fetched — its emit was skipped by the filter.
         const calledL2 = fetchMock.mock.calls.some(([u]) => /\/list\/L2$/.test(String(u)));
         expect(calledL2).toBe(false);
@@ -614,7 +627,7 @@ describe('clickupPlugin – folder walk', () => {
         );
 
         const paths = result.entries.map((e) => e.path);
-        expect(paths).toEqual(['lists/L1.json']);
+        expect(paths).toEqual(['lists/draft-L1.json']);
     });
 
     it('requires workspaceId for folder: targets', async () => {
@@ -673,8 +686,8 @@ describe('clickupPlugin – space walk', () => {
         const paths = result.entries.map((e) => e.path).sort();
         expect(paths).toEqual([
             'docs/D1/home.md',
-            'lists/FL1.json',
-            'lists/L1.json',
+            'lists/inbox-FL1.json',
+            'lists/tasks-L1.json',
         ]);
     });
 });
