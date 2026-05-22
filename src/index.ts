@@ -118,6 +118,17 @@ export type {
     DateRangeValue,
 } from './dashboards';
 
+// ─── Harness (runtime abstraction) ───────────────────────────────────────
+export type {
+    Harness, AgentHandle, RunHandle, HarnessEvent,
+    HarnessCapabilities, AgentDefinition, ToolSpec, ModelRef,
+    ModelInfo, AgentInfo, RunResult, HarnessMessage,
+    UserMessage, AssistantBlock, RunStatus,
+    CreateOptions, SendOptions, ListOptions, ListResult, SubagentDef,
+} from './harness';
+export { createMockHarness } from './harness/mock';
+// CAS harness is sub-export only (peer dep): import from 'ernesto/harness/cas'
+
 // ─── Extractions ─────────────────────────────────────────────────────────
 export {
     defineExtraction, ExtractionRegistry, dispatchExtraction,
