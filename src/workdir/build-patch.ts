@@ -27,6 +27,9 @@ export async function buildSettlePatch(
         addArgs.push(`workspaces/${w}`);
         addArgs.push(`:(exclude)workspaces/${w}/extracted`);
         addArgs.push(`:(exclude)workspaces/${w}/attached`);
+        // Master-fs-managed sentinel; never belongs in a Tier-C settle patch.
+        // Keep in lockstep with `settle.ts`'s `GENERATED_FILES`.
+        addArgs.push(`:(exclude)workspaces/${w}/.derived-from-sha`);
     }
     await runGit(workingTreeRoot, addArgs);
     const patch = await runGit(workingTreeRoot, ['diff', '--cached', '--binary', '--']);

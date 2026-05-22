@@ -33,8 +33,19 @@ const GENERATED_SUBDIRS = ['extracted', 'attached'] as const;
  * git (workdir-authored, settled normally). The route still writes the
  * yaml to master-fs today, so the exclusion stays until the route flip
  * lands; otherwise sibling-session attaches would leak via the overlay.
+ *
+ * `.derived-from-sha` is the per-workspace freshness sentinel written by
+ * the derive worker into master-fs only (see
+ * `tier-shared/master-fs-overlays.ts`'s `DERIVED_FROM_SHA_FILE` and the
+ * worker at `tier-a/derive-worker.ts`). It is master-fs-canonical, must
+ * not enter git, and was historically leaking in via `git add` because
+ * the exclusion list omitted it — every refresh-from-main then conflicted
+ * on every workspace as soon as the derive worker bumped the marker for
+ * a workspace touched by any settle. Listing it here keeps future settles
+ * clean; cleanup of the existing tracked copies is a one-shot `git rm`
+ * elsewhere.
  */
-const GENERATED_FILES = ['attachments.yaml'] as const;
+const GENERATED_FILES = ['attachments.yaml', '.derived-from-sha'] as const;
 
 export interface LintError {
     code: string;
