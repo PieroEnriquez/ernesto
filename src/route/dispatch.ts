@@ -15,7 +15,8 @@
  */
 
 import type { RouteRegistry } from './route-registry';
-import type { Route, RouteContext, RouteScope } from './define-route';
+import type { RouteContext, RouteScope } from './define-route';
+import { resolveRouteScope } from './define-route';
 
 const AGENT_OPS_SCOPE: RouteScope = 'ernesto:agent-ops';
 
@@ -41,11 +42,16 @@ export async function dispatchRoute(
         return { ok: false, error: 'route_not_found', details: { uri } };
     }
 
-    const scopeDenial = checkScope(route, ctx.scopes);
-    if (scopeDenial) {
-        return { ok: false, error: 'scope_denied', details: scopeDenial };
-    }
-
+    // Validate input BEFORE resolving scope. Dynamic-scope routes
+    // (e.g. `_platform://list-dashboards`, scope =
+    // `${input.workspace}:read`) need typed input to compute their
+    // required scope. For static-scope routes the ordering is
+    // semantically identical: a malformed call returns `invalid_input`
+    // either way; a well-formed but unauthorized call returns
+    // `scope_denied`. Returning `invalid_input` before `scope_denied`
+    // when both apply is also the safer disclosure — we don't leak
+    // "your scope was wrong" until the caller has at least passed the
+    // input contract.
     const parsedInput = route.input.safeParse(params);
     if (!parsedInput.success) {
         return {
@@ -53,6 +59,12 @@ export async function dispatchRoute(
             error: 'invalid_input',
             details: { issues: parsedInput.error.issues },
         };
+    }
+
+    const requiredScope = resolveRouteScope(route, parsedInput.data);
+    const scopeDenial = checkScope(requiredScope, ctx.scopes);
+    if (scopeDenial) {
+        return { ok: false, error: 'scope_denied', details: scopeDenial };
     }
 
     let raw: unknown;
@@ -85,12 +97,15 @@ interface ScopeDenialDetails {
     missingCount: number;
 }
 
-function checkScope(route: Route, scopes: ReadonlySet<RouteScope>): ScopeDenialDetails | null {
+function checkScope(
+    required: ReadonlyArray<RouteScope>,
+    scopes: ReadonlySet<RouteScope>,
+): ScopeDenialDetails | null {
     if (scopes.has(AGENT_OPS_SCOPE)) return null;
-    const missing = route.scope.filter((s) => !scopes.has(s));
+    const missing = required.filter((s) => !scopes.has(s));
     if (missing.length === 0) return null;
     return {
-        required: route.scope,
+        required,
         missing,
         missingCount: missing.length,
     };

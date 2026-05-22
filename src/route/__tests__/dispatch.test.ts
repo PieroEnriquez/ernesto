@@ -100,6 +100,77 @@ describe('dispatchRoute', () => {
         expect(JSON.stringify(result.details)).not.toMatch(/at .*\.ts:/);
     });
 
+    // ─── Dynamic scope (function form) ─────────────────────────────────────
+
+    describe('dynamic scope (function form)', () => {
+        const platformDashboards = defineRoute({
+            uri: '_platform://list-dashboards',
+            scope: (input) => `${input.workspace}:read`,
+            input: z.object({ workspace: z.string() }),
+            output: z.object({ ok: z.literal(true) }),
+            handler: async () => ({ ok: true as const }),
+        });
+
+        it('resolves scope from validated input and accepts when caller has the derived scope', async () => {
+            const reg = new RouteRegistry();
+            reg.register(platformDashboards);
+            const result = await dispatchRoute(
+                reg,
+                '_platform://list-dashboards',
+                { workspace: 'marketing' },
+                makeCtx(['marketing:read']),
+            );
+            expect(result).toEqual({ ok: true, data: { ok: true } });
+        });
+
+        it('denies when caller has a different workspace scope', async () => {
+            const reg = new RouteRegistry();
+            reg.register(platformDashboards);
+            const result = await dispatchRoute(
+                reg,
+                '_platform://list-dashboards',
+                { workspace: 'payments' },
+                makeCtx(['marketing:read']),
+            );
+            expect(result.ok).toBe(false);
+            if (result.ok) return;
+            expect(result.error).toBe('scope_denied');
+            expect(result.details).toMatchObject({
+                required: ['payments:read'],
+                missing: ['payments:read'],
+            });
+        });
+
+        it('reports invalid_input before scope_denied when input is malformed', async () => {
+            const reg = new RouteRegistry();
+            reg.register(platformDashboards);
+            // No `workspace` field → input invalid; we can't derive scope
+            // without parsed input, so invalid_input must come back, not
+            // scope_denied. This is the post-reorder guarantee.
+            const result = await dispatchRoute(
+                reg,
+                '_platform://list-dashboards',
+                { not_a_workspace: 'x' },
+                makeCtx([]),
+            );
+            expect(result.ok).toBe(false);
+            if (result.ok) return;
+            expect(result.error).toBe('invalid_input');
+        });
+
+        it('agent-ops bypass still applies to dynamic-scope routes', async () => {
+            const reg = new RouteRegistry();
+            reg.register(platformDashboards);
+            const result = await dispatchRoute(
+                reg,
+                '_platform://list-dashboards',
+                { workspace: 'payments' },
+                makeCtx(['ernesto:agent-ops']),
+            );
+            expect(result).toEqual({ ok: true, data: { ok: true } });
+        });
+    });
+
     it('returns invalid_output and logs loudly when handler returns wrong shape', async () => {
         const reg = new RouteRegistry();
         reg.register(
