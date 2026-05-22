@@ -36,9 +36,17 @@ export type {
     EngineLogger,
     StepKindHandlerCtx,
     StepKindHandlerResult,
+    EmitFactEvent,
+    EmitFactEventInput,
 } from './types/handler';
 
-export type { FactEvent, StoredEvent, FraguaFactEvent } from './types/event';
+export type {
+    FactEvent,
+    FactEventType,
+    TypedFactEvent,
+    StoredEvent,
+    FraguaFactEvent,
+} from './types/event';
 
 export type {
     RunState,

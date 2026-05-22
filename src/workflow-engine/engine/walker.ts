@@ -19,7 +19,12 @@ import type { EventBus } from '../event-bus';
 import type { HandlerDispatcher } from '../dispatch';
 import type { StorePort } from '../store/port';
 import type { HitlController } from '../hitl';
-import type { EngineLogger, HandlerContext } from '../types/handler';
+import type {
+    EngineLogger,
+    EmitFactEvent,
+    EmitFactEventInput,
+    HandlerContext,
+} from '../types/handler';
 import type {
     DispatchWorkflowInput,
     DispatchWorkflowResult,
@@ -88,12 +93,25 @@ export async function walk(
             }
 
             const handler = deps.dispatcher.require(step.kind);
+            const stepEmit: EmitFactEvent = (input: EmitFactEventInput) => {
+                const ts = input.ts ?? Date.now();
+                const { ts: _t, ...rest } = input;
+                emit(deps, {
+                    runId,
+                    seq: deps.nextSeq(runId),
+                    type: input.type,
+                    payload: { stepId, ...rest } as Record<string, unknown>,
+                    ts,
+                    routing,
+                });
+            };
             const ctx: HandlerContext = {
                 runId,
                 stepId,
                 routing,
                 signal,
                 log: deps.log,
+                emit: stepEmit,
             };
             const result = await handler(step, ctx);
 

@@ -196,6 +196,148 @@ describe('walker', () => {
         expect(state?.status).toBe('aborted');
     });
 
+    it('threads ctx.emit() so handlers can publish in-step fact events', async () => {
+        const rig = makeRig();
+        rig.dispatcher.register('agent-cas', async (_step, ctx) => {
+            // Forward every HarnessEvent variant the brief calls out as
+            // its corresponding `fact.*` event, mirroring what the
+            // backend's `runAgentStepKind` will do per-iteration.
+            ctx.emit!({
+                type: 'fact.assistant_delta',
+                text: 'partial ',
+            });
+            ctx.emit!({
+                type: 'fact.tool_call',
+                toolUseId: 'tu-1',
+                name: 'Read',
+                input: { path: '/x' },
+            });
+            ctx.emit!({
+                type: 'fact.tool_result',
+                toolUseId: 'tu-1',
+                output: 'ok',
+                isError: false,
+            });
+            ctx.emit!({
+                type: 'fact.thinking',
+                text: 'hmm',
+            });
+            ctx.emit!({
+                type: 'fact.usage',
+                inputTokens: 10,
+                outputTokens: 20,
+                cacheRead: 1,
+                cacheWrite: 2,
+                costUsd: 0.001,
+            });
+            ctx.emit!({
+                type: 'fact.subagent_started',
+                slug: 'translate',
+                subRunId: 'child-1',
+            });
+            ctx.emit!({
+                type: 'fact.subagent_completed',
+                slug: 'translate',
+                subRunId: 'child-1',
+                result: { ok: true },
+            });
+            ctx.emit!({
+                type: 'fact.assistant_message',
+                content: [{ type: 'text', text: 'final' }],
+            });
+            return { kind: 'completed', output: { ok: true } };
+        });
+        const decl: WorkflowDeclaration = {
+            name: 'wf-emit',
+            description: 'd',
+            version: 1,
+            steps: {
+                s1: {
+                    kind: 'agent-cas',
+                    model: 'm',
+                    systemPrompt: 'sp',
+                    prompt: 'p',
+                } as any,
+            },
+        };
+        await walk(
+            'run-emit',
+            decl,
+            {
+                slug: 'wf-emit',
+                inputs: {},
+                principal: { userId: 'u', scopes: new Set() },
+                context: {},
+            },
+            { ...rig, log: NOOP_LOG },
+        );
+        const types = rig.events.map((e) => e.type);
+        expect(types).toEqual([
+            'fact.run_started',
+            'fact.assistant_delta',
+            'fact.tool_call',
+            'fact.tool_result',
+            'fact.thinking',
+            'fact.usage',
+            'fact.subagent_started',
+            'fact.subagent_completed',
+            'fact.assistant_message',
+            'fact.node_completed',
+            'fact.run_terminated',
+        ]);
+        const delta = rig.events.find((e) => e.type === 'fact.assistant_delta');
+        expect(delta?.payload).toMatchObject({ stepId: 's1', text: 'partial ' });
+        const toolCall = rig.events.find((e) => e.type === 'fact.tool_call');
+        expect(toolCall?.payload).toMatchObject({
+            stepId: 's1',
+            toolUseId: 'tu-1',
+            name: 'Read',
+            input: { path: '/x' },
+        });
+        const toolResult = rig.events.find((e) => e.type === 'fact.tool_result');
+        expect(toolResult?.payload).toMatchObject({
+            stepId: 's1',
+            toolUseId: 'tu-1',
+            output: 'ok',
+            isError: false,
+        });
+        const thinking = rig.events.find((e) => e.type === 'fact.thinking');
+        expect(thinking?.payload).toMatchObject({ stepId: 's1', text: 'hmm' });
+        const usage = rig.events.find((e) => e.type === 'fact.usage');
+        expect(usage?.payload).toMatchObject({
+            stepId: 's1',
+            inputTokens: 10,
+            outputTokens: 20,
+            cacheRead: 1,
+            cacheWrite: 2,
+            costUsd: 0.001,
+        });
+        const subStarted = rig.events.find(
+            (e) => e.type === 'fact.subagent_started',
+        );
+        expect(subStarted?.payload).toMatchObject({
+            stepId: 's1',
+            slug: 'translate',
+            subRunId: 'child-1',
+        });
+        const subCompleted = rig.events.find(
+            (e) => e.type === 'fact.subagent_completed',
+        );
+        expect(subCompleted?.payload).toMatchObject({
+            stepId: 's1',
+            slug: 'translate',
+            subRunId: 'child-1',
+            result: { ok: true },
+        });
+        // Sequence is monotonic over both walker- and handler-emitted
+        // events — store side enforces it.
+        const stored = await rig.store.listEvents('run-emit');
+        expect(stored.length).toBe(types.length);
+        for (let i = 1; i < stored.length; i++) {
+            expect(stored[i]!.seq).toBe(stored[i - 1]!.seq + 1);
+        }
+    });
+
     it('appends events to the store under run id', async () => {
         const rig = makeRig();
         rig.dispatcher.register('route', async () => ({
