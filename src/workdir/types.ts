@@ -9,6 +9,59 @@
  * `runGit(workingTreeRoot, args)` against a real on-disk working tree.
  */
 
+/**
+ * Glob input. `pattern` is a workdir-relative bash-style glob compiled by
+ * picomatch (supports `*`, `**`, `?`, character classes `[a-z]`, brace
+ * expansion `{ts,tsx}`, and leading-`!` negation — exactly the subset
+ * Claude Code's native Glob tool exposes). `path` optionally restricts the
+ * search to a workdir-relative subtree.
+ *
+ * Returns workdir-relative paths sorted by modification time (newest first)
+ * to match Claude Code's native Glob.
+ */
+export interface GlobOptions {
+    path?: string;
+}
+
+/**
+ * Grep input modeled on Claude Code's native Grep (a ripgrep front-end).
+ *
+ * - `pattern`     — regex (extended by default; PCRE-style classes work on rg).
+ * - `path`        — workdir-relative file or directory to search (defaults to root).
+ * - `glob`        — picomatch-shaped glob filter, e.g. `*.ts` or `**\/*.{ts,tsx}`.
+ * - `type`        — ripgrep file-type, e.g. `js`, `py`, `rust`.
+ * - `caseInsensitive` — maps to `-i`.
+ * - `contextBefore` / `contextAfter` — line context; only honored when `outputMode: 'content'`.
+ * - `lineNumbers` — line numbers in content output (default true).
+ * - `multiline`   — patterns may span lines (rg `-U --multiline-dotall`).
+ * - `outputMode`  — `content` | `files_with_matches` | `count` (default `files_with_matches`).
+ * - `headLimit`   — cap number of output rows.
+ */
+export type GrepOutputMode = 'content' | 'files_with_matches' | 'count';
+
+export interface GrepOptions {
+    pattern: string;
+    path?: string;
+    glob?: string;
+    type?: string;
+    caseInsensitive?: boolean;
+    contextBefore?: number;
+    contextAfter?: number;
+    lineNumbers?: boolean;
+    multiline?: boolean;
+    outputMode?: GrepOutputMode;
+    headLimit?: number;
+}
+
+export interface GrepResult {
+    /** Raw output lines (one per match / file / counted entry). */
+    lines: ReadonlyArray<string>;
+    /** True if output was truncated by `headLimit`. */
+    truncated: boolean;
+    /** Output mode actually used (echoed for clarity). */
+    mode: GrepOutputMode;
+}
+
 export interface FsAdapter {
     readFile(path: string): Promise<Uint8Array>;
     writeFile(path: string, content: Uint8Array): Promise<void>;
@@ -20,7 +73,10 @@ export interface FsAdapter {
      *  normally. The in-memory adapter implements this as a byte copy. */
     link(sourcePath: string, linkPath: string): Promise<void>;
     remove(path: string): Promise<void>;
-    glob(pattern: string): Promise<string[]>;
+    /** Glob, workdir-rooted. See `GlobOptions`. */
+    glob(pattern: string, options?: GlobOptions): Promise<string[]>;
+    /** Grep, workdir-rooted. See `GrepOptions`. */
+    grep(options: GrepOptions): Promise<GrepResult>;
 }
 
 export type MasterFsResolution =

@@ -1,19 +1,35 @@
 import { promises as fsp } from 'fs';
 import * as path from 'path';
-import { FsAdapter, MasterFsAdapter } from './types';
+import { spawn } from 'child_process';
+import picomatch from 'picomatch';
+import {
+    FsAdapter, MasterFsAdapter,
+    GlobOptions, GrepOptions, GrepResult, GrepOutputMode,
+} from './types';
 
-function matchesGlob(p: string, pattern: string): boolean {
-    if (pattern === p) return true;
-    if (pattern.endsWith('/**')) {
-        const prefix = pattern.slice(0, -3);
-        return p === prefix || p.startsWith(prefix + '/');
+/**
+ * Build a picomatch matcher with the same flag set we want everywhere
+ * (bash-style: `*`, `**`, `?`, `[a-z]`, `{ts,tsx}`, leading `!` negation).
+ * Setting `dot: true` so dotfiles match — that's what native Glob does.
+ */
+function compileGlob(pattern: string): (p: string) => boolean {
+    return picomatch(pattern, { dot: true });
+}
+
+/**
+ * Resolve and validate the workdir-relative sub-path for glob/grep. We
+ * forbid `..` segments lexically; we never `realpath` (symlink escapes are
+ * blocked by the working-tree's hard-link layout, not by symlink resolution).
+ */
+function safeSubpath(sub: string | undefined): string {
+    if (!sub) return '';
+    if (sub.startsWith('/') || sub.includes('\\')) {
+        throw new Error('invalid_path');
     }
-    if (pattern.endsWith('/*')) {
-        const prefix = pattern.slice(0, -2);
-        if (!p.startsWith(prefix + '/')) return false;
-        return !p.slice(prefix.length + 1).includes('/');
+    if (sub.split('/').some(seg => seg === '..')) {
+        throw new Error('parent_segment_not_allowed');
     }
-    return false;
+    return sub.replace(/^\.\/+/, '').replace(/\/+$/, '');
 }
 
 /** Backend & CLI default. Wraps node `fs`, rooted at `workingTreeRoot`. */
@@ -51,8 +67,12 @@ export function makeNodeFsAdapter(workingTreeRoot: string): FsAdapter {
         async remove(p) {
             await fsp.rm(abs(p), { recursive: true, force: true });
         },
-        async glob(pattern) {
-            const out: string[] = [];
+        async glob(pattern: string, options?: GlobOptions): Promise<string[]> {
+            const sub = safeSubpath(options?.path);
+            const isMatch = compileGlob(pattern);
+            // Walk the tree (real FS), collect rel-path + mtime, filter, sort.
+            const collected: Array<{ relPath: string; mtimeMs: number }> = [];
+            const startRel = sub;
             async function walk(rel: string): Promise<void> {
                 let entries;
                 try {
@@ -61,13 +81,33 @@ export function makeNodeFsAdapter(workingTreeRoot: string): FsAdapter {
                     return;
                 }
                 for (const e of entries) {
+                    // Skip `.git` — never glob into the worktree's git metadata.
+                    if (e.name === '.git' && !rel) continue;
                     const child = rel ? `${rel}/${e.name}` : e.name;
-                    if (e.isDirectory()) await walk(child);
-                    else out.push(child);
+                    if (e.isDirectory()) {
+                        await walk(child);
+                    } else if (e.isFile()) {
+                        // Match against the path *relative to the workdir root*,
+                        // so patterns like `workspaces/**/*.md` work regardless
+                        // of `options.path`.
+                        if (isMatch(child)) {
+                            try {
+                                const st = await fsp.stat(abs(child));
+                                collected.push({ relPath: child, mtimeMs: st.mtimeMs });
+                            } catch {
+                                /* race: file disappeared, skip */
+                            }
+                        }
+                    }
                 }
             }
-            await walk('');
-            return out.filter(p => matchesGlob(p, pattern));
+            await walk(startRel);
+            // Newest-first to match Claude Code's native Glob behavior.
+            collected.sort((a, b) => b.mtimeMs - a.mtimeMs);
+            return collected.map(c => c.relPath);
+        },
+        async grep(options: GrepOptions): Promise<GrepResult> {
+            return runRipgrep(workingTreeRoot, options);
         },
     };
 }
@@ -93,4 +133,127 @@ export function makeVolumeMasterFs(masterFsRoot: string): MasterFsAdapter {
             }
         },
     };
+}
+
+// ─── ripgrep front-end ────────────────────────────────────────────────────
+
+export class RipgrepNotInstalledError extends Error {
+    constructor() {
+        super('ripgrep_not_installed');
+        this.name = 'RipgrepNotInstalledError';
+    }
+}
+
+/**
+ * Run ripgrep over `workingTreeRoot`. We shell out to the `rg` binary because
+ * (a) it's an order of magnitude faster than any JS implementation and
+ * (b) its CLI is the exact surface Claude Code's native Grep advertises, so
+ * agents writing Grep-style queries get parity.
+ *
+ * The binary MUST be on PATH at runtime. We fail loudly with
+ * `ripgrep_not_installed` if it isn't.
+ */
+async function runRipgrep(workingTreeRoot: string, opts: GrepOptions): Promise<GrepResult> {
+    const mode: GrepOutputMode = opts.outputMode ?? 'files_with_matches';
+    const args: string[] = [];
+
+    // Sane defaults: no color, never recurse submodules, follow no symlinks.
+    args.push('--no-config', '--no-ignore-vcs');
+    // ripgrep respects .gitignore by default; in the workdir we want that
+    // (settle filters `_tmp` etc by gitignore too). Keep default behavior.
+
+    if (opts.caseInsensitive) args.push('-i');
+
+    if (opts.multiline) {
+        // `-U` enables multi-line matches; combine with --multiline-dotall so
+        // `.` spans `\n` — what native Grep `multiline: true` documents.
+        args.push('-U', '--multiline-dotall');
+    }
+
+    if (opts.glob) {
+        args.push('--glob', opts.glob);
+    }
+    if (opts.type) {
+        args.push('--type', opts.type);
+    }
+
+    switch (mode) {
+        case 'files_with_matches':
+            args.push('-l');
+            break;
+        case 'count':
+            args.push('-c');
+            break;
+        case 'content':
+            // Line numbers default to true.
+            if (opts.lineNumbers !== false) args.push('-n');
+            if (opts.contextBefore && opts.contextBefore > 0) args.push('-B', String(opts.contextBefore));
+            if (opts.contextAfter && opts.contextAfter > 0) args.push('-A', String(opts.contextAfter));
+            // `--no-heading` keeps `path:line:text` on every row (parser-friendly).
+            args.push('--no-heading');
+            break;
+    }
+
+    // End-of-flags + pattern.
+    args.push('-e', opts.pattern);
+
+    // Path restriction. Lexically validated; passed as a positional arg.
+    if (opts.path) {
+        const sub = safeSubpath(opts.path);
+        if (sub) args.push(sub);
+    }
+
+    // Use `spawn` rather than `execFile` because some macOS dev hosts hang
+    // when `execFile`'s default piping interacts with ripgrep's multi-threaded
+    // worker output (multi-MB buffers + multi-thread writers). With explicit
+    // listeners we drain both streams as they fill. Doesn't change prod.
+    let stdout = '';
+    try {
+        stdout = await new Promise<string>((resolve, reject) => {
+            const child = spawn('rg', args, {
+                cwd: workingTreeRoot,
+                env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+                stdio: ['ignore', 'pipe', 'pipe'],
+            });
+            let out = '';
+            let err = '';
+            let outBytes = 0;
+            const MAX_BYTES = 16 * 1024 * 1024;
+            child.stdout.on('data', (d: Buffer) => {
+                outBytes += d.length;
+                if (outBytes > MAX_BYTES) {
+                    child.kill('SIGTERM');
+                    reject(new Error('ripgrep_output_exceeded_max_buffer'));
+                    return;
+                }
+                out += d.toString('utf8');
+            });
+            child.stderr.on('data', (d: Buffer) => { err += d.toString('utf8'); });
+            child.on('error', (e: NodeJS.ErrnoException) => {
+                if (e.code === 'ENOENT') reject(new RipgrepNotInstalledError());
+                else reject(e);
+            });
+            child.on('close', (code: number | null) => {
+                if (code === 0) resolve(out);
+                else if (code === 1) resolve(''); // no matches
+                else reject(new Error(`ripgrep_failed: ${err.slice(0, 200)}`));
+            });
+        });
+    } catch (err: unknown) {
+        if (err instanceof RipgrepNotInstalledError) throw err;
+        throw err;
+    }
+
+    const rawLines = stdout.split('\n');
+    // Drop the trailing empty line ripgrep emits.
+    if (rawLines.length > 0 && rawLines[rawLines.length - 1] === '') rawLines.pop();
+
+    const limit = opts.headLimit;
+    let lines: string[] = rawLines;
+    let truncated = false;
+    if (typeof limit === 'number' && limit >= 0 && rawLines.length > limit) {
+        lines = rawLines.slice(0, limit);
+        truncated = true;
+    }
+    return { lines, truncated, mode };
 }
