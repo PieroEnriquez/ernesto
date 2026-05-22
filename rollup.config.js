@@ -15,6 +15,7 @@ export default {
         'src/harness/fragua-pi/index.ts',
         'src/harness/mock/index.ts',
         'src/workflows/index.ts',
+        'src/workflow-engine/index.ts',
     ],
     // The CAS / Cursor / fragua-pi adapters import their respective SDK
     // packages; all are optional peer deps, so Rollup must not try to

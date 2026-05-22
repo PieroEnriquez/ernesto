@@ -1,0 +1,209 @@
+/**
+ * Step-graph walker. Promoted from the backend's
+ * `real-fragua-instance.ts:dispatchWorkflow` body, with HITL pause
+ * integration grafted on top.
+ *
+ * Walking strategy (Phase 0): declaration-order iteration. The
+ * `edge-selection` module exists for the eventual graph-driven walk
+ * but the current shape matches what the backend stub already does
+ * — flat enumeration of `steps:` keys, halting on the first non-
+ * `completed` result.
+ *
+ * The walker emits the canonical `fact.*` event taxonomy through the
+ * event bus + the store; `wire-fragua.ts:translateFactEvent` converts
+ * those to `ErnestoTierEvent` for per-tier subscribers.
+ */
+
+import type { WorkflowDeclaration } from '../../workflows/types';
+import type { EventBus } from '../event-bus';
+import type { HandlerDispatcher } from '../dispatch';
+import type { StorePort } from '../store/port';
+import type { HitlController } from '../hitl';
+import type { EngineLogger, HandlerContext } from '../types/handler';
+import type {
+    DispatchWorkflowInput,
+    DispatchWorkflowResult,
+} from '../types/runner';
+import type { FactEvent } from '../types/event';
+import { compileSteps } from '../types/graph';
+
+export interface WalkerDeps {
+    bus: EventBus;
+    dispatcher: HandlerDispatcher;
+    store: StorePort;
+    hitl: HitlController;
+    log: EngineLogger;
+    /** Hands out the next event seq for a given run. */
+    nextSeq(runId: string): number;
+}
+
+export async function walk(
+    runId: string,
+    declaration: WorkflowDeclaration,
+    input: DispatchWorkflowInput,
+    deps: WalkerDeps,
+): Promise<DispatchWorkflowResult> {
+    const routing: Record<string, unknown> = {
+        ...input.context,
+        userId: input.principal.userId,
+        scopes: [...input.principal.scopes],
+    };
+    const signal = input.signal ?? new AbortController().signal;
+
+    // Persist run-state row + emit fact.run_started.
+    const startedAt = Date.now();
+    await deps.store.putRunState({
+        runId,
+        workflow: input.slug,
+        status: 'running',
+        inputs: input.inputs,
+        routing,
+        startedAt,
+    });
+    emit(deps, {
+        runId,
+        seq: deps.nextSeq(runId),
+        type: 'fact.run_started',
+        payload: { workflow: input.slug, inputs: input.inputs },
+        ts: startedAt,
+        routing,
+    });
+
+    const outputs: Record<string, unknown> = {};
+    const steps = compileSteps(declaration);
+
+    try {
+        for (const { id: stepId, step } of steps) {
+            if (signal.aborted) {
+                emit(deps, {
+                    runId,
+                    seq: deps.nextSeq(runId),
+                    type: 'fact.run_terminated',
+                    payload: { status: 'aborted' },
+                    ts: Date.now(),
+                    routing,
+                });
+                await markEnded(deps.store, runId, 'aborted');
+                return { runId, status: 'canceled', outputs };
+            }
+
+            const handler = deps.dispatcher.require(step.kind);
+            const ctx: HandlerContext = {
+                runId,
+                stepId,
+                routing,
+                signal,
+                log: deps.log,
+            };
+            const result = await handler(step, ctx);
+
+            if (result.kind === 'error') {
+                emit(deps, {
+                    runId,
+                    seq: deps.nextSeq(runId),
+                    type: 'fact.run_terminated',
+                    payload: {
+                        status: 'errored',
+                        code: result.code,
+                        message: result.message,
+                        stepId,
+                    },
+                    ts: Date.now(),
+                    routing,
+                });
+                await markEnded(deps.store, runId, 'errored', {
+                    message: result.message,
+                });
+                return { runId, status: 'errored', outputs };
+            }
+
+            if (result.kind === 'paused_human') {
+                // Block on the HITL controller until an external
+                // `resumeRun` lands. The pause-promise resolves with
+                // the value the submitter provided; we stash it as
+                // the step's output and continue.
+                const resumed = await deps.hitl.pauseForHuman({
+                    runId,
+                    stepId,
+                    schema:
+                        (result.schema as Record<string, unknown>) ?? {},
+                    prompt: result.prompt,
+                    routes: result.routes,
+                    routing,
+                });
+                outputs[stepId] = resumed;
+                emit(deps, {
+                    runId,
+                    seq: deps.nextSeq(runId),
+                    type: 'fact.node_completed',
+                    payload: { nodeId: stepId, output: resumed },
+                    ts: Date.now(),
+                    routing,
+                });
+                continue;
+            }
+
+            outputs[stepId] = result.output;
+            emit(deps, {
+                runId,
+                seq: deps.nextSeq(runId),
+                type: 'fact.node_completed',
+                payload: { nodeId: stepId, output: result.output },
+                ts: Date.now(),
+                routing,
+            });
+        }
+
+        emit(deps, {
+            runId,
+            seq: deps.nextSeq(runId),
+            type: 'fact.run_terminated',
+            payload: { status: 'completed' },
+            ts: Date.now(),
+            routing,
+        });
+        await markEnded(deps.store, runId, 'completed');
+        return { runId, status: 'completed', outputs };
+    } catch (err) {
+        const message = (err as Error).message;
+        emit(deps, {
+            runId,
+            seq: deps.nextSeq(runId),
+            type: 'fact.run_terminated',
+            payload: { status: 'errored', message },
+            ts: Date.now(),
+            routing,
+        });
+        await markEnded(deps.store, runId, 'errored', { message });
+        return { runId, status: 'errored', outputs };
+    }
+}
+
+function emit(deps: WalkerDeps, event: FactEvent): void {
+    deps.bus.emit(event);
+    deps.store.appendEvent({
+        runId: event.runId,
+        type: event.type,
+        writer: 'engine',
+        payload: event.payload,
+        ts: event.ts,
+        ...(event.routing ? { routing: event.routing } : {}),
+    });
+}
+
+async function markEnded(
+    store: StorePort,
+    runId: string,
+    status: 'completed' | 'errored' | 'aborted',
+    error?: { message: string; stack?: string },
+): Promise<void> {
+    const state = await store.getRunState(runId);
+    if (!state) return;
+    const endedAt = Date.now();
+    await store.putRunState({
+        ...state,
+        status,
+        endedAt,
+        ...(error ? { error } : {}),
+    });
+}

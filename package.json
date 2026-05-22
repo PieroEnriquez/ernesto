@@ -52,6 +52,11 @@
       "types": "./dist/workflows/index.d.ts",
       "import": "./dist/workflows/index.js",
       "require": "./dist/workflows/index.cjs"
+    },
+    "./workflow-engine": {
+      "types": "./dist/workflow-engine/index.d.ts",
+      "import": "./dist/workflow-engine/index.js",
+      "require": "./dist/workflow-engine/index.cjs"
     }
   },
   "contributors": [
