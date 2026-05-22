@@ -15,9 +15,9 @@
  *
  * `slotId` lets an emitter target a previously-emitted component for
  * in-place update (status bars that progress through stages, progress
- * bars that advance, an inputs-pending input that gets resolved). The
- * three input-shaped components always carry a slotId so a subscriber
- * can swap the prompt UI for the resolved value once the user responds.
+ * bars that advance, an input prompt that gets resolved). The single
+ * `input` kind always carries a slotId so a subscriber can swap the
+ * prompt UI for the resolved value once the user responds.
  */
 
 /** Status pill — short progress signal. Update via `slotId` to walk
@@ -89,34 +89,31 @@ export interface ProgressProps {
     eta?: string;
 }
 
-export interface ChoiceInputProps {
+/**
+ * Unified input component — replaces the prior three variants
+ * (`choice_input` / `text_input` / `form`). The JSON Schema describes
+ * the expected input shape; the renderer inspects the schema to pick
+ * the widget:
+ *
+ *   { type: 'string' }                          → text field
+ *   { type: 'string', enum: [...] }             → buttons / radio / select
+ *   { type: 'string', format: 'multiline' }     → textarea
+ *   { type: 'number' }                          → number field
+ *   { type: 'boolean' }                         → toggle
+ *   { type: 'object', properties: { ... } }     → multi-field form
+ *   { type: 'array', items: { ... } }           → repeating "add another"
+ *
+ * Nested objects/arrays render as nested forms / repeating sections.
+ * `defaults` carries pre-filled values matching the schema shape.
+ */
+export interface InputProps {
     prompt: string;
-    choices: { value: string; label: string; description?: string }[];
-    multi?: boolean;
-    defaults?: string[];
-}
-
-export interface TextInputProps {
-    prompt: string;
-    schema?: {
-        type: 'string' | 'number' | 'boolean';
-        format?: string;
-        minLength?: number;
-        maxLength?: number;
-    };
+    /** JSON Schema describing the expected input shape. The schema is
+     *  the discriminator the renderer inspects to pick the widget. */
+    schema: Record<string, unknown>;
     defaults?: unknown;
-    multiline?: boolean;
-}
-
-export interface FormProps {
-    prompt: string;
-    fields: {
-        id: string;
-        label: string;
-        type: 'string' | 'number' | 'boolean' | 'choice';
-        required?: boolean;
-        options?: string[];
-    }[];
+    /** Optional CTA label (Slack modal button, claude.ai accept-button,
+     *  etc.). Renderers fall back to a tier-default label when absent. */
     submitLabel?: string;
 }
 
@@ -145,11 +142,10 @@ export interface ThinkingProps {
 }
 
 /**
- * Discriminated union of all 15 components. The `kind` discriminator
- * narrows `props` to the matching `XxxProps`. Three input-shaped
- * components (`choice_input`, `text_input`, `form`) plus the four
- * updatable ones (`status`, `progress`, `thinking`, and the inputs)
- * carry an optional `slotId` for in-place update.
+ * Discriminated union of all 13 components. The `kind` discriminator
+ * narrows `props` to the matching `XxxProps`. The `input` kind plus
+ * the three updatable signals (`status`, `progress`, `thinking`) carry
+ * an optional `slotId` for in-place update.
  */
 export type Component =
     | { kind: 'status'; props: StatusProps; slotId?: string }
@@ -161,14 +157,12 @@ export type Component =
     | { kind: 'link'; props: LinkProps }
     | { kind: 'attachment'; props: AttachmentProps }
     | { kind: 'progress'; props: ProgressProps; slotId?: string }
-    | { kind: 'choice_input'; props: ChoiceInputProps; slotId?: string }
-    | { kind: 'text_input'; props: TextInputProps; slotId?: string }
-    | { kind: 'form'; props: FormProps; slotId?: string }
+    | { kind: 'input'; props: InputProps; slotId?: string }
     | { kind: 'chart'; props: ChartProps }
     | { kind: 'tree'; props: TreeProps }
     | { kind: 'thinking'; props: ThinkingProps; slotId?: string };
 
-/** All 15 component kinds — keep in sync with the {@link Component}
+/** All 13 component kinds — keep in sync with the {@link Component}
  *  union above. Exported as a tuple so consumers can iterate at
  *  runtime (e.g. when registering one MCP tool per kind). */
 export const COMPONENT_KINDS = [
@@ -181,9 +175,7 @@ export const COMPONENT_KINDS = [
     'link',
     'attachment',
     'progress',
-    'choice_input',
-    'text_input',
-    'form',
+    'input',
     'chart',
     'tree',
     'thinking',
@@ -191,20 +183,13 @@ export const COMPONENT_KINDS = [
 
 export type ComponentKind = (typeof COMPONENT_KINDS)[number];
 
-/** Components whose emission pauses the run until a human responds.
- *  The UI tool handlers for these three call `HitlController.pauseForHuman`
- *  in addition to emitting `fact.component`. */
-export type InputComponent = Extract<
-    Component,
-    { kind: 'choice_input' | 'text_input' | 'form' }
->;
+/** The input-shaped component — its emission pauses the run until a
+ *  human responds. The UI tool handler for `ui.input` calls
+ *  `HitlController.pauseForHuman` in addition to emitting
+ *  `fact.component`. */
+export type InputComponent = Extract<Component, { kind: 'input' }>;
 
 const KIND_SET: ReadonlySet<string> = new Set(COMPONENT_KINDS);
-const INPUT_KINDS: ReadonlySet<string> = new Set([
-    'choice_input',
-    'text_input',
-    'form',
-]);
 
 /** Structural type guard. Validates the `kind` discriminator + that a
  *  `props` object exists; doesn't deep-validate the props payload
@@ -218,8 +203,8 @@ export function isComponent(value: unknown): value is Component {
     return true;
 }
 
-/** Narrow a {@link Component} to the input subset (the three kinds that
- *  pause the run). */
+/** Narrow a {@link Component} to the input subset (the kind that
+ *  pauses the run). */
 export function isInputComponent(c: Component): c is InputComponent {
-    return INPUT_KINDS.has(c.kind);
+    return c.kind === 'input';
 }

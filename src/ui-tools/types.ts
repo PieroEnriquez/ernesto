@@ -8,11 +8,10 @@
  *   - `emit` — publishes a `fact.component` event into the workflow
  *     engine's bus + store. Bound by the walker to the originating
  *     `(runId, stepId)` so handlers don't have to re-thread routing.
- *   - `hitl` — exposes `pauseForHuman` for the three input-shaped
- *     tools (`ui.choice_input`, `ui.text_input`, `ui.form`). The
- *     handler awaits the resume call and returns the user's answer
- *     as the tool result; the LLM consumes that as if the tool
- *     returned synchronously.
+ *   - `hitl` — exposes `pauseForHuman` for the input-shaped tool
+ *     (`ui.input`). The handler awaits the resume call and returns
+ *     the user's answer as the tool result; the LLM consumes that
+ *     as if the tool returned synchronously.
  */
 
 import type { EmitFactEvent } from '../workflow-engine/types/handler';

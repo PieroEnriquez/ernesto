@@ -7,8 +7,8 @@ import {
 import type { Component } from '../types';
 
 describe('components/types', () => {
-    it('lists all 15 component kinds', () => {
-        expect(COMPONENT_KINDS.length).toBe(15);
+    it('lists all 13 component kinds', () => {
+        expect(COMPONENT_KINDS.length).toBe(13);
         // No duplicates.
         expect(new Set(COMPONENT_KINDS).size).toBe(COMPONENT_KINDS.length);
         // Spot-check the headline kinds we lean on elsewhere.
@@ -17,13 +17,15 @@ describe('components/types', () => {
             'table',
             'metric',
             'markdown',
-            'choice_input',
-            'text_input',
-            'form',
+            'input',
             'thinking',
         ] as const) {
             expect(COMPONENT_KINDS).toContain(kind);
         }
+        // The three old input kinds have been collapsed into one.
+        expect(COMPONENT_KINDS).not.toContain('choice_input' as never);
+        expect(COMPONENT_KINDS).not.toContain('text_input' as never);
+        expect(COMPONENT_KINDS).not.toContain('form' as never);
     });
 
     it('isComponent accepts a well-shaped status component', () => {
@@ -47,15 +49,10 @@ describe('components/types', () => {
             { kind: 'attachment', props: { ref: 'a' } },
             { kind: 'progress', props: { label: 'p', current: 1, total: 2 } },
             {
-                kind: 'choice_input',
-                props: { prompt: 'p', choices: [{ value: 'a', label: 'A' }] },
-            },
-            { kind: 'text_input', props: { prompt: 'p' } },
-            {
-                kind: 'form',
+                kind: 'input',
                 props: {
                     prompt: 'p',
-                    fields: [{ id: 'f', label: 'F', type: 'string' }],
+                    schema: { type: 'string', enum: ['a'] },
                 },
             },
             {
@@ -80,34 +77,29 @@ describe('components/types', () => {
         expect(isComponent({})).toBe(false);
         expect(isComponent({ kind: 'status' })).toBe(false);
         expect(isComponent({ kind: 'nope', props: {} })).toBe(false);
+        // Old kinds are no longer accepted now that they've collapsed
+        // into `input`.
+        expect(isComponent({ kind: 'choice_input', props: {} })).toBe(false);
+        expect(isComponent({ kind: 'text_input', props: {} })).toBe(false);
+        expect(isComponent({ kind: 'form', props: {} })).toBe(false);
         expect(isComponent({ kind: 'status', props: 'oops' })).toBe(false);
         expect(isComponent('status')).toBe(false);
     });
 
-    it('isInputComponent narrows to the three pause-the-run kinds', () => {
-        const choice: Component = {
-            kind: 'choice_input',
+    it('isInputComponent narrows to the pause-the-run kind', () => {
+        const input: Component = {
+            kind: 'input',
             props: {
                 prompt: 'p',
-                choices: [{ value: 'a', label: 'A' }],
+                schema: { type: 'string', enum: ['a'] },
             },
-        };
-        const text: Component = {
-            kind: 'text_input',
-            props: { prompt: 'p' },
-        };
-        const form: Component = {
-            kind: 'form',
-            props: { prompt: 'p', fields: [] },
         };
         const status: Component = {
             kind: 'status',
             props: { text: 's' },
         };
 
-        expect(isInputComponent(choice)).toBe(true);
-        expect(isInputComponent(text)).toBe(true);
-        expect(isInputComponent(form)).toBe(true);
+        expect(isInputComponent(input)).toBe(true);
         expect(isInputComponent(status)).toBe(false);
     });
 });

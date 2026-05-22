@@ -1,5 +1,5 @@
 /**
- * `ui-tools/` MCP server — exposes the 15 `ui.*` tools to agents
+ * `ui-tools/` MCP server — exposes the 13 `ui.*` tools to agents
  * running under any harness that accepts MCP servers (CAS, Cursor,
  * fragua-pi).
  *
@@ -37,9 +37,7 @@ import { handleCode } from './tool-handlers/code';
 import { handleLink } from './tool-handlers/link';
 import { handleAttachment } from './tool-handlers/attachment';
 import { handleProgress } from './tool-handlers/progress';
-import { handleChoiceInput } from './tool-handlers/choice-input';
-import { handleTextInput } from './tool-handlers/text-input';
-import { handleForm } from './tool-handlers/form';
+import { handleInput } from './tool-handlers/input';
 import { handleChart } from './tool-handlers/chart';
 import { handleTree } from './tool-handlers/tree';
 import { handleThinking } from './tool-handlers/thinking';
@@ -129,22 +127,10 @@ const TOOL_ENTRIES: ToolEntry[] = [
         handler: handleProgress,
     },
     {
-        name: 'ui.choice_input',
+        name: 'ui.input',
         description:
-            'Pause the run until the user picks from a set of choices. The tool RETURNS the user’s selection — call this whenever you need a decision before continuing. Use `multi: true` to allow selecting multiple options.',
-        handler: handleChoiceInput,
-    },
-    {
-        name: 'ui.text_input',
-        description:
-            'Pause the run until the user enters free-form text. The tool RETURNS the user’s response. Use `multiline: true` for long-form input.',
-        handler: handleTextInput,
-    },
-    {
-        name: 'ui.form',
-        description:
-            'Pause the run until the user submits a multi-field form. Each field has an `id`, a `type` (`string`, `number`, `boolean`, `choice`), and an optional `options` list (for `choice`). The tool RETURNS the submitted form data keyed by field id.',
-        handler: handleForm,
+            'Ask the user for a value satisfying the provided JSON Schema. Renderers pick the right widget — buttons for enums, text field for strings, multi-field form for objects. Use this whenever you need a decision or data from the user before continuing. The tool RETURNS the user’s response, typed per `schema`.',
+        handler: handleInput,
     },
     {
         name: 'ui.chart',
@@ -178,7 +164,7 @@ export interface CreateUiMcpServerOpts {
 }
 
 /**
- * Build an in-process HTTP MCP server exposing the 15 `ui.*` tools.
+ * Build an in-process HTTP MCP server exposing the 13 `ui.*` tools.
  * Returns the McpServerConfig + a lifecycle handle.
  */
 export async function createUiMcpServer(
@@ -196,7 +182,7 @@ export async function createUiMcpServer(
 
     // The MCP SDK validates inputs against the Zod schema before
     // delivering to the callback. We use a permissive passthrough
-    // shape across all 15 tools — the per-handler argument shape is
+    // shape across all 13 tools — the per-handler argument shape is
     // documented in the tool description for the LLM, and the
     // downstream component renderer / HITL controller do the
     // structural checks. Tightening per-tool Zod shapes is a

@@ -1,5 +1,5 @@
 /**
- * In-process MCP server exposing the 15 `ui.*` tools. See
+ * In-process MCP server exposing the 13 `ui.*` tools. See
  * `agent-ops://workflows-unification/components.md` § The `ui.*` tool
  * surface for the per-tool semantics + LLM-facing usage guidance.
  */
@@ -30,9 +30,7 @@ export { handleCode } from './tool-handlers/code';
 export { handleLink } from './tool-handlers/link';
 export { handleAttachment } from './tool-handlers/attachment';
 export { handleProgress } from './tool-handlers/progress';
-export { handleChoiceInput } from './tool-handlers/choice-input';
-export { handleTextInput } from './tool-handlers/text-input';
-export { handleForm } from './tool-handlers/form';
+export { handleInput } from './tool-handlers/input';
 export { handleChart } from './tool-handlers/chart';
 export { handleTree } from './tool-handlers/tree';
 export { handleThinking } from './tool-handlers/thinking';

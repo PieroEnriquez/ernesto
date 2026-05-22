@@ -64,7 +64,7 @@ export interface WorkflowRunner {
     emitFactEvent(raw: FactEvent): void;
     /** Pause the current step pending a `resumeRun` call. Returned
      *  promise resolves with the validated resume value. Used by the
-     *  `ui-tools/` input handlers (`ui.choice_input`, `ui.text_input`,
-     *  `ui.form`) which emit a component AND pause in one step. */
+     *  `ui-tools/` input handler (`ui.input`) which emits a component
+     *  AND pauses in one step. */
     pauseForHuman(input: HitlPauseInput): Promise<unknown>;
 }

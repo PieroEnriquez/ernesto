@@ -22,8 +22,8 @@ afterEach(async () => {
 });
 
 describe('createUiMcpServer', () => {
-    it('exposes exactly 15 ui.* tools', () => {
-        expect(UI_TOOL_COUNT).toBe(15);
+    it('exposes exactly 13 ui.* tools', () => {
+        expect(UI_TOOL_COUNT).toBe(13);
         expect(UI_TOOL_NAMES).toEqual([
             'ui.status',
             'ui.table',
@@ -34,9 +34,7 @@ describe('createUiMcpServer', () => {
             'ui.link',
             'ui.attachment',
             'ui.progress',
-            'ui.choice_input',
-            'ui.text_input',
-            'ui.form',
+            'ui.input',
             'ui.chart',
             'ui.tree',
             'ui.thinking',
@@ -98,7 +96,7 @@ describe('createUiMcpServer', () => {
         await client.close();
     });
 
-    it('routes a choice_input tool call through the HITL controller', async () => {
+    it('routes a ui.input tool call through the HITL controller', async () => {
         const bus = new EventBus();
         const store = new InMemoryStore();
         let seq = 0;
@@ -136,13 +134,10 @@ describe('createUiMcpServer', () => {
         await client.connect(transport);
 
         const callPromise = client.callTool({
-            name: 'ui.choice_input',
+            name: 'ui.input',
             arguments: {
                 prompt: 'Pick',
-                choices: [
-                    { value: 'a', label: 'A' },
-                    { value: 'b', label: 'B' },
-                ],
+                schema: { type: 'string', enum: ['a', 'b'] },
             },
         });
 
@@ -158,7 +153,7 @@ describe('createUiMcpServer', () => {
         const promptId = (paused!.payload as { promptId: string }).promptId;
         await hitl.resume('r-1', {
             promptId,
-            value: { choice: 'b' },
+            value: 'b',
         });
 
         const result = await callPromise;
