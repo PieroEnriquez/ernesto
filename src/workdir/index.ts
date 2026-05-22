@@ -2,7 +2,9 @@ export type {
     FsAdapter, MasterFsAdapter, MasterFsResolution,
     Workdir, WorkdirInput, WorkdirLock, WorkdirTier,
     LayoutEntry, BootInput, BootResult,
+    GlobOptions, GrepOptions, GrepResult, GrepOutputMode,
 } from './types';
+export { RipgrepNotInstalledError } from './node-adapters';
 
 export { runGit, tryRunGit } from './run-git';
 export { probeWorkdirHealth, bootstrapWorkdir } from './health';

@@ -1,5 +1,13 @@
 // Library entry point
 
+// ─── Path security primitives ────────────────────────────────────────────
+export {
+    resolvePath,
+    resolveAllowedDir,
+    isPathWithin,
+    containsParentSegment,
+} from './path-security';
+
 // ─── Workdir kernel ──────────────────────────────────────────────────────
 export {
     runGit, tryRunGit,
@@ -12,11 +20,13 @@ export {
     bootWorkdir, rehydrateWorkdir,
     commitTurn, materializeFile, remirrorFile, settleFromWorktree,
     settleFromPatch,
+    RipgrepNotInstalledError,
 } from './workdir';
 export type {
     FsAdapter, MasterFsAdapter, MasterFsResolution,
     Workdir, WorkdirInput, WorkdirLock, WorkdirTier,
     LayoutEntry, BootInput, BootResult,
+    GlobOptions, GrepOptions, GrepResult, GrepOutputMode,
     CommitTurnInput, CommitTurnResult,
     MaterializeResult,
     SettleInput, SettleResult as WorkdirSettleResult,
@@ -38,9 +48,13 @@ export {
 export type { LintPrincipal, MakeLintWorkspaceOptions } from './lint';
 
 // ─── Routes ──────────────────────────────────────────────────────────────
-export { defineRoute, RouteRegistry, dispatchRoute } from './route';
+export {
+    defineRoute, resolveRouteScope, isDynamicScope,
+    RouteRegistry, dispatchRoute,
+} from './route';
 export type {
     Route, RouteConfig, RouteContext, RouteLogger, RouteScope, RouteUser,
+    DynamicScope,
     DispatchResult, DispatchErrorCode,
 } from './route';
 
@@ -68,6 +82,41 @@ export type {
     SettleVerbContext, SettleVerbLogger, SettleVerbHooks, SettleVerbResult,
     VerbLogger, VerbUser,
 } from './agent-verbs';
+
+// ─── Dashboards spec ─────────────────────────────────────────────────────
+export {
+    dashboardSpecSchema,
+    blockSchema,
+    filterSchema,
+    formatSchema,
+    isDataBlock,
+    isSqlBlock,
+    isJsBlock,
+    parseDashboard,
+    substituteBinds,
+    toDateId,
+    dataflowOrder,
+    DashboardSpecError,
+    RESERVED_BIND_NAMES,
+    SLUG_RE as DASHBOARD_SLUG_RE,
+    BLOCK_ID_RE,
+    FORMAT_VALUES,
+} from './dashboards';
+export type {
+    DashboardSpec,
+    ParsedDashboard,
+    Block,
+    SqlBlock,
+    JsBlock,
+    DataBlock,
+    Filter,
+    Format,
+    DateRangeDefault,
+    BoundQuery,
+    FilterValue,
+    FilterValues,
+    DateRangeValue,
+} from './dashboards';
 
 // ─── Extractions ─────────────────────────────────────────────────────────
 export {

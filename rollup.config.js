@@ -1,7 +1,12 @@
 import typescript from '@rollup/plugin-typescript';
 
 export default {
-    input: ['src/index.ts'],
+    // Multiple entry points so subpath exports (e.g. `ernesto/dashboards`)
+    // emit their own `dist/<sub>/index.{js,cjs}` files. Without listing the
+    // sub-entry, Rollup tree-shakes the barrel and re-hoists its exports
+    // into `dist/index.js` only — package consumers asking for
+    // `ernesto/dashboards` then fail to resolve.
+    input: ['src/index.ts', 'src/dashboards/index.ts'],
     output: [
         {
             dir: 'dist',
