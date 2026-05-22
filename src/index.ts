@@ -148,6 +148,34 @@ export type {
 export { createMockHarness } from './harness/mock';
 // CAS harness is sub-export only (peer dep): import from 'ernesto/harness/cas'
 
+// ─── Components (declarative UI intent) ──────────────────────────────────
+export {
+    COMPONENT_KINDS,
+    isComponent,
+    isInputComponent,
+} from './components';
+export type {
+    Component,
+    ComponentKind,
+    InputComponent,
+    StatusProps,
+    TableProps,
+    MetricProps,
+    MarkdownProps,
+    ImageProps,
+    CodeProps,
+    LinkProps,
+    AttachmentProps,
+    ProgressProps,
+    ChoiceInputProps,
+    TextInputProps,
+    FormProps,
+    ChartProps,
+    TreeProps,
+    TreeNode,
+    ThinkingProps,
+} from './components';
+
 // ─── Extractions ─────────────────────────────────────────────────────────
 export {
     defineExtraction, ExtractionRegistry, dispatchExtraction,

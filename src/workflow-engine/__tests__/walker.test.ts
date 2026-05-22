@@ -338,6 +338,71 @@ describe('walker', () => {
         }
     });
 
+    it('forwards fact.component emits from the ui-tool handler path', async () => {
+        const rig = makeRig();
+        rig.dispatcher.register('agent-cas', async (_step, ctx) => {
+            ctx.emit!({
+                type: 'fact.component',
+                component: {
+                    kind: 'status',
+                    props: { text: 'fetching…', level: 'progress' },
+                    slotId: 'status-1',
+                },
+            });
+            ctx.emit!({
+                type: 'fact.component',
+                component: {
+                    kind: 'table',
+                    props: {
+                        columns: [{ id: 'k', label: 'K' }],
+                        rows: [{ k: 'v' }],
+                    },
+                },
+            });
+            return { kind: 'completed', output: { ok: true } };
+        });
+        const decl: WorkflowDeclaration = {
+            name: 'wf-component',
+            description: 'd',
+            version: 1,
+            steps: {
+                s1: {
+                    kind: 'agent-cas',
+                    model: 'm',
+                    systemPrompt: 'sp',
+                    prompt: 'p',
+                } as any,
+            },
+        };
+        await walk(
+            'run-component',
+            decl,
+            {
+                slug: 'wf-component',
+                inputs: {},
+                principal: { userId: 'u', scopes: new Set() },
+                context: {},
+            },
+            { ...rig, log: NOOP_LOG },
+        );
+        const componentEvents = rig.events.filter(
+            (e) => e.type === 'fact.component',
+        );
+        expect(componentEvents.length).toBe(2);
+        expect(componentEvents[0]!.payload).toMatchObject({
+            stepId: 's1',
+            component: {
+                kind: 'status',
+                props: { text: 'fetching…', level: 'progress' },
+                slotId: 'status-1',
+            },
+        });
+        expect(componentEvents[1]!.payload).toMatchObject({
+            stepId: 's1',
+            component: { kind: 'table' },
+        });
+    });
+
     it('appends events to the store under run id', async () => {
         const rig = makeRig();
         rig.dispatcher.register('route', async () => ({

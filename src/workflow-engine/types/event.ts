@@ -42,7 +42,13 @@ export type FactEventType =
     | 'fact.thinking'
     | 'fact.usage'
     | 'fact.subagent_started'
-    | 'fact.subagent_completed';
+    | 'fact.subagent_completed'
+    | 'fact.component';
+
+/** Re-export so the `fact.component` typed-event payload below can
+ *  refer to the canonical {@link Component} shape without setting up
+ *  a cross-module import cycle. */
+import type { Component } from '../../components/types';
 
 /**
  * Narrowly-typed event union. The agent step handler emits these
@@ -118,6 +124,16 @@ export type TypedFactEvent =
           slug: string;
           subRunId: string;
           result: unknown;
+          ts: number;
+      }
+    | {
+          type: 'fact.component';
+          runId: string;
+          stepId: string;
+          /** The structured UI intent — see `components/types.ts` for
+           *  the 15-way discriminated union. Per-tier subscribers
+           *  switch on `component.kind` and render natively. */
+          component: Component;
           ts: number;
       };
 

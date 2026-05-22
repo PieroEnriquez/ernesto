@@ -57,6 +57,16 @@
       "types": "./dist/workflow-engine/index.d.ts",
       "import": "./dist/workflow-engine/index.js",
       "require": "./dist/workflow-engine/index.cjs"
+    },
+    "./components": {
+      "types": "./dist/components/index.d.ts",
+      "import": "./dist/components/index.js",
+      "require": "./dist/components/index.cjs"
+    },
+    "./ui-tools": {
+      "types": "./dist/ui-tools/index.d.ts",
+      "import": "./dist/ui-tools/index.js",
+      "require": "./dist/ui-tools/index.cjs"
     }
   },
   "contributors": [

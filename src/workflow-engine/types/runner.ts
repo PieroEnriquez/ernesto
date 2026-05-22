@@ -8,6 +8,7 @@ import type { StepKind } from '../../workflows/types';
 import type { StepKindHandler } from './handler';
 import type { FactEvent } from './event';
 import type { WorkflowReader } from '../workflow-reader';
+import type { HitlPauseInput } from '../hitl';
 
 export interface SubscribeEventsOpts {
     lastEventId?: string;
@@ -61,4 +62,9 @@ export interface WorkflowRunner {
     /** Public bus hook for direct event injection (test harnesses,
      *  HTTP intent endpoints). */
     emitFactEvent(raw: FactEvent): void;
+    /** Pause the current step pending a `resumeRun` call. Returned
+     *  promise resolves with the validated resume value. Used by the
+     *  `ui-tools/` input handlers (`ui.choice_input`, `ui.text_input`,
+     *  `ui.form`) which emit a component AND pause in one step. */
+    pauseForHuman(input: HitlPauseInput): Promise<unknown>;
 }

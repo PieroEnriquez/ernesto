@@ -21,7 +21,7 @@ import type { StorePort } from './store/port';
 import { EventBus } from './event-bus';
 import { HandlerDispatcher } from './dispatch';
 import { InMemoryStore } from './store/in-memory-store';
-import { HitlController } from './hitl';
+import { HitlController, type HitlPauseInput } from './hitl';
 import { walk } from './engine/walker';
 
 const NULL_LOG: EngineLogger = {
@@ -132,6 +132,10 @@ class Runner implements WorkflowRunner {
             promptId: input.promptId,
             value: input.value,
         });
+    }
+
+    pauseForHuman(input: HitlPauseInput): Promise<unknown> {
+        return this.hitl.pauseForHuman(input);
     }
 
     async abortRun(runId: string): Promise<void> {

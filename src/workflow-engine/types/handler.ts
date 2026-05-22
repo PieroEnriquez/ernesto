@@ -11,6 +11,7 @@
  */
 
 import type { WorkflowStep } from '../../workflows/types';
+import type { Component } from '../../components/types';
 import type { TypedFactEvent } from './event';
 
 /** Logger surface — matches the backend's `RouteLogger`. */
@@ -83,6 +84,15 @@ export type EmitFactEventInput =
     | {
           type: 'fact.assistant_message';
           content: unknown;
+          ts?: number;
+      }
+    | {
+          /** Structured UI intent. Emitted by the `ui-tools/` MCP tool
+           *  handlers when an agent invokes `ui.<kind>(...)`. The
+           *  walker stamps `stepId` + `ts` and persists the event;
+           *  per-tier subscribers translate to native UI. */
+          type: 'fact.component';
+          component: Component;
           ts?: number;
       };
 
