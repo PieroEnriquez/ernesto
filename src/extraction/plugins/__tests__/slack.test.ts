@@ -237,4 +237,148 @@ describe('slackPlugin – target parsing', () => {
             plugin.fetch({ target: 'thread:C1' }, makeCtx()),
         ).rejects.toThrow(/invalid thread target/);
     });
+
+    it('rejects non-positive-integer days on channel-threads', async () => {
+        const plugin = slackPlugin({ token: TOKEN });
+        await expect(
+            plugin.fetch({ target: 'channel-threads:C1:0' }, makeCtx()),
+        ).rejects.toThrow(/positive integer/);
+        await expect(
+            plugin.fetch({ target: 'channel-threads:C1:-7' }, makeCtx()),
+        ).rejects.toThrow(/positive integer/);
+        await expect(
+            plugin.fetch({ target: 'channel-threads:C1:thirty' }, makeCtx()),
+        ).rejects.toThrow(/positive integer/);
+    });
+});
+
+describe('slackPlugin – channel-threads target', () => {
+    // Use real-clock helpers so the oldest= cutoff math is testable.
+    const realNowSec = 1_730_000_000; // 2024-10-26ish, fine fixture
+    const dayAgoSec = (n: number) => String(realNowSec - n * 24 * 60 * 60);
+
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date(realNowSec * 1000));
+    });
+
+    it('walks history, fans out every thread parent, and emits one doc per thread', async () => {
+        // Two parents in window, one plain (no replies) message — only
+        // the two parents should produce entries.
+        const historyPage = [
+            // newest first per Slack convention
+            { ts: dayAgoSec(1) + '.000200', user: 'U1', text: 'unreplied chatter' },
+            { ts: dayAgoSec(2) + '.000100', user: 'U2', text: 'Incident: checkout flow regressed', reply_count: 2, thread_ts: dayAgoSec(2) + '.000100' },
+            { ts: dayAgoSec(5) + '.000100', user: 'U3', text: 'Q4 planning kick-off', reply_count: 1, thread_ts: dayAgoSec(5) + '.000100' },
+        ];
+        const repliesParent1 = [
+            { ts: dayAgoSec(2) + '.000100', user: 'U2', text: 'Incident: checkout flow regressed' },
+            { ts: dayAgoSec(2) + '.001000', user: 'U4', text: 'looking into it' },
+            { ts: dayAgoSec(2) + '.002000', user: 'U2', text: 'rolled back' },
+        ];
+        const repliesParent2 = [
+            { ts: dayAgoSec(5) + '.000100', user: 'U3', text: 'Q4 planning kick-off' },
+            { ts: dayAgoSec(5) + '.001000', user: 'U1', text: 'putting docs together' },
+        ];
+
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.includes('conversations.history')) {
+                return slackOk({ messages: historyPage, has_more: false });
+            }
+            if (url.includes(`ts=${dayAgoSec(2)}.000100`)) {
+                return slackOk({ messages: repliesParent1 });
+            }
+            if (url.includes(`ts=${dayAgoSec(5)}.000100`)) {
+                return slackOk({ messages: repliesParent2 });
+            }
+            throw new Error(`unexpected url ${url}`);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        const plugin = slackPlugin({ token: TOKEN });
+        const result = await plugin.fetch(
+            { target: 'channel-threads:C12345:30' },
+            makeCtx(),
+        );
+
+        // Two threads → two entries; the unreplied message is skipped.
+        expect(result.entries).toHaveLength(2);
+
+        // History call was made with the right oldest= cutoff.
+        const [historyUrl] = fetchMock.mock.calls[0];
+        expect(String(historyUrl)).toContain('conversations.history');
+        expect(String(historyUrl)).toContain(`oldest=${realNowSec - 30 * 24 * 60 * 60}`);
+
+        // Path shape: threads/{YYYY-MM-DD}-{slug}-{ts}.md
+        const paths = result.entries.map((e) => e.path).sort();
+        for (const p of paths) {
+            expect(p).toMatch(/^threads\/\d{4}-\d{2}-\d{2}-[a-z0-9-]+-\d+\.\d+\.md$/);
+        }
+
+        // Frontmatter is present and well-formed.
+        const incident = result.entries.find((e) => e.path.includes('incident'));
+        expect(incident).toBeDefined();
+        expect(incident!.content).toMatch(/^---\n/);
+        expect(incident!.content).toContain('source: slack');
+        expect(incident!.content).toContain('type: thread');
+        expect(incident!.content).toContain('reply_count: 2');
+        expect(incident!.content).toContain('channel_id: C12345');
+        expect(incident!.content).toContain('participants: [U2, U4]');
+
+        // Body has the headline + each message in posting order.
+        expect(incident!.content).toContain('# Incident: checkout flow regressed');
+        const idxParent = incident!.content.indexOf('rolled back');
+        const idxReply = incident!.content.indexOf('looking into it');
+        expect(idxReply).toBeGreaterThan(-1);
+        expect(idxReply).toBeLessThan(idxParent);
+    });
+
+    it('defaults to 30 days when :{days} is omitted', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(slackOk({ messages: [], has_more: false }));
+        vi.stubGlobal('fetch', fetchMock);
+        const plugin = slackPlugin({ token: TOKEN });
+        await plugin.fetch({ target: 'channel-threads:C1' }, makeCtx());
+        const [url] = fetchMock.mock.calls[0];
+        expect(String(url)).toContain(`oldest=${realNowSec - 30 * 24 * 60 * 60}`);
+    });
+
+    it('paginates conversations.history with cursor until has_more=false', async () => {
+        const historyPage1 = [
+            { ts: dayAgoSec(1) + '.000100', user: 'U1', text: 'Page 1 thread', reply_count: 1, thread_ts: dayAgoSec(1) + '.000100' },
+        ];
+        const historyPage2 = [
+            { ts: dayAgoSec(2) + '.000100', user: 'U2', text: 'Page 2 thread', reply_count: 1, thread_ts: dayAgoSec(2) + '.000100' },
+        ];
+        let nHistory = 0;
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.includes('conversations.history')) {
+                nHistory += 1;
+                if (nHistory === 1) {
+                    return slackOk({
+                        messages: historyPage1,
+                        has_more: true,
+                        response_metadata: { next_cursor: 'cursor-page-2' },
+                    });
+                }
+                expect(url).toContain('cursor=cursor-page-2');
+                return slackOk({ messages: historyPage2, has_more: false });
+            }
+            // Any thread replies call: return a minimal valid thread.
+            const m = url.match(/ts=(\d+\.\d+)/);
+            const ts = m ? m[1] : '0';
+            return slackOk({ messages: [{ ts, user: 'U1', text: 'parent' }, { ts: ts + '1', user: 'U2', text: 'reply' }] });
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        const plugin = slackPlugin({ token: TOKEN });
+        const result = await plugin.fetch(
+            { target: 'channel-threads:C1:30' },
+            makeCtx(),
+        );
+
+        expect(nHistory).toBe(2);
+        expect(result.entries).toHaveLength(2);
+    });
 });
