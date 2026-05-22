@@ -57,6 +57,16 @@ import * as path from 'path';
 import yaml from 'js-yaml';
 import type { LintFn, LintError } from '../workdir/settle';
 import { runGit } from '../workdir/run-git';
+import {
+    parseWorkflowYaml,
+    validateWorkflow,
+    compileManagedAgentMdToWorkflow,
+} from '../workflows';
+import type {
+    WorkflowValidateContext,
+    WorkflowValidationError,
+} from '../workflows';
+import { parseManagedAgentMd } from '../managed-agents';
 
 /** Lint error key emitted when a `WORKSPACE.md` declares an `extractions:`
  *  entry whose `source` is not registered with the live extraction registry.
@@ -517,6 +527,26 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
             }
         }
 
+        // workflow_* (lints workflow YAML and managed-agent .md sources)
+        // Runs before the file_too_large pass to surface workflow errors
+        // even on files large enough to fail that rule too.
+        for (const e of entries) {
+            if (e.isDelete) continue;
+            const p = e.toPath;
+            if (!p) continue;
+            if (!isWorkflowPath(p)) continue;
+            try {
+                const abs = path.join(workingTreeRoot, p);
+                const text = await readFile(abs, 'utf8');
+                const wfErrors = await lintWorkflowFile(p, text, {
+                    filename: p,
+                });
+                for (const we of wfErrors) errors.push(we);
+            } catch {
+                // best-effort
+            }
+        }
+
         // file_too_large + merge_markers (one pass per file)
         for (const e of entries) {
             if (e.isDelete) continue;
@@ -705,4 +735,96 @@ export function makeLintWorkspace(
         bypass: options.bypass,
         getRegisteredSources: options.getRegisteredSources,
     });
+}
+
+// ─── Workflow file lint (settle-time hook) ──────────────────────────────
+
+/**
+ * Lint a single workflow file — either a `.yaml`/`.yml` workflow
+ * declaration or a managed-agent `.md` shorthand. Returns the
+ * collected `LintError[]` (empty on success). The shape matches the
+ * existing `LintError` envelope so callers can splice these into the
+ * same per-settle report.
+ *
+ * Paths matched: `workspaces/<w>/workflows/<slug>.{yaml,yml,md}` —
+ * but the path is passed in by the caller; this function does not
+ * dispatch on it. The caller picks files (see `lintWorkspace`'s diff
+ * loop) and hands each one to `lintWorkflowFile`.
+ *
+ * The Markdown form is compiled to a `WorkflowDeclaration` via
+ * `compileManagedAgentMdToWorkflow` before validation, so the same
+ * `workflow_*` codes fire on both forms.
+ */
+export async function lintWorkflowFile(
+    filepath: string,
+    text: string,
+    ctx: WorkflowValidateContext = {},
+): Promise<LintError[]> {
+    const base = filepath.replace(/^.*\//, '');
+    const stem = /^(.+?)(?:\.workflow)?\.(yaml|yml|md)$/.exec(base)?.[1];
+    const workspace = workspaceOf(filepath);
+
+    try {
+        let decl;
+        if (base.endsWith('.md')) {
+            // Treat as managed-agent shorthand.
+            const slug = stem ?? 'unknown';
+            const md = parseManagedAgentMd(text, {
+                slug,
+                workspace: workspace ?? '',
+            });
+            // Files with `extends:` chains can't be full-compiled at
+            // lint time — `toAgentDeclaration` (called transitively
+            // by compileManagedAgentMdToWorkflow) refuses to operate
+            // on unresolved extends (§7.13.5). Resolution happens at
+            // fragua boot via the registry's `composeExtends` pass.
+            // The parse alone is sufficient validation here — the
+            // frontmatter is well-formed; the body is preserved
+            // verbatim; the extends target is a registry concern.
+            if (md.frontMatter.extends !== undefined) {
+                return [];
+            }
+            decl = compileManagedAgentMdToWorkflow(md);
+        } else {
+            decl = parseWorkflowYaml(text, { filename: filepath });
+        }
+        const effectiveCtx: WorkflowValidateContext = {
+            ...ctx,
+            filename: ctx.filename ?? filepath,
+        };
+        const result = validateWorkflow(decl, effectiveCtx);
+        return result.errors.map(e => workflowErrorToLintError(e, filepath, workspace));
+    } catch (e) {
+        return [{
+            code: 'workflow_parse_error',
+            path: filepath,
+            workspace,
+            message: (e as Error).message,
+        }];
+    }
+}
+
+function workflowErrorToLintError(
+    e: WorkflowValidationError,
+    filepath: string,
+    workspace: string | undefined,
+): LintError {
+    const stepHint = e.stepId ? ` (step "${e.stepId}")` : '';
+    const fieldHint = e.field ? ` [field: ${e.field}]` : '';
+    return {
+        code: e.code,
+        path: filepath,
+        workspace,
+        message: `${e.message}${stepHint}${fieldHint}`,
+    };
+}
+
+/**
+ * Test whether a path is a workflow source file the workflow lint
+ * should run on. The settle-time integration uses this on every
+ * post-stage file path. Exported so callers can wire the same predicate
+ * into their own diff loops.
+ */
+export function isWorkflowPath(p: string): boolean {
+    return /^workspaces\/[^/]+\/workflows\/[^/]+\.(yaml|yml|md)$/.test(p);
 }

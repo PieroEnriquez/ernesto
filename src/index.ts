@@ -42,10 +42,29 @@ export {
     lintWorkspace,
     makeLintWorkspace,
     makeScopelessLintWorkspace,
+    lintWorkflowFile,
+    isWorkflowPath,
     UNREGISTERED_EXTRACTION_SOURCE,
     RESERVED_SYSTEM_WORKSPACES,
 } from './lint';
 export type { LintPrincipal, MakeLintWorkspaceOptions } from './lint';
+
+// ─── Workflows (declaration + composition + lint) ────────────────────────
+export {
+    parseWorkflowYaml,
+    compileManagedAgentMdToWorkflow,
+    compileDashboardSpecToWorkflow,
+    validateWorkflow,
+    isAgentStep,
+} from './workflows';
+export type {
+    WorkflowDeclaration, WorkflowStep, RouteStep, InputStep,
+    AgentStep, AgentCasStep, AgentCursorStep, AgentFraguaPiStep, AgentBaseStep,
+    SubworkflowStep,
+    WorkflowInput, WorkflowOutput, StepKind,
+    WorkflowValidationResult, WorkflowValidationError, WorkflowLintCode,
+    WorkflowValidateContext,
+} from './workflows';
 
 // ─── Routes ──────────────────────────────────────────────────────────────
 export {
