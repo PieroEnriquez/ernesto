@@ -1,15 +1,40 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { z } from 'zod';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { promises as fs } from 'node:fs';
 import { defineRoute, RouteRegistry } from '../../route';
 import type { Workdir } from '../../workdir';
-import { handleExecute } from '../execute';
+import {
+    handleExecute,
+    EXECUTE_ACCEPTS_BUNDLED_UI,
+    executeInputSchema,
+} from '../execute';
 import type { ExecuteVerbContext } from '../execute';
+import { extractAndEmitBundledUi } from '../../ui-tools/bundled-ui';
+import type { UiComponent } from '../../components/types';
 
-function makeFakeWorkdir(root = '/tmp/fake-wd'): Workdir {
+// Per-suite tmp workdir — execute now archives full results under
+// `<workdir>/workspaces/<ws>/_results/...json`, so the suite needs a
+// real-but-isolated root. Created once, blown away after the suite.
+let SHARED_TMP_ROOT = '';
+
+beforeAll(async () => {
+    SHARED_TMP_ROOT = await fs.mkdtemp(
+        path.join(os.tmpdir(), 'ernesto-execute-test-'),
+    );
+});
+afterAll(async () => {
+    if (SHARED_TMP_ROOT) {
+        await fs.rm(SHARED_TMP_ROOT, { recursive: true, force: true });
+    }
+});
+
+function makeFakeWorkdir(root?: string): Workdir {
     return {
         workdirId: 'wd1',
         tier: 'managed',
-        workingTreeRoot: root,
+        workingTreeRoot: root ?? SHARED_TMP_ROOT,
         branchRef: 'refs/workdirs/wd1',
         fs: {} as any,
         master: { resolve: async () => ({ kind: 'not-found' }) },
@@ -47,11 +72,11 @@ describe('handleExecute', () => {
         const result = await handleExecute(
             workdir,
             reg,
-            { uri: 'test://echo', params: { msg: 'hi' } },
+            { uri: 'test://echo', params: { msg: 'hi' }, ui: [] },
             ctx,
         );
 
-        expect(result).toEqual({ ok: true, data: { msg: 'hi' } });
+        expect(result).toMatchObject({ ok: true, data: { msg: 'hi' } });
         expect(ctx.log.info).toHaveBeenCalledWith('execute verb', {
             uri: 'test://echo',
             userId: 'u1',
@@ -74,14 +99,16 @@ describe('handleExecute', () => {
             }),
         );
 
+        const probeRoot = path.join(SHARED_TMP_ROOT, 'probe-root');
+        await fs.mkdir(probeRoot, { recursive: true });
         await handleExecute(
-            makeFakeWorkdir('/tmp/probe-root'),
+            makeFakeWorkdir(probeRoot),
             reg,
-            { uri: 'test://probe', params: {} },
+            { uri: 'test://probe', params: {}, ui: [] },
             makeCtx(['test:read']),
         );
 
-        expect(seenRoot).toHaveBeenCalledWith('/tmp/probe-root');
+        expect(seenRoot).toHaveBeenCalledWith(probeRoot);
     });
 
     it('returns invalid_input when uri is empty', async () => {
@@ -89,7 +116,7 @@ describe('handleExecute', () => {
         const result = await handleExecute(
             makeFakeWorkdir(),
             reg,
-            { uri: '', params: {} } as any,
+            { uri: '', params: {}, ui: [] } as any,
             makeCtx(['test:read']),
         );
         expect(result.ok).toBe(false);
@@ -102,7 +129,7 @@ describe('handleExecute', () => {
         const result = await handleExecute(
             makeFakeWorkdir(),
             reg,
-            { params: {} } as any,
+            { params: {}, ui: [] } as any,
             makeCtx(['test:read']),
         );
         expect(result.ok).toBe(false);
@@ -117,7 +144,7 @@ describe('handleExecute', () => {
         const result = await handleExecute(
             makeFakeWorkdir(),
             reg,
-            { uri: 'test://nope', params: {} },
+            { uri: 'test://nope', params: {}, ui: [] },
             makeCtx(['test:read']),
         );
         expect(result.ok).toBe(false);
@@ -132,7 +159,7 @@ describe('handleExecute', () => {
         const result = await handleExecute(
             makeFakeWorkdir(),
             reg,
-            { uri: 'test://echo', params: { msg: 'x' } },
+            { uri: 'test://echo', params: { msg: 'x' }, ui: [] },
             makeCtx([]),
         );
         expect(result.ok).toBe(false);
@@ -147,10 +174,10 @@ describe('handleExecute', () => {
         const result = await handleExecute(
             makeFakeWorkdir(),
             reg,
-            { uri: 'test://echo', params: { msg: 'admin' } },
+            { uri: 'test://echo', params: { msg: 'admin' }, ui: [] },
             makeCtx(['ernesto:agent-ops']),
         );
-        expect(result).toEqual({ ok: true, data: { msg: 'admin' } });
+        expect(result).toMatchObject({ ok: true, data: { msg: 'admin' } });
     });
 
     it('defaults params to {} when omitted', async () => {
@@ -168,7 +195,7 @@ describe('handleExecute', () => {
         const result = await handleExecute(
             makeFakeWorkdir(),
             reg,
-            { uri: 'test://nullary' } as any,
+            { uri: 'test://nullary', ui: [] } as any,
             makeCtx(['test:read']),
         );
         expect(result.ok).toBe(true);
@@ -182,7 +209,7 @@ describe('handleExecute', () => {
         await handleExecute(
             makeFakeWorkdir(),
             reg,
-            { uri: 'test://echo', params: { msg: 'hi' } },
+            { uri: 'test://echo', params: { msg: 'hi' }, ui: [] },
             ctx,
         );
 
@@ -204,11 +231,110 @@ describe('handleExecute', () => {
         const result = await handleExecute(
             makeFakeWorkdir(),
             reg,
-            { uri: 'test://echo', params: '{"msg":"hi from a string"}' },
+            { uri: 'test://echo', params: '{"msg":"hi from a string"}', ui: [] },
             ctx,
         );
 
-        expect(result).toEqual({ ok: true, data: { msg: 'hi from a string' } });
+        expect(result).toMatchObject({ ok: true, data: { msg: 'hi from a string' } });
+    });
+
+    it('opts into bundled-ui via EXECUTE_ACCEPTS_BUNDLED_UI', () => {
+        expect(EXECUTE_ACCEPTS_BUNDLED_UI).toBe(true);
+        const shape = (executeInputSchema as unknown as {
+            shape: Record<string, unknown>;
+        }).shape;
+        expect(shape).toHaveProperty('ui');
+    });
+
+    it('wire schema defaults `ui` to [] when omitted, accepts explicit array', () => {
+        // We keep the prose-side forcing function (tier-a.md tells the
+        // agent to ALWAYS consider what to bundle on every `execute`).
+        // Wire schema is lenient — omitting `ui` defaults to []
+        // rather than failing. Trade-off: one fewer retry round-trip
+        // when the agent forgets, at the cost of softer schema-level
+        // pressure. The bundling habit comes from the prompt + the
+        // prior-turn trail, not from rejecting omissions.
+        const omitted = executeInputSchema.safeParse({
+            uri: 'test://echo',
+            params: { msg: 'no bundle' },
+        });
+        expect(omitted.success).toBe(true);
+        if (omitted.success) {
+            expect(omitted.data.ui).toEqual([]);
+        }
+
+        const explicitEmpty = executeInputSchema.safeParse({
+            uri: 'test://echo',
+            params: { msg: 'no bundle' },
+            ui: [],
+        });
+        expect(explicitEmpty.success).toBe(true);
+
+        const withBundle = executeInputSchema.safeParse({
+            uri: 'test://echo',
+            params: { msg: 'with bundle' },
+            ui: [{ kind: 'status', props: { text: 'querying' } }],
+        });
+        expect(withBundle.success).toBe(true);
+        if (withBundle.success) {
+            expect(withBundle.data.ui).toHaveLength(1);
+        }
+    });
+
+    it('bundled-ui end-to-end: middleware emits ui components, then handler dispatches the route', async () => {
+        // Simulates the MCP dispatch wrapper: the middleware runs FIRST
+        // (validating + emitting each ui component), then the handler
+        // sees args with `ui` stripped.
+        const reg = new RouteRegistry();
+        reg.register(echoRoute);
+        const workdir = makeFakeWorkdir();
+        const verbCtx = makeCtx(['test:read']);
+
+        const emitted: { type: 'fact.component'; component: UiComponent }[] =
+            [];
+        const ui: UiComponent[] = [
+            { kind: 'thinking', props: { text: 'querying revenue' } },
+            { kind: 'status', props: { text: 'Querying…', slotId: 's1' } },
+        ];
+        const args: Record<string, unknown> = {
+            uri: 'test://echo',
+            params: { msg: 'bundled' },
+            ui,
+        };
+
+        const { cleanedArgs, emittedCount } = await extractAndEmitBundledUi(
+            args,
+            {
+                emit: (ev) => emitted.push(ev),
+                log: { warn: vi.fn() },
+            },
+        );
+        expect(emittedCount).toBe(2);
+        expect(cleanedArgs).not.toHaveProperty('ui');
+
+        // Handler runs on cleanedArgs — the `ui` field never reaches it.
+        const result = await handleExecute(
+            workdir,
+            reg,
+            cleanedArgs as Parameters<typeof handleExecute>[2],
+            verbCtx,
+        );
+        expect(result).toMatchObject({
+            ok: true,
+            data: { msg: 'bundled' },
+        });
+        // The route's archive layer attaches `file` / `preview`.
+        if (result.ok) {
+            expect(result.data).toHaveProperty('msg', 'bundled');
+        }
+
+        // Both components were emitted in order, on the same emit
+        // channel a standalone `ui([…])` call would use.
+        expect(emitted).toHaveLength(2);
+        expect(emitted.map((e) => e.component.kind)).toEqual([
+            'thinking',
+            'status',
+        ]);
     });
 
     it('leaves non-JSON string params alone (route schema decides)', async () => {
@@ -222,7 +348,7 @@ describe('handleExecute', () => {
         const result = await handleExecute(
             makeFakeWorkdir(),
             reg,
-            { uri: 'test://echo', params: 'not json — just words' },
+            { uri: 'test://echo', params: 'not json — just words', ui: [] },
             ctx,
         );
 

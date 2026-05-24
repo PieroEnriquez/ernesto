@@ -31,6 +31,13 @@ export interface DispatchWorkflowInput {
     /** Per-run context — tier, parentRunId, slackThreadId, etc. */
     context: Record<string, unknown>;
     signal?: AbortSignal;
+    /** Caller-allocated runId. When supplied, the runner uses this id
+     *  instead of generating one. Lets per-tier subscribers register
+     *  their run-state map entry *before* dispatch begins emitting
+     *  events — necessary because `dispatchWorkflow` awaits the walk
+     *  to completion, so without pre-allocation every event fires
+     *  before the subscriber has a state to dispatch into. */
+    preallocatedRunId?: string;
 }
 
 export interface DispatchWorkflowResult {

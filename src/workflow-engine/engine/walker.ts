@@ -93,6 +93,7 @@ export async function walk(
             }
 
             const handler = deps.dispatcher.require(step.kind);
+            const expandedStep = expandStepTemplates(step, input.inputs);
             const stepEmit: EmitFactEvent = (input: EmitFactEventInput) => {
                 const ts = input.ts ?? Date.now();
                 const { ts: _t, ...rest } = input;
@@ -113,7 +114,7 @@ export async function walk(
                 log: deps.log,
                 emit: stepEmit,
             };
-            const result = await handler(step, ctx);
+            const result = await handler(expandedStep, ctx);
 
             if (result.kind === 'error') {
                 emit(deps, {
@@ -195,6 +196,40 @@ export async function walk(
         await markEnded(deps.store, runId, 'errored', { message });
         return { runId, status: 'errored', outputs };
     }
+}
+
+/**
+ * Walk every string in a step and replace `{{ inputs.<name> }}`
+ * references with the run's input values. Mirrors the lightweight
+ * substitution master applied at the SDK-options compile point —
+ * step handlers see fully-resolved fields and never need to know
+ * about the template syntax.
+ */
+function expandStepTemplates<T>(step: T, inputs: Record<string, unknown>): T {
+    return walkValue(step, inputs) as T;
+}
+
+const INPUTS_REF_RE = /\{\{\s*inputs\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
+
+function walkValue(value: unknown, inputs: Record<string, unknown>): unknown {
+    if (typeof value === 'string') return substituteString(value, inputs);
+    if (Array.isArray(value)) return value.map((v) => walkValue(v, inputs));
+    if (value && typeof value === 'object') {
+        const out: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+            out[k] = walkValue(v, inputs);
+        }
+        return out;
+    }
+    return value;
+}
+
+function substituteString(s: string, inputs: Record<string, unknown>): string {
+    return s.replace(INPUTS_REF_RE, (_m, key) => {
+        const v = inputs[key];
+        if (v === undefined || v === null) return '';
+        return typeof v === 'string' ? v : JSON.stringify(v);
+    });
 }
 
 function emit(deps: WalkerDeps, event: FactEvent): void {

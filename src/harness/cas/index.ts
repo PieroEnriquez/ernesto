@@ -89,6 +89,13 @@ export interface CasHarnessEnv {
     defaults?: { disallowedTools?: string[] };
     /** Override capabilities (test seam). */
     capabilities?: Partial<HarnessCapabilities>;
+    /** Tier the harness is deployed under (`'A'` for the backend,
+     *  `'B'` for the claude.ai MCP, `'C'` for the laptop CLI). The
+     *  platform-body composer reads `_platform/tier-<lc>.md` and
+     *  appends it to the system prompt — without it the agent gets
+     *  no platform routing discipline (catalog lookup rules, sensitive
+     *  topics, citation requirements). Set once per process at boot. */
+    tier?: 'A' | 'B' | 'C';
 }
 
 const CAS_CAPABILITIES: HarnessCapabilities = {
@@ -130,17 +137,29 @@ export function createCasHarness(env: CasHarnessEnv = {}): Harness {
         // finer control (e.g. per-call sandbox hooks) bypass the
         // narrow `Harness.createAgent` and call `casCreateAgent`
         // directly.
+        // Per-call mcpServers (from CreateOptions) win on key collision
+        // with the harness's env-level defaults. Use case: tier-A
+        // injects a per-run `ernesto` MCP server closing over workdir +
+        // user + scopes alongside the boot-wired `ui` server.
+        const mergedMcpServers =
+            opts.mcpServers !== undefined || env.mcpServers !== undefined
+                ? {
+                    ...(env.mcpServers ?? {}),
+                    ...((opts.mcpServers as Record<string, McpServerConfig> | undefined) ?? {}),
+                }
+                : undefined;
         return casCreateAgent(def, {
             agentId: opts.agentId,
             cwd: opts.cwd,
             abortController: opts.abortController,
-            mcpServers: env.mcpServers,
+            mcpServers: mergedMcpServers,
             providerEnv: env.providerEnv,
             env: opts.env,
             persistSession: opts.persistSession,
             resumeSessionId: opts.resumeSessionId,
             forkSession: opts.forkSession,
             defaultDisallowedTools: env.defaults?.disallowedTools,
+            ...(env.tier ? { tier: env.tier } : {}),
         });
     };
 

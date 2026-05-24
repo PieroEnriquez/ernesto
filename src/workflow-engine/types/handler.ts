@@ -11,7 +11,7 @@
  */
 
 import type { WorkflowStep } from '../../workflows/types';
-import type { Component } from '../../components/types';
+import type { UiComponent } from '../../components/types';
 import type { TypedFactEvent } from './event';
 
 /** Logger surface — matches the backend's `RouteLogger`. */
@@ -92,7 +92,7 @@ export type EmitFactEventInput =
            *  walker stamps `stepId` + `ts` and persists the event;
            *  per-tier subscribers translate to native UI. */
           type: 'fact.component';
-          component: Component;
+          component: UiComponent;
           ts?: number;
       };
 

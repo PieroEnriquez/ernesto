@@ -70,12 +70,27 @@ export type {
 export {
     defineRoute, resolveRouteScope, isDynamicScope,
     RouteRegistry, dispatchRoute,
+    applyRenderManifest,
+    sketchComponents,
 } from './route';
 export type {
     Route, RouteConfig, RouteContext, RouteLogger, RouteScope, RouteUser,
     DynamicScope,
     DispatchResult, DispatchErrorCode,
+    RenderEntry, WhenClause, ManifestComponent,
+    StagedSketch,
 } from './route';
+export type { RouteCompactor } from './route/route-registry';
+
+// ─── Route results (archive + compact preview) ─────────────────────────
+export {
+    archiveRouteResult, ARCHIVE_MAX_BYTES,
+    compactify,
+} from './route-results';
+export type {
+    ArchiveRouteResultInput, ArchiveFile, ArchiveLogger,
+    CompactArrayWrapper,
+} from './route-results';
 
 // ─── Managed agents (declaration + composition) ──────────────────────────
 export {
@@ -92,7 +107,8 @@ export type {
 
 // ─── Agent verbs ─────────────────────────────────────────────────────────
 export {
-    executeInputSchema, executeOutputSchema, EXECUTE_DESCRIPTION, handleExecute,
+    executeInputSchema, executeOutputSchema, EXECUTE_DESCRIPTION,
+    EXECUTE_ACCEPTS_BUNDLED_UI, handleExecute,
     settleInputSchema, settleOutputSchema, SETTLE_DESCRIPTION, handleSettle,
 } from './agent-verbs';
 export type {
@@ -150,28 +166,43 @@ export { createMockHarness } from './harness/mock';
 
 // ─── Components (declarative UI intent) ──────────────────────────────────
 export {
-    COMPONENT_KINDS,
-    isComponent,
-    isInputComponent,
+    UI_COMPONENT_KINDS,
+    RENDERABLE_COMPONENT_KINDS,
+    validateUiComponent,
+    validateThinking,
+    validateStatus,
+    validateProgress,
+    validateAttachment,
+    validateHitl,
+    validateRenderableComponent,
 } from './components';
 export type {
-    Component,
-    ComponentKind,
-    InputComponent,
-    StatusProps,
-    TableProps,
-    MetricProps,
+    UiComponent,
+    UiComponentKind,
+    ThinkingComponent,
+    StatusComponent,
+    ProgressComponent,
+    AttachmentComponent,
+    HitlComponent,
+    HitlExpect,
+    NextStep,
+    RenderableComponent,
+    RenderableComponentKind,
     MarkdownProps,
-    ImageProps,
-    CodeProps,
-    LinkProps,
-    AttachmentProps,
-    ProgressProps,
-    InputProps,
+    DataRefProps,
+    FileLinkProps,
+    TableProps,
+    TableColumn,
+    TableRow,
+    MetricProps,
+    MetricDelta,
     ChartProps,
+    CodeProps,
+    ImageProps,
+    LinkProps,
     TreeProps,
     TreeNode,
-    ThinkingProps,
+    ValidationResult,
 } from './components';
 
 // ─── Extractions ─────────────────────────────────────────────────────────

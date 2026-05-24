@@ -71,6 +71,16 @@ export interface CasCreateOptions {
     /** Default disallowed-tools list to apply when the declaration
      *  leaves it unset. */
     defaultDisallowedTools?: string[];
+    /** Tier (`'A'` / `'B'` / `'C'`) the agent is running under. When
+     *  set, the platform-body composer reads
+     *  `_platform/tier-<lc>.md` and appends it to the system prompt
+     *  on top of the universal `_platform/WORKSPACE.md`. Required for
+     *  the agent to follow the platform's routing discipline ("look up
+     *  URIs in `owns:` blocks", "don't glob for `routes/_index.md`",
+     *  …). Absent → only the workflow body is the system prompt, and
+     *  the agent has no idea what catalog conventions the platform
+     *  uses. */
+    tier?: 'A' | 'B' | 'C';
 }
 
 /** Per-send CAS extensions on top of the canonical `SendOptions`. */
@@ -170,7 +180,13 @@ function coerceToCompiledAgent(
     def: AgentDefinition,
     opts: CasCreateOptions,
 ): CompiledAgent {
+    // Pass-through only when the caller hasn't asked for tier
+    // composition. When `opts.tier` is set we must run `compileAgent`
+    // so the platform body (`_platform/WORKSPACE.md` +
+    // `_platform/tier-<lc>.md`) lands in the system prompt — without
+    // it the agent has no routing-catalog discipline.
     const isPreCompiled =
+        opts.tier === undefined &&
         typeof def.model === 'string' &&
         (def.tools === undefined || def.tools.length === 0) &&
         (def.subagents === undefined || def.subagents.length === 0) &&
@@ -195,10 +211,7 @@ function coerceToCompiledAgent(
             id: opts.agentId ?? opts.sessionId ?? 'no-session',
             cwd: opts.cwd,
         },
-        // Backend Tier-A is the only call site that exercises CAS
-        // today; callers from other tiers will thread `tier` through
-        // once `CasCreateOptions.tier` lands.
-        tier: undefined,
+        tier: opts.tier,
     };
 
     return compileAgent(

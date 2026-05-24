@@ -115,6 +115,13 @@ export function mapResult(input: MapResultInput): RunResult {
         if (typeof sdkResult.subtype === 'string') {
             result.subtype = sdkResult.subtype;
         }
+        // `session_id` lands on every SDKMessage including the terminal
+        // result. Surface it so the backend can persist the SDK's auto-
+        // generated UUID and pass it back as `resumeSessionId` next turn.
+        const sessionId = (sdkResult as { session_id?: unknown }).session_id;
+        if (typeof sessionId === 'string') {
+            result.sessionId = sessionId;
+        }
         // `SDKResultSuccess.result` is the SDK-typed carrier; some
         // adapters / fixtures also stamp a `result` string on the error
         // shape (carries the failure detail). Honor both when present

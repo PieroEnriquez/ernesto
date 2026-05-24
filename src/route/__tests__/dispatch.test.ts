@@ -1,9 +1,24 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
+import { promises as fs } from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { z } from 'zod';
 import { defineRoute } from '../define-route';
 import type { RouteContext } from '../define-route';
 import { RouteRegistry } from '../route-registry';
 import { dispatchRoute } from '../dispatch';
+
+let TMP_WORKDIR = '';
+beforeAll(async () => {
+    TMP_WORKDIR = await fs.mkdtemp(
+        path.join(os.tmpdir(), 'ernesto-dispatch-test-'),
+    );
+});
+afterAll(async () => {
+    if (TMP_WORKDIR) {
+        await fs.rm(TMP_WORKDIR, { recursive: true, force: true });
+    }
+});
 
 const makeCtx = (scopes: Iterable<string>): RouteContext => ({
     user: { id: 'u1' },
@@ -169,6 +184,172 @@ describe('dispatchRoute', () => {
             );
             expect(result).toEqual({ ok: true, data: { ok: true } });
         });
+    });
+
+    // ─── Render manifest + staging ─────────────────────────────────────────
+    //
+    // When a route declares a `render: [...]` manifest AND the caller wires
+    // `ctx.emitComponent`, dispatch fires components to the renderer AND
+    // shapes the agent-facing result as a stripped envelope carrying
+    // `{rendered, staged, note}`. The `staged` sketches are bounded —
+    // table rows / chart points must NOT round-trip into the agent's
+    // context.
+
+    it('includes a staged sketch alongside rendered kinds when render manifest fires', async () => {
+        const reg = new RouteRegistry();
+        const rows = Array.from({ length: 250 }, (_, i) => ({
+            region: `R${i}`,
+            gmv: i * 100,
+        }));
+        reg.register(
+            defineRoute({
+                uri: 'test://render-manifest',
+                scope: 'test:read',
+                input: z.object({}),
+                output: z.object({
+                    summary: z.string(),
+                    rows: z.array(z.object({ region: z.string(), gmv: z.number() })),
+                }),
+                handler: async () => ({
+                    summary: 'GMV €722.8K — concentration risk in US.',
+                    rows,
+                }),
+                render: [
+                    { path: 'summary', ui: 'markdown' },
+                    {
+                        path: 'rows',
+                        ui: 'table',
+                        caption: 'Revenue by region',
+                        columns: [
+                            { id: 'region', label: 'Region' },
+                            { id: 'gmv', label: 'GMV' },
+                        ],
+                    },
+                ],
+            }),
+        );
+
+        const emitted: { kind: string }[] = [];
+        const result = await dispatchRoute(
+            reg,
+            'test://render-manifest',
+            {},
+            {
+                ...makeCtx(['test:read']),
+                emitComponent: (c) => emitted.push(c as { kind: string }),
+            },
+        );
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        // Components fired to the renderer.
+        expect(emitted.map((c) => c.kind)).toEqual(['markdown', 'table']);
+
+        // Stripped envelope: agent sees `{rendered, staged, note}`, NOT the
+        // 250-row payload.
+        const data = result.data as {
+            rendered: string[];
+            staged: unknown[];
+            note: string;
+        };
+        expect(data.rendered).toEqual(['markdown', 'table']);
+        expect(Array.isArray(data.staged)).toBe(true);
+        expect(data.staged).toHaveLength(2);
+        expect(data.note).toMatch(/staged/);
+        expect(data.note).toMatch(/already rendered for the user/);
+        // The note steers the agent toward implications over restatement.
+        expect(data.note).toMatch(/cross-tabs|implication|insight/i);
+
+        // Crucial: the table sketch summarizes (cols + rowCount + firstRow),
+        // never the full 250 rows.
+        const tableSketch = data.staged[1] as {
+            kind: string;
+            rowCount: number;
+            columns: string[];
+            firstRow?: Record<string, unknown>;
+        };
+        expect(tableSketch.kind).toBe('table');
+        expect(tableSketch.rowCount).toBe(250);
+        expect(tableSketch.columns).toEqual(['Region', 'GMV']);
+        expect(tableSketch.firstRow).toEqual({ region: 'R0', gmv: 0 });
+
+        // Hard bound: row data must NOT leak into the `staged` field.
+        // The sketch summarizes shape (cols + rowCount + firstRow only);
+        // the 250-row array stays in the archive file.
+        const stagedJson = JSON.stringify(data.staged);
+        expect(stagedJson.length).toBeLessThan(500);
+        // None of the row index values (R5..R249) appear in `staged`.
+        for (let i = 5; i < 250; i++) {
+            expect(stagedJson).not.toContain(`"R${i}"`);
+        }
+    });
+
+    it('only emits manifest-declared components — attachment policy lives in each surface renderer', async () => {
+        const reg = new RouteRegistry();
+        reg.register(
+            defineRoute({
+                uri: 'test://renderer-owns-attach',
+                scope: 'test:read',
+                input: z.object({}),
+                output: z.object({
+                    rows: z.array(z.object({ x: z.number() })),
+                }),
+                handler: async () => ({ rows: [{ x: 1 }, { x: 2 }] }),
+                render: [
+                    {
+                        path: 'rows',
+                        ui: 'table',
+                        columns: [{ id: 'x', label: 'X' }],
+                    },
+                ],
+            }),
+        );
+
+        const emitted: { kind: string }[] = [];
+        const result = await dispatchRoute(
+            reg,
+            'test://renderer-owns-attach',
+            {},
+            {
+                ...makeCtx(['test:read']),
+                emitComponent: (c) => emitted.push(c as { kind: string }),
+                archiveResults: true,
+                workdirRoot: TMP_WORKDIR,
+                runId: 'rid-1',
+            },
+        );
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        // Only the table — no synthetic attachment from dispatch. Each
+        // surface's renderer decides whether/how to attach (Slack writes
+        // a CSV; CLI may show a path breadcrumb; web shows inline).
+        expect(emitted.map((c) => c.kind)).toEqual(['table']);
+        // The archive `file` is still in the envelope so the agent can
+        // `Read` it on follow-up turns and renderers can derive their
+        // own attachment policy from it.
+        if (!result.ok) return;
+        expect(typeof result.file).toBe('string');
+        expect(result.file).toMatch(/_results\/.+--renderer-owns-attach\.json$/);
+    });
+
+    it('omits staged when the render manifest is absent', async () => {
+        const reg = new RouteRegistry();
+        reg.register(echoRoute);
+
+        const result = await dispatchRoute(
+            reg,
+            'test://echo',
+            { msg: 'hi' },
+            { ...makeCtx(['test:read']), emitComponent: () => {} },
+        );
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        // Plain envelope passes through — no stripping when no manifest fires.
+        expect(result.data).toEqual({ msg: 'hi' });
+        expect((result.data as Record<string, unknown>).staged).toBeUndefined();
     });
 
     it('returns invalid_output and logs loudly when handler returns wrong shape', async () => {

@@ -17,3 +17,9 @@ export { RouteRegistry } from './route-registry';
 
 export { dispatchRoute } from './dispatch';
 export type { DispatchResult, DispatchErrorCode } from './dispatch';
+
+export { applyRenderManifest } from './render';
+export type { RenderEntry, WhenClause, ManifestComponent } from './render';
+
+export { sketchComponents } from './stage-sketch';
+export type { StagedSketch } from './stage-sketch';

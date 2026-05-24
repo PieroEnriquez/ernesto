@@ -65,8 +65,42 @@ export type {
 } from './workflow-reader';
 export { createMultiSourceWorkflowReader } from './workflow-reader';
 
-export { HitlController, validateAgainstSchema } from './hitl';
+export {
+    HitlController,
+    validateAgainstSchema,
+    materializeResumePrompt,
+} from './hitl';
 export type { HitlPauseInput, ResumeIntent } from './hitl';
+
+export {
+    CONVERSATION_STATE_VERSION,
+    UI_TRAIL_CAP,
+    loadConversationState,
+    saveConversationState,
+    updateConversationState,
+    appendUiTrail,
+    appendHitlToTrail,
+    decideRendererAction,
+    composeStrategy,
+    defaultRendererStrategy,
+} from './conversation-state';
+
+export {
+    latestHitl,
+    synthesizeHitlFromText,
+    extractTurnState,
+} from './step-emissions';
+export type { StepEmissionSummary } from './step-emissions';
+export type {
+    ConversationState,
+    ConversationStatus,
+    PendingHitlRecord,
+    RendererAction,
+    RendererInput,
+    RendererPromptStrategy,
+    RendererStrategyPrev,
+    UiTrailEntry,
+} from './conversation-state';
 
 export { HandlerDispatcher } from './dispatch';
 export { EventBus } from './event-bus';

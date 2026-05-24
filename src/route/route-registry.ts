@@ -7,8 +7,19 @@
 
 import type { Route } from './define-route';
 
+/**
+ * Per-route custom compactor — overrides the generic `compactify`
+ * walker for the `preview` field in the agent's tool_result. A route
+ * may register one when its data shape benefits from domain-specific
+ * shrinkage (e.g. project a wide row onto just the columns the
+ * subsequent reasoning typically needs). The fallback when this is
+ * unset / returns undefined is the generic compactify.
+ */
+export type RouteCompactor = (data: unknown, limit: number) => unknown;
+
 export class RouteRegistry {
     private readonly byUri = new Map<string, Route>();
+    private readonly compactors = new Map<string, RouteCompactor>();
 
     register(route: Route): void {
         if (this.byUri.has(route.uri)) {
@@ -27,5 +38,17 @@ export class RouteRegistry {
 
     list(): Route[] {
         return Array.from(this.byUri.values());
+    }
+
+    /** Register a per-route compactor. Caller responsible for routes
+     *  matching the URI; duplicate registration overwrites. */
+    registerCompactor(uri: string, fn: RouteCompactor): void {
+        this.compactors.set(uri, fn);
+    }
+
+    /** Look up a custom compactor; the dispatch layer calls this and
+     *  falls back to the generic `compactify` when undefined. */
+    getCompactor(uri: string): RouteCompactor | undefined {
+        return this.compactors.get(uri);
     }
 }

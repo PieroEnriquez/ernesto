@@ -2,6 +2,7 @@ export {
     executeInputSchema,
     executeOutputSchema,
     EXECUTE_DESCRIPTION,
+    EXECUTE_ACCEPTS_BUNDLED_UI,
     handleExecute,
 } from './execute';
 export type { ExecuteInput, ExecuteVerbContext, ExecuteVerbLogger } from './execute';

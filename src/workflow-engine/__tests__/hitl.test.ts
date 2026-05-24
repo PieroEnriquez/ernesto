@@ -1,6 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { EventBus } from '../event-bus';
-import { HitlController, validateAgainstSchema } from '../hitl';
+import {
+    HitlController,
+    materializeResumePrompt,
+    validateAgainstSchema,
+} from '../hitl';
 import { InMemoryStore } from '../store/in-memory-store';
 import type { FactEvent } from '../types/event';
 
@@ -157,6 +161,42 @@ describe('validateAgainstSchema', () => {
         expect(validateAgainstSchema(true, { type: 'boolean' })).toBeNull();
         expect(validateAgainstSchema('x', { type: 'number' })).toMatch(
             /expected number/,
+        );
+    });
+});
+
+describe('materializeResumePrompt', () => {
+    it('substitutes {value} with a scalar response', () => {
+        expect(
+            materializeResumePrompt(
+                'User chose {value}. Proceed.',
+                'approve',
+            ),
+        ).toBe('User chose approve. Proceed.');
+    });
+    it('JSON-stringifies array and object values into {value}', () => {
+        expect(materializeResumePrompt('Got {value}', [1, 2])).toBe('Got [1,2]');
+        expect(
+            materializeResumePrompt(
+                'Got {value}',
+                { ok: true } as Record<string, unknown>,
+            ),
+        ).toBe('Got {"ok":true}');
+    });
+    it('substitutes {field} for object-shaped responses', () => {
+        expect(
+            materializeResumePrompt(
+                'Name: {name}, age: {age}',
+                { name: 'Ada', age: 36 },
+            ),
+        ).toBe('Name: Ada, age: 36');
+    });
+    it('falls back to a renderer-default when template is absent', () => {
+        expect(materializeResumePrompt(undefined, 'yes')).toBe(
+            'The user responded: yes',
+        );
+        expect(materializeResumePrompt('', 'yes')).toBe(
+            'The user responded: yes',
         );
     });
 });

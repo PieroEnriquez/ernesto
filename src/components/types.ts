@@ -3,118 +3,176 @@
  * steps and consumed by per-tier subscribers (Slack, claude.ai MCP,
  * CLI, fragua-web).
  *
- * This is the runtime extension of the dashboards `render:` annotation:
- * dashboards declare a single component kind per step at author time;
- * agent steps declare components dynamically at runtime via the `ui.*`
- * MCP tool surface (see {@link ../ui-tools}).
+ * Two-level hierarchy:
  *
- * Components are intentionally flat — no nesting. If a tier-specific
- * renderer wants a card-with-title-and-footer shape, it composes from
- * sibling components. Author-facing shape stays simple; renderer eats
- * the composition complexity.
+ * **Top-level ({@link UiComponent})** — 5 kinds the `ui([…])` MCP tool
+ * accepts:
+ *   - `thinking` — agent-internal trace (renderer-default rendered,
+ *     not part of the uiTrail / answer contract).
+ *   - `status` — side-band progress pill.
+ *   - `progress` — side-band progress bar.
+ *   - `attachment` — side-band file upload (workdir-relative path or
+ *     external URL).
+ *   - `hitl` — THE canonical answer per turn. Carries the contract for
+ *     what comes next (`expect`, `resumePrompt`, `nextSteps`) plus the
+ *     `render: RenderableComponent[]` payload the renderer surfaces.
  *
- * `slotId` lets an emitter target a previously-emitted component for
- * in-place update (status bars that progress through stages, progress
- * bars that advance, an input prompt that gets resolved). The single
- * `input` kind always carries a slotId so a subscriber can swap the
- * prompt UI for the resolved value once the user responds.
+ * **Renderable ({@link RenderableComponent})** — 10 kinds that only
+ * nest inside `hitl.props.render`. Cannot stand alone at the top-level.
+ *   - `markdown` / `data-ref` / `file-link` / `table` / `metric` /
+ *     `chart` / `code` / `image` / `link` / `tree`.
+ *
+ * `data-ref` and `file-link` are NEW vs. the prior single-union flavor:
+ * the renderer materializes `data-ref` (workdir-relative file + view
+ * DSL string) and renders `file-link` as a workdir-relative link.
+ *
+ * `slotId` is reserved for the side-band kinds (`status`, `progress`,
+ * `thinking`) that may need in-place update across multiple emissions.
  */
 
-/** Status pill — short progress signal. Update via `slotId` to walk
- *  through stages without spamming the channel. */
-export interface StatusProps {
-    text: string;
-    level?: 'info' | 'progress' | 'success' | 'warn' | 'error';
+// ─── Top-level: UiComponent ─────────────────────────────────────────
+
+/** Agent's reasoning. Subscribers MAY surface this collapsed by
+ *  default (claude.ai's "inner thoughts" pattern, Slack's collapsible
+ *  block, CLI's `chalk.gray`). Renderer-default rendered — not part
+ *  of the uiTrail / canonical answer contract. */
+export interface ThinkingComponent {
+    kind: 'thinking';
+    props: { text: string };
+    slotId?: string;
 }
 
-/** Tabular data. Renderers MAY truncate large `rows` and emit a
- *  "open in thread" / virtualized affordance instead. */
-export interface TableProps {
-    columns: { id: string; label: string; align?: 'left' | 'right' | 'center' }[];
-    rows: Record<string, unknown>[];
-    caption?: string;
-    footer?: { id: string; label: string; value: unknown }[];
-}
-
-/** Single KPI / metric with optional delta. */
-export interface MetricProps {
-    label: string;
-    value: string | number;
-    delta?: {
-        value: number;
-        direction: 'up' | 'down' | 'flat';
-        period?: string;
+/** Short status pill — update via `slotId` to walk one pill through
+ *  stages instead of spawning a new one per stage. */
+export interface StatusComponent {
+    kind: 'status';
+    props: {
+        text: string;
+        level?: 'info' | 'progress' | 'success' | 'warn' | 'error';
     };
-    unit?: string;
+    slotId?: string;
 }
 
-/** Free-form markdown. The renderer picks the dialect (Slack mrkdwn vs
- *  GitHub-flavoured vs ANSI). */
+/** Progress bar — update via `slotId` as `current` advances. */
+export interface ProgressComponent {
+    kind: 'progress';
+    props: {
+        label: string;
+        current: number;
+        total: number;
+    };
+    slotId?: string;
+}
+
+/** File attachment. Carries either a workdir-relative `path` (for
+ *  workspace-uploaded files) or an external `url`; at least one must
+ *  be present. */
+export interface AttachmentComponent {
+    kind: 'attachment';
+    props: {
+        /** Workdir-relative path. Renderers that support upload (Slack
+         *  `files.uploadV2`) read this from disk and upload as native. */
+        path?: string;
+        /** Alternative external URL. */
+        url?: string;
+        filename: string;
+        mimeType?: string;
+        caption?: string;
+    };
+}
+
+/** The canonical answer per turn. Compound — its `render` field
+ *  carries the {@link RenderableComponent}s the renderer surfaces;
+ *  `expect`, `resumePrompt`, and `nextSteps` form the contract for the
+ *  next turn. */
+export interface HitlComponent {
+    kind: 'hitl';
+    props: {
+        render: RenderableComponent[];
+        expect: HitlExpect;
+        resumePrompt: string;
+        nextSteps?: NextStep[];
+    };
+}
+
+/** Top-level component union — what the unified `ui` MCP tool
+ *  accepts. */
+export type UiComponent =
+    | ThinkingComponent
+    | StatusComponent
+    | ProgressComponent
+    | AttachmentComponent
+    | HitlComponent;
+
+/** Stable tuple of top-level kinds. */
+export const UI_COMPONENT_KINDS = [
+    'thinking',
+    'status',
+    'progress',
+    'attachment',
+    'hitl',
+] as const;
+
+export type UiComponentKind = (typeof UI_COMPONENT_KINDS)[number];
+
+// ─── Expect (HITL contract) ─────────────────────────────────────────
+
+/** What the agent expects in the next turn. */
+export type HitlExpect =
+    | { kind: 'message' }
+    | { kind: 'choice'; schema: { enum: string[] }; defaults?: string }
+    | { kind: 'form'; schema: Record<string, unknown>; defaults?: Record<string, unknown> }
+    | { kind: 'none' };
+
+/** Optional next-step hint — either a bare label string or a
+ *  structured `{ id, label }` for renderers that want stable ids. */
+export type NextStep = string | { id: string; label: string };
+
+// ─── Renderable: per-kind props ─────────────────────────────────────
+
 export interface MarkdownProps {
     body: string;
 }
 
-export interface ImageProps {
-    url: string;
-    alt?: string;
-    width?: number;
-    height?: number;
+/** Workdir-relative data file + a view DSL string the renderer
+ *  materializes (e.g. table view, chart view). */
+export interface DataRefProps {
+    file: string;
+    view?: string;
+    caption?: string;
 }
 
-export interface CodeProps {
-    language: string;
-    body: string;
-    filename?: string;
+/** Workdir-relative file link with optional label. */
+export interface FileLinkProps {
+    path: string;
+    label?: string;
 }
 
-export interface LinkProps {
-    url: string;
+export interface TableColumn {
+    id: string;
     label: string;
-    icon?: string;
+    align?: 'left' | 'right' | 'center';
 }
 
-/** Attachment reference. `ref` is an attachments-yaml key or a URI the
- *  workspace's attachment provider understands. */
-export interface AttachmentProps {
-    ref: string;
-    name?: string;
-    mimeType?: string;
-    sizeBytes?: number;
+export type TableRow = Record<string, string | number | boolean | null>;
+
+export interface TableProps {
+    columns: TableColumn[];
+    rows: TableRow[];
+    caption?: string;
 }
 
-export interface ProgressProps {
+export interface MetricDelta {
+    value: number;
+    direction: 'up' | 'down';
+    period?: string;
+}
+
+export interface MetricProps {
     label: string;
-    current: number;
-    total: number;
-    eta?: string;
-}
-
-/**
- * Unified input component — replaces the prior three variants
- * (`choice_input` / `text_input` / `form`). The JSON Schema describes
- * the expected input shape; the renderer inspects the schema to pick
- * the widget:
- *
- *   { type: 'string' }                          → text field
- *   { type: 'string', enum: [...] }             → buttons / radio / select
- *   { type: 'string', format: 'multiline' }     → textarea
- *   { type: 'number' }                          → number field
- *   { type: 'boolean' }                         → toggle
- *   { type: 'object', properties: { ... } }     → multi-field form
- *   { type: 'array', items: { ... } }           → repeating "add another"
- *
- * Nested objects/arrays render as nested forms / repeating sections.
- * `defaults` carries pre-filled values matching the schema shape.
- */
-export interface InputProps {
-    prompt: string;
-    /** JSON Schema describing the expected input shape. The schema is
-     *  the discriminator the renderer inspects to pick the widget. */
-    schema: Record<string, unknown>;
-    defaults?: unknown;
-    /** Optional CTA label (Slack modal button, claude.ai accept-button,
-     *  etc.). Renderers fall back to a tier-default label when absent. */
-    submitLabel?: string;
+    value: string | number;
+    unit?: string;
+    delta?: MetricDelta;
 }
 
 export interface ChartProps {
@@ -123,6 +181,24 @@ export interface ChartProps {
     xLabel?: string;
     yLabel?: string;
     caption?: string;
+}
+
+export interface CodeProps {
+    body: string;
+    language: string;
+    caption?: string;
+}
+
+export interface ImageProps {
+    url: string;
+    alt?: string;
+    caption?: string;
+}
+
+export interface LinkProps {
+    url: string;
+    title: string;
+    description?: string;
 }
 
 export interface TreeNode {
@@ -135,76 +211,31 @@ export interface TreeProps {
     nodes: TreeNode[];
 }
 
-export interface ThinkingProps {
-    /** Agent's reasoning. Subscribers MAY surface this collapsed by
-     *  default (claude.ai's "inner thoughts" pattern). */
-    text: string;
-}
-
-/**
- * Discriminated union of all 13 components. The `kind` discriminator
- * narrows `props` to the matching `XxxProps`. The `input` kind plus
- * the three updatable signals (`status`, `progress`, `thinking`) carry
- * an optional `slotId` for in-place update.
- */
-export type Component =
-    | { kind: 'status'; props: StatusProps; slotId?: string }
+/** Renderable component union — nested inside `hitl.props.render`. */
+export type RenderableComponent =
+    | { kind: 'markdown'; props: MarkdownProps }
+    | { kind: 'data-ref'; props: DataRefProps }
+    | { kind: 'file-link'; props: FileLinkProps }
     | { kind: 'table'; props: TableProps }
     | { kind: 'metric'; props: MetricProps }
-    | { kind: 'markdown'; props: MarkdownProps }
-    | { kind: 'image'; props: ImageProps }
-    | { kind: 'code'; props: CodeProps }
-    | { kind: 'link'; props: LinkProps }
-    | { kind: 'attachment'; props: AttachmentProps }
-    | { kind: 'progress'; props: ProgressProps; slotId?: string }
-    | { kind: 'input'; props: InputProps; slotId?: string }
     | { kind: 'chart'; props: ChartProps }
-    | { kind: 'tree'; props: TreeProps }
-    | { kind: 'thinking'; props: ThinkingProps; slotId?: string };
+    | { kind: 'code'; props: CodeProps }
+    | { kind: 'image'; props: ImageProps }
+    | { kind: 'link'; props: LinkProps }
+    | { kind: 'tree'; props: TreeProps };
 
-/** All 13 component kinds — keep in sync with the {@link Component}
- *  union above. Exported as a tuple so consumers can iterate at
- *  runtime (e.g. when registering one MCP tool per kind). */
-export const COMPONENT_KINDS = [
-    'status',
+/** Stable tuple of renderable kinds. */
+export const RENDERABLE_COMPONENT_KINDS = [
+    'markdown',
+    'data-ref',
+    'file-link',
     'table',
     'metric',
-    'markdown',
-    'image',
-    'code',
-    'link',
-    'attachment',
-    'progress',
-    'input',
     'chart',
+    'code',
+    'image',
+    'link',
     'tree',
-    'thinking',
 ] as const;
 
-export type ComponentKind = (typeof COMPONENT_KINDS)[number];
-
-/** The input-shaped component — its emission pauses the run until a
- *  human responds. The UI tool handler for `ui.input` calls
- *  `HitlController.pauseForHuman` in addition to emitting
- *  `fact.component`. */
-export type InputComponent = Extract<Component, { kind: 'input' }>;
-
-const KIND_SET: ReadonlySet<string> = new Set(COMPONENT_KINDS);
-
-/** Structural type guard. Validates the `kind` discriminator + that a
- *  `props` object exists; doesn't deep-validate the props payload
- *  (the per-tier renderer and the originating tool schema do that). */
-export function isComponent(value: unknown): value is Component {
-    if (!value || typeof value !== 'object') return false;
-    const v = value as { kind?: unknown; props?: unknown };
-    if (typeof v.kind !== 'string') return false;
-    if (!KIND_SET.has(v.kind)) return false;
-    if (!v.props || typeof v.props !== 'object') return false;
-    return true;
-}
-
-/** Narrow a {@link Component} to the input subset (the kind that
- *  pauses the run). */
-export function isInputComponent(c: Component): c is InputComponent {
-    return c.kind === 'input';
-}
+export type RenderableComponentKind = (typeof RENDERABLE_COMPONENT_KINDS)[number];

@@ -1,60 +1,157 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, expectTypeOf } from 'vitest';
 import {
-    COMPONENT_KINDS,
-    isComponent,
-    isInputComponent,
+    UI_COMPONENT_KINDS,
+    RENDERABLE_COMPONENT_KINDS,
 } from '../types';
-import type { Component } from '../types';
+import type {
+    UiComponent,
+    UiComponentKind,
+    RenderableComponent,
+    RenderableComponentKind,
+    HitlExpect,
+    NextStep,
+} from '../types';
 
-describe('components/types', () => {
-    it('lists all 13 component kinds', () => {
-        expect(COMPONENT_KINDS.length).toBe(13);
-        // No duplicates.
-        expect(new Set(COMPONENT_KINDS).size).toBe(COMPONENT_KINDS.length);
-        // Spot-check the headline kinds we lean on elsewhere.
+describe('components/types — two-level taxonomy', () => {
+    it('lists exactly 5 top-level UiComponent kinds', () => {
+        expect(UI_COMPONENT_KINDS.length).toBe(5);
+        expect(new Set(UI_COMPONENT_KINDS).size).toBe(UI_COMPONENT_KINDS.length);
         for (const kind of [
+            'thinking',
             'status',
+            'progress',
+            'attachment',
+            'hitl',
+        ] as const) {
+            expect(UI_COMPONENT_KINDS).toContain(kind);
+        }
+        // Old top-level kinds are now renderable-only.
+        expect(UI_COMPONENT_KINDS).not.toContain('markdown' as never);
+        expect(UI_COMPONENT_KINDS).not.toContain('table' as never);
+        // The pre-refactor `input` kind is gone — replaced by
+        // hitl.expect.kind = 'choice' | 'form'.
+        expect(UI_COMPONENT_KINDS).not.toContain('input' as never);
+    });
+
+    it('lists exactly 10 renderable kinds', () => {
+        expect(RENDERABLE_COMPONENT_KINDS.length).toBe(10);
+        expect(new Set(RENDERABLE_COMPONENT_KINDS).size).toBe(
+            RENDERABLE_COMPONENT_KINDS.length,
+        );
+        for (const kind of [
+            'markdown',
+            'data-ref',
+            'file-link',
             'table',
             'metric',
-            'markdown',
-            'input',
-            'thinking',
+            'chart',
+            'code',
+            'image',
+            'link',
+            'tree',
         ] as const) {
-            expect(COMPONENT_KINDS).toContain(kind);
+            expect(RENDERABLE_COMPONENT_KINDS).toContain(kind);
         }
-        // The three old input kinds have been collapsed into one.
-        expect(COMPONENT_KINDS).not.toContain('choice_input' as never);
-        expect(COMPONENT_KINDS).not.toContain('text_input' as never);
-        expect(COMPONENT_KINDS).not.toContain('form' as never);
+        // Top-level kinds are NOT renderable.
+        for (const kind of [
+            'hitl',
+            'thinking',
+            'status',
+            'progress',
+            'attachment',
+        ] as const) {
+            expect(RENDERABLE_COMPONENT_KINDS).not.toContain(kind as never);
+        }
     });
 
-    it('isComponent accepts a well-shaped status component', () => {
-        const c: Component = {
-            kind: 'status',
-            props: { text: 'fetching…', level: 'progress' },
-            slotId: 'main-status',
+    it('type-level: UiComponent narrows on kind discriminator', () => {
+        expectTypeOf<UiComponentKind>().toEqualTypeOf<
+            'thinking' | 'status' | 'progress' | 'attachment' | 'hitl'
+        >();
+        expectTypeOf<RenderableComponentKind>().toEqualTypeOf<
+            | 'markdown'
+            | 'data-ref'
+            | 'file-link'
+            | 'table'
+            | 'metric'
+            | 'chart'
+            | 'code'
+            | 'image'
+            | 'link'
+            | 'tree'
+        >();
+    });
+
+    it('type-level: HitlExpect supports message / choice / form / none', () => {
+        const samples: HitlExpect[] = [
+            { kind: 'message' },
+            { kind: 'choice', schema: { enum: ['a', 'b'] } },
+            { kind: 'form', schema: { type: 'object' } },
+            { kind: 'none' },
+        ];
+        expect(samples.length).toBe(4);
+    });
+
+    it('type-level: NextStep is string | { id, label }', () => {
+        const steps: NextStep[] = ['continue', { id: 'go', label: 'Continue' }];
+        expect(steps.length).toBe(2);
+    });
+
+    it('type-level: hitl carries a render array of RenderableComponents', () => {
+        const hitl: UiComponent = {
+            kind: 'hitl',
+            props: {
+                render: [
+                    { kind: 'markdown', props: { body: 'hello' } },
+                    { kind: 'metric', props: { label: 'n', value: 42 } },
+                ],
+                expect: { kind: 'message' },
+                resumePrompt: 'Continue?',
+            },
         };
-        expect(isComponent(c)).toBe(true);
+        expect(hitl.kind).toBe('hitl');
+        if (hitl.kind === 'hitl') {
+            expect(hitl.props.render.length).toBe(2);
+        }
     });
 
-    it('isComponent accepts every declared kind structurally', () => {
-        const samples: Component[] = [
-            { kind: 'status', props: { text: 's' } },
-            { kind: 'table', props: { columns: [], rows: [] } },
-            { kind: 'metric', props: { label: 'n', value: 1 } },
-            { kind: 'markdown', props: { body: 'hi' } },
-            { kind: 'image', props: { url: 'https://e/x.png' } },
-            { kind: 'code', props: { language: 'ts', body: 'x' } },
-            { kind: 'link', props: { url: 'https://e', label: 'L' } },
-            { kind: 'attachment', props: { ref: 'a' } },
-            { kind: 'progress', props: { label: 'p', current: 1, total: 2 } },
+    it('type-level: every top-level kind constructs structurally', () => {
+        const samples: UiComponent[] = [
+            { kind: 'thinking', props: { text: 'reasoning' } },
+            { kind: 'status', props: { text: 'fetching', level: 'progress' } },
             {
-                kind: 'input',
+                kind: 'progress',
+                props: { label: 'sync', current: 1, total: 10 },
+            },
+            {
+                kind: 'attachment',
+                props: { filename: 'r.json', path: '_results/r.json' },
+            },
+            {
+                kind: 'hitl',
                 props: {
-                    prompt: 'p',
-                    schema: { type: 'string', enum: ['a'] },
+                    render: [{ kind: 'markdown', props: { body: 'h' } }],
+                    expect: { kind: 'message' },
+                    resumePrompt: 'follow up?',
                 },
             },
+        ];
+        expect(samples.length).toBe(UI_COMPONENT_KINDS.length);
+    });
+
+    it('type-level: every renderable kind constructs structurally', () => {
+        const samples: RenderableComponent[] = [
+            { kind: 'markdown', props: { body: '## hi' } },
+            { kind: 'data-ref', props: { file: 'data/x.json', view: 'table' } },
+            { kind: 'file-link', props: { path: 'r.md', label: 'open' } },
+            {
+                kind: 'table',
+                props: {
+                    columns: [{ id: 'a', label: 'A' }],
+                    rows: [{ a: 1 }],
+                },
+            },
+            { kind: 'metric', props: { label: 'n', value: 42, unit: 'orders' } },
             {
                 kind: 'chart',
                 props: {
@@ -62,44 +159,11 @@ describe('components/types', () => {
                     chartType: 'line',
                 },
             },
+            { kind: 'code', props: { body: 'x', language: 'ts' } },
+            { kind: 'image', props: { url: 'https://e/x.png' } },
+            { kind: 'link', props: { url: 'https://e', title: 'Open' } },
             { kind: 'tree', props: { nodes: [{ label: 'r' }] } },
-            { kind: 'thinking', props: { text: 't' } },
         ];
-        expect(samples.length).toBe(COMPONENT_KINDS.length);
-        for (const c of samples) {
-            expect(isComponent(c)).toBe(true);
-        }
-    });
-
-    it('isComponent rejects malformed payloads', () => {
-        expect(isComponent(null)).toBe(false);
-        expect(isComponent(undefined)).toBe(false);
-        expect(isComponent({})).toBe(false);
-        expect(isComponent({ kind: 'status' })).toBe(false);
-        expect(isComponent({ kind: 'nope', props: {} })).toBe(false);
-        // Old kinds are no longer accepted now that they've collapsed
-        // into `input`.
-        expect(isComponent({ kind: 'choice_input', props: {} })).toBe(false);
-        expect(isComponent({ kind: 'text_input', props: {} })).toBe(false);
-        expect(isComponent({ kind: 'form', props: {} })).toBe(false);
-        expect(isComponent({ kind: 'status', props: 'oops' })).toBe(false);
-        expect(isComponent('status')).toBe(false);
-    });
-
-    it('isInputComponent narrows to the pause-the-run kind', () => {
-        const input: Component = {
-            kind: 'input',
-            props: {
-                prompt: 'p',
-                schema: { type: 'string', enum: ['a'] },
-            },
-        };
-        const status: Component = {
-            kind: 'status',
-            props: { text: 's' },
-        };
-
-        expect(isInputComponent(input)).toBe(true);
-        expect(isInputComponent(status)).toBe(false);
+        expect(samples.length).toBe(RENDERABLE_COMPONENT_KINDS.length);
     });
 });

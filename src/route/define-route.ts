@@ -17,6 +17,7 @@
  */
 
 import type { z } from 'zod';
+import type { RenderEntry } from './render';
 
 export type RouteScope = string;
 
@@ -82,6 +83,43 @@ export interface RouteContext {
      * parent's. Adapters that don't track cost can ignore it.
      */
     onSubagentCost?: (costUsd: number) => void;
+    /**
+     * Optional `fact.component` emitter for the render-manifest
+     * walker. When the dispatched route declares a `render: [...]`
+     * manifest AND the caller wires this callback, every entry that
+     * resolves against the route's output fires a component event
+     * here — typically routed through the workflow-engine's per-step
+     * `stepEmit` so the per-tier subscribers (Slack, claude.ai, CLI)
+     * render automatically without the agent having to retype.
+     *
+     * Absent / null → manifest is silent (handler's return value still
+     * lands; the agent retypes as today). Wiring this hook is what
+     * activates the manifest path; the lib doesn't auto-discover.
+     */
+    emitComponent?: (component: import('./render').ManifestComponent) => void;
+    /**
+     * Optional run identifier — captured into the archived tool-result
+     * file so multi-call investigations can be correlated to the
+     * workflow run that produced them. The dispatch layer generates a
+     * synthetic id when absent.
+     */
+    runId?: string;
+    /**
+     * Override for the inline preview row cap. Default is 5 rows. `0`
+     * suppresses the inline preview entirely (agent gets only the
+     * `file` pointer). The string sentinel `'all'` bypasses the
+     * compactor and inlines the full data verbatim (caller-acknowledged
+     * token cost). Plumbed through by `handleExecute`.
+     */
+    previewLimit?: number | 'all';
+    /**
+     * Opt-in: when `true`, dispatch archives the full route response
+     * to `<workdir>/workspaces/<ws>/_results/...json` and attaches
+     * `preview` + `file` fields to the data the caller receives. The
+     * `execute` verb sets this; internal / test dispatchers leave it
+     * unset to preserve the legacy `{ data: <route-output> }` shape.
+     */
+    archiveResults?: boolean;
 }
 
 /**
@@ -110,6 +148,14 @@ export interface RouteConfig<
     output: O;
     description?: string;
     handler: (input: z.infer<I>, ctx: RouteContext) => Promise<z.infer<O>>;
+    /**
+     * Optional render manifest — projects the typed output to one
+     * `Component` per entry. The dispatcher walks this after the
+     * handler returns, calling `ctx.emitComponent` for each component
+     * the manifest produces. See {@link RenderEntry} + the design
+     * doc in `workspaces/agent-ops/workflows-unification/tool-manifest.md`.
+     */
+    render?: ReadonlyArray<RenderEntry>;
 }
 
 export interface Route<
@@ -128,6 +174,9 @@ export interface Route<
     readonly output: O;
     readonly description?: string;
     readonly handler: (input: z.infer<I>, ctx: RouteContext) => Promise<z.infer<O>>;
+    /** Frozen render manifest; absent for routes that opt out and let
+     *  the agent author components manually. */
+    readonly render?: ReadonlyArray<RenderEntry>;
 }
 
 export function defineRoute<
@@ -147,6 +196,9 @@ export function defineRoute<
         output: config.output,
         description: config.description,
         handler: config.handler,
+        ...(config.render
+            ? { render: Object.freeze([...config.render]) }
+            : {}),
     });
 }
 

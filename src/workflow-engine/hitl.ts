@@ -31,6 +31,20 @@ export interface HitlPauseInput {
     routes?: string[];
     defaults?: Record<string, unknown>;
     routing?: Readonly<Record<string, unknown>>;
+    /**
+     * Agent-authored template for the SDK turn that follows the
+     * pause. The renderer materializes it with the human's response
+     * (substituting `{value}` and, for object-shaped responses,
+     * `{field}` per top-level field) and feeds it back as the
+     * next agent turn's user-message content.
+     *
+     * Stored on the pending pause so the engine has it on `resume()` —
+     * even though the current (blocking) HITL model just returns the
+     * raw value as the MCP tool's result. The forthcoming non-blocking
+     * model ends the agent step on pause and dispatches a new step on
+     * resume with `prompt = materializeResumePrompt(template, value)`.
+     */
+    resumePrompt?: string;
 }
 
 export interface ResumeIntent {
@@ -40,6 +54,7 @@ export interface ResumeIntent {
 
 interface PendingPause {
     schema: Record<string, unknown>;
+    resumePrompt?: string;
     resolve: (value: unknown) => void;
     reject: (err: Error) => void;
 }
@@ -89,12 +104,26 @@ export class HitlController {
         });
 
         return new Promise<unknown>((resolve, reject) => {
-            this.pending.set(key, {
+            const pending: PendingPause = {
                 schema: input.schema,
                 resolve,
                 reject,
-            });
+            };
+            if (input.resumePrompt !== undefined) {
+                pending.resumePrompt = input.resumePrompt;
+            }
+            this.pending.set(key, pending);
         });
+    }
+
+    /**
+     * Read the renderer-side framing the agent attached when it paused.
+     * The renderer materializes this with the human's response to build
+     * the next agent turn's prompt. Returns `undefined` if no template
+     * was attached or no pause is pending for `(runId, promptId)`.
+     */
+    getResumePrompt(runId: string, promptId: string): string | undefined {
+        return this.pending.get(`${runId}:${promptId}`)?.resumePrompt;
     }
 
     /** Resume a paused run. Validates the value, settles the pending
@@ -138,6 +167,57 @@ export class HitlController {
             pending.reject(new Error(reason));
         }
     }
+}
+
+/**
+ * Materialize the agent-authored resume-prompt template with the
+ * human's response. Renderers call this when they capture a HITL
+ * result; the returned string becomes the next SDK agent turn's
+ * user-message content (paired with `resume: <sessionId>`).
+ *
+ * Substitution:
+ *   - `{value}` is replaced with the response (objects + arrays are
+ *     JSON-stringified, scalars get their `String(...)` form).
+ *   - For an object-shaped response, each top-level `{field}` is
+ *     replaced with the field's value (scalars only — nested objects
+ *     stringify back via the `{value}` path).
+ *
+ * Absent template → returns a renderer-default framing
+ * (`"The user responded: <value>"`). Renderers MAY override.
+ */
+export function materializeResumePrompt(
+    template: string | undefined,
+    value: unknown,
+): string {
+    const scalar = (v: unknown): string => {
+        if (typeof v === 'string') return v;
+        if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+        try {
+            return JSON.stringify(v);
+        } catch {
+            return String(v);
+        }
+    };
+    if (!template || template.length === 0) {
+        return `The user responded: ${scalar(value)}`;
+    }
+    let out = template.replace(/\{value\}/g, scalar(value));
+    if (
+        value &&
+        typeof value === 'object' &&
+        !Array.isArray(value)
+    ) {
+        for (const [field, fieldValue] of Object.entries(
+            value as Record<string, unknown>,
+        )) {
+            const placeholder = new RegExp(
+                `\\{${field.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\}`,
+                'g',
+            );
+            out = out.replace(placeholder, scalar(fieldValue));
+        }
+    }
+    return out;
 }
 
 /** Best-effort route extraction — mirrors the backend's

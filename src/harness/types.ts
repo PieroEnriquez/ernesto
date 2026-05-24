@@ -229,6 +229,12 @@ export interface RunResult {
      *  `SDKResultMessage.result`. Avoids the lossy scrape from
      *  `finalAssistant`. */
     rawText?: string;
+    /** Backend-assigned session id of the underlying agent transcript.
+     *  CAS: the SDK's auto-generated session UUID (also the filename
+     *  under `~/.claude/projects/<cwd-enc>/<sessionId>.jsonl`). Callers
+     *  capture this to resume the same conversation on a later turn by
+     *  passing it as `CreateOptions.resumeSessionId`. */
+    sessionId?: string;
     error?: { message: string; cause?: unknown };
 }
 
@@ -250,6 +256,12 @@ export interface CreateOptions {
     resumeSessionId?: string;
     /** Fork from `resumeSessionId` instead of continuing it. */
     forkSession?: boolean;
+    /** Per-call MCP servers — merged on top of the harness env's
+     *  defaults (call-level entries win on key collision). Lets each
+     *  workflow run hand the harness session-scoped tool surfaces
+     *  (e.g. tier-A's `ernesto` MCP closing over the run's workdir +
+     *  user + scopes) without rebuilding the harness. */
+    mcpServers?: Record<string, unknown>;
 }
 
 /** Options accepted by `AgentHandle.send`. */

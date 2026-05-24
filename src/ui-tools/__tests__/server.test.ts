@@ -22,23 +22,9 @@ afterEach(async () => {
 });
 
 describe('createUiMcpServer', () => {
-    it('exposes exactly 13 ui.* tools', () => {
-        expect(UI_TOOL_COUNT).toBe(13);
-        expect(UI_TOOL_NAMES).toEqual([
-            'ui.status',
-            'ui.table',
-            'ui.metric',
-            'ui.markdown',
-            'ui.image',
-            'ui.code',
-            'ui.link',
-            'ui.attachment',
-            'ui.progress',
-            'ui.input',
-            'ui.chart',
-            'ui.tree',
-            'ui.thinking',
-        ]);
+    it('exposes exactly one unified `ui` tool', () => {
+        expect(UI_TOOL_COUNT).toBe(1);
+        expect(UI_TOOL_NAMES).toEqual(['ui']);
     });
 
     it('binds to 127.0.0.1 on an ephemeral port and is reachable', async () => {
@@ -47,8 +33,6 @@ describe('createUiMcpServer', () => {
             runId: 'r-1',
             stepId: 's-1',
             emit: (e) => emitted.push(e),
-            // HitlController not used by non-input tools — pass a
-            // structural stub so the type checks.
             hitl: {} as UiHitlPauser,
         };
         active = await createUiMcpServer({ context: ctx });
@@ -58,7 +42,7 @@ describe('createUiMcpServer', () => {
         expect(active.config.type).toBe('http');
     });
 
-    it('routes a tool call to the right handler and emits fact.component', async () => {
+    it('routes a single-component `ui` call and emits fact.component', async () => {
         const emitted: any[] = [];
         const ctx: UiToolContext = {
             runId: 'r-1',
@@ -75,28 +59,65 @@ describe('createUiMcpServer', () => {
         await client.connect(transport);
 
         const tools = await client.listTools();
-        expect(tools.tools.length).toBe(UI_TOOL_COUNT);
-        const names = tools.tools.map((t) => t.name).sort();
-        expect(names).toEqual([...UI_TOOL_NAMES].sort());
+        expect(tools.tools).toHaveLength(1);
+        expect(tools.tools[0]?.name).toBe('ui');
 
         await client.callTool({
-            name: 'ui.markdown',
-            arguments: { body: '## hi' },
+            name: 'ui',
+            arguments: {
+                component: {
+                    kind: 'status',
+                    props: { text: 'fetching', level: 'progress' },
+                },
+            },
         });
 
         expect(emitted).toHaveLength(1);
         expect(emitted[0]).toMatchObject({
             type: 'fact.component',
             component: {
-                kind: 'markdown',
-                props: { body: '## hi' },
+                kind: 'status',
+                props: { text: 'fetching', level: 'progress' },
             },
         });
 
         await client.close();
     });
 
-    it('routes a ui.input tool call through the HITL controller', async () => {
+    it('routes an array-of-components `ui` call and emits each', async () => {
+        const emitted: any[] = [];
+        const ctx: UiToolContext = {
+            runId: 'r-1',
+            stepId: 's-1',
+            emit: (e) => emitted.push(e),
+            hitl: {} as UiHitlPauser,
+        };
+        active = await createUiMcpServer({ context: ctx });
+
+        const client = new Client({ name: 'test', version: '0.0.0' });
+        const transport = new StreamableHTTPClientTransport(
+            new URL(active.url),
+        );
+        await client.connect(transport);
+
+        await client.callTool({
+            name: 'ui',
+            arguments: {
+                component: [
+                    { kind: 'status', props: { text: 'a' } },
+                    { kind: 'thinking', props: { text: 'b' } },
+                ],
+            },
+        });
+
+        expect(emitted).toHaveLength(2);
+        expect(emitted[0].component.kind).toBe('status');
+        expect(emitted[1].component.kind).toBe('thinking');
+
+        await client.close();
+    });
+
+    it('routes a hitl/expect=choice `ui` call through the HITL controller', async () => {
         const bus = new EventBus();
         const store = new InMemoryStore();
         let seq = 0;
@@ -117,9 +138,7 @@ describe('createUiMcpServer', () => {
         };
 
         // Subscribe BEFORE the tool call lands so the pause event is
-        // captured live. HitlController publishes to the bus but
-        // doesn't persist to the store, so a fresh subscriber after
-        // the fact would miss it.
+        // captured live.
         const busEvents: any[] = [];
         const sub = await bus.subscribe({
             onEvent: (e) => busEvents.push(e),
@@ -134,14 +153,22 @@ describe('createUiMcpServer', () => {
         await client.connect(transport);
 
         const callPromise = client.callTool({
-            name: 'ui.input',
+            name: 'ui',
             arguments: {
-                prompt: 'Pick',
-                schema: { type: 'string', enum: ['a', 'b'] },
+                component: {
+                    kind: 'hitl',
+                    props: {
+                        render: [{ kind: 'markdown', props: { body: 'Pick' } }],
+                        expect: {
+                            kind: 'choice',
+                            schema: { enum: ['a', 'b'] },
+                        },
+                        resumePrompt: 'picked {value}',
+                    },
+                },
             },
         });
 
-        // Poll until the pause event is observed.
         for (let i = 0; i < 50; i++) {
             if (busEvents.some((e) => e.type === 'fact.run_paused_human')) break;
             await new Promise((r) => setTimeout(r, 10));
@@ -151,20 +178,47 @@ describe('createUiMcpServer', () => {
         );
         expect(paused).toBeDefined();
         const promptId = (paused!.payload as { promptId: string }).promptId;
-        await hitl.resume('r-1', {
-            promptId,
-            value: 'b',
-        });
+        await hitl.resume('r-1', { promptId, value: 'b' });
 
         const result = await callPromise;
-        // The MCP server returns the handler output as a `text`
-        // content block; the handler returned the string 'b' directly,
-        // so the wrapped content text equals 'b'.
         const text = (result.content as Array<{ type: string; text?: string }>)
             .find((c) => c.type === 'text')?.text;
         expect(text).toBe('b');
 
         await client.close();
         await sub.close();
+    });
+
+    it('rejects unknown kinds via the validator (no emit)', async () => {
+        const emitted: any[] = [];
+        const ctx: UiToolContext = {
+            runId: 'r',
+            stepId: 's',
+            emit: (e) => emitted.push(e),
+            hitl: {} as UiHitlPauser,
+        };
+        active = await createUiMcpServer({ context: ctx });
+
+        const client = new Client({ name: 'test', version: '0.0.0' });
+        const transport = new StreamableHTTPClientTransport(
+            new URL(active.url),
+        );
+        await client.connect(transport);
+
+        // The Zod schema rejects unknown kind enum members at the wire;
+        // older clients may still try and we get a structured error.
+        const result = await client
+            .callTool({
+                name: 'ui',
+                arguments: {
+                    component: { kind: 'bogus', props: {} },
+                },
+            })
+            .catch((err: Error) => ({ isError: true, error: err.message }));
+
+        expect(emitted).toHaveLength(0);
+        expect(result).toBeDefined();
+
+        await client.close();
     });
 });

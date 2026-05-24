@@ -96,7 +96,7 @@ class Runner implements WorkflowRunner {
         if (!detail) {
             throw new Error(`workflow not found: ${input.slug}`);
         }
-        const runId = `run-${input.slug}-${randomUUID()}`;
+        const runId = input.preallocatedRunId ?? `run-${input.slug}-${randomUUID()}`;
         this.seqByRun.set(runId, 0);
 
         // Tie the run to an abort controller. If the caller passed

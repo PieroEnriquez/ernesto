@@ -1,7 +1,9 @@
 /**
- * In-process MCP server exposing the 13 `ui.*` tools. See
- * `agent-ops://workflows-unification/components.md` § The `ui.*` tool
- * surface for the per-tool semantics + LLM-facing usage guidance.
+ * In-process MCP server exposing the unified `ui` tool. The agent
+ * emits one tool — `ui(UiComponent | UiComponent[])` — and the engine
+ * validates + dispatches per-component. See
+ * `agent-ops://workflows-unification/components.md` for the component
+ * taxonomy.
  */
 
 export {
@@ -16,21 +18,29 @@ export type {
     UiToolContextResolver,
     CreateUiMcpServerOpts,
     UiWorkspaceServer,
+    BundledToolRegistration,
 } from './server';
-export type { UiToolContext, UiToolResult, UiHitlPauser } from './types';
+export type {
+    UiToolContext,
+    UiToolResult,
+    UiHitlPauser,
+    AttachmentTransformer,
+    AttachmentTransformResult,
+} from './types';
 
-// Per-tool handler re-exports — useful for tests that want to drive
-// a single handler directly without bringing up the MCP transport.
-export { handleStatus } from './tool-handlers/status';
-export { handleTable } from './tool-handlers/table';
-export { handleMetric } from './tool-handlers/metric';
-export { handleMarkdown } from './tool-handlers/markdown';
-export { handleImage } from './tool-handlers/image';
-export { handleCode } from './tool-handlers/code';
-export { handleLink } from './tool-handlers/link';
-export { handleAttachment } from './tool-handlers/attachment';
-export { handleProgress } from './tool-handlers/progress';
-export { handleInput } from './tool-handlers/input';
-export { handleChart } from './tool-handlers/chart';
-export { handleTree } from './tool-handlers/tree';
-export { handleThinking } from './tool-handlers/thinking';
+// Unified dispatcher — single entry the MCP server registers.
+export { handleUi } from './tool-handlers/ui';
+export type { UiArgs, UiCallResult } from './tool-handlers/ui';
+
+// Bundled-UI middleware — generic side-channel for tools that want to
+// fold a UI emission into the same call as their primary action.
+export {
+    extractAndEmitBundledUi,
+    withBundledUiField,
+    bundledUiComponentSchema,
+    bundledUiFieldSchema,
+} from './bundled-ui';
+export type {
+    BundledUiContext,
+    BundledUiResult,
+} from './bundled-ui';
