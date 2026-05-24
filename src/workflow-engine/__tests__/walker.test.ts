@@ -198,7 +198,7 @@ describe('walker', () => {
 
     it('threads ctx.emit() so handlers can publish in-step fact events', async () => {
         const rig = makeRig();
-        rig.dispatcher.register('agent-cas', async (_step, ctx) => {
+        rig.dispatcher.register('agent', async (_step, ctx) => {
             // Forward every HarnessEvent variant the brief calls out as
             // its corresponding `fact.*` event, mirroring what the
             // backend's `runAgentStepKind` will do per-iteration.
@@ -253,7 +253,7 @@ describe('walker', () => {
             version: 1,
             steps: {
                 s1: {
-                    kind: 'agent-cas',
+                    kind: 'agent',
                     model: 'm',
                     systemPrompt: 'sp',
                     prompt: 'p',
@@ -340,7 +340,7 @@ describe('walker', () => {
 
     it('forwards fact.component emits from the ui-tool handler path', async () => {
         const rig = makeRig();
-        rig.dispatcher.register('agent-cas', async (_step, ctx) => {
+        rig.dispatcher.register('agent', async (_step, ctx) => {
             ctx.emit!({
                 type: 'fact.component',
                 component: {
@@ -367,7 +367,7 @@ describe('walker', () => {
             version: 1,
             steps: {
                 s1: {
-                    kind: 'agent-cas',
+                    kind: 'agent',
                     model: 'm',
                     systemPrompt: 'sp',
                     prompt: 'p',
@@ -401,6 +401,102 @@ describe('walker', () => {
             stepId: 's1',
             component: { kind: 'table' },
         });
+    });
+
+    it('walks a render manifest on step output and strips render before recording', async () => {
+        const rig = makeRig();
+        rig.dispatcher.register('route', async () => ({
+            kind: 'completed',
+            output: {
+                metric: 42,
+                rows: [{ a: 1 }, { a: 2 }],
+                render: [
+                    { path: 'metric', ui: 'metric', label: 'count' },
+                    {
+                        path: 'rows',
+                        ui: 'table',
+                        columns: [{ id: 'a', label: 'A' }],
+                    },
+                ],
+            },
+        }));
+        const decl: WorkflowDeclaration = {
+            name: 'wf-manifest',
+            description: 'd',
+            version: 1,
+            steps: { s1: { kind: 'route', uri: 'x://y' } },
+        };
+        const result = await walk(
+            'run-manifest',
+            decl,
+            {
+                slug: 'wf-manifest',
+                inputs: {},
+                principal: { userId: 'u', scopes: new Set() },
+                context: {},
+            },
+            { ...rig, log: NOOP_LOG },
+        );
+        expect(result.status).toBe('completed');
+        // `render` key stripped — downstream `{ from: s1 }` sees data only.
+        expect(result.outputs.s1).toEqual({
+            metric: 42,
+            rows: [{ a: 1 }, { a: 2 }],
+        });
+        const componentEvents = rig.events.filter(
+            (e) => e.type === 'fact.component',
+        );
+        expect(componentEvents.length).toBe(2);
+        expect(componentEvents[0]!.payload).toMatchObject({
+            stepId: 's1',
+            component: { kind: 'metric', props: { label: 'count', value: 42 } },
+        });
+        expect(componentEvents[1]!.payload).toMatchObject({
+            stepId: 's1',
+            component: {
+                kind: 'table',
+                props: {
+                    columns: [{ id: 'a', label: 'A' }],
+                    rows: [{ a: 1 }, { a: 2 }],
+                },
+            },
+        });
+        // node_completed payload sees the stripped output too.
+        const completed = rig.events.find((e) => e.type === 'fact.node_completed');
+        expect(completed?.payload).toMatchObject({
+            nodeId: 's1',
+            output: { metric: 42, rows: [{ a: 1 }, { a: 2 }] },
+        });
+    });
+
+    it('leaves outputs untouched when render field is absent or empty', async () => {
+        const rig = makeRig();
+        rig.dispatcher.register('route', async (_step, _ctx) => ({
+            kind: 'completed',
+            output: { plain: 'value', render: [] },
+        }));
+        const decl: WorkflowDeclaration = {
+            name: 'wf-empty-manifest',
+            description: 'd',
+            version: 1,
+            steps: { s1: { kind: 'route', uri: 'x://y' } },
+        };
+        const result = await walk(
+            'run-empty-manifest',
+            decl,
+            {
+                slug: 'wf-empty-manifest',
+                inputs: {},
+                principal: { userId: 'u', scopes: new Set() },
+                context: {},
+            },
+            { ...rig, log: NOOP_LOG },
+        );
+        expect(result.outputs.s1).toEqual({ plain: 'value', render: [] });
+        const componentEvents = rig.events.filter(
+            (e) => e.type === 'fact.component',
+        );
+        expect(componentEvents.length).toBe(0);
     });
 
     it('appends events to the store under run id', async () => {

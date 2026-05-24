@@ -56,8 +56,9 @@ describe('compileManagedAgentMdToWorkflow', () => {
         expect(wf.outputs?.result?.from).toBe('main');
 
         const main = wf.steps.main;
-        expect(main.kind).toBe('agent-cas');
-        if (main.kind === 'agent-cas') {
+        expect(main.kind).toBe('agent');
+        if (main.kind === 'agent') {
+            expect(main.harness).toBe('cas');
             expect(main.model).toBe('claude-opus-4-7');
             expect(main.maxTurns).toBe(12);
             expect(main.mcpServers).toEqual(['redshift', 'ernesto']);
@@ -99,14 +100,15 @@ Be terse.
         expect(wf.scope).toBeUndefined();
         expect(wf.callableAs).toBeUndefined();
         const main = wf.steps.main;
-        expect(main.kind).toBe('agent-cas');
-        if (main.kind === 'agent-cas') {
+        expect(main.kind).toBe('agent');
+        if (main.kind === 'agent') {
+            expect(main.harness).toBe('cas');
             expect(main.disallowedTools).toBeUndefined();
             expect(main.outputFormat).toBeUndefined();
         }
     });
 
-    it('maps provider: OPEN_ROUTER → kind: agent-fragua-pi with providerOverride', () => {
+    it('maps provider: OPEN_ROUTER → kind: agent + harness: fragua-pi with providerOverride', () => {
         const openRouter = `---
 slug: openrouter-bot
 name: Openrouter Bot
@@ -124,8 +126,9 @@ Be helpful.
         });
         const wf = compileManagedAgentMdToWorkflow(md);
         const main = wf.steps.main;
-        expect(main.kind).toBe('agent-fragua-pi');
-        if (main.kind === 'agent-fragua-pi') {
+        expect(main.kind).toBe('agent');
+        if (main.kind === 'agent') {
+            expect(main.harness).toBe('fragua-pi');
             expect(main.providerOverride).toBe('openrouter');
             expect(main.model).toBe('anthropic/claude-3.5-sonnet');
             expect(main.maxTurns).toBe(4);
@@ -134,7 +137,7 @@ Be helpful.
         }
     });
 
-    it('maps provider: ANTHROPIC → kind: agent-cas (explicit)', () => {
+    it('maps provider: ANTHROPIC → kind: agent + harness: cas', () => {
         const anthropic = `---
 slug: anthropic-bot
 name: Anthropic Bot
@@ -151,6 +154,10 @@ Be terse.
             workspace: 'qa',
         });
         const wf = compileManagedAgentMdToWorkflow(md);
-        expect(wf.steps.main.kind).toBe('agent-cas');
+        const main = wf.steps.main;
+        expect(main.kind).toBe('agent');
+        if (main.kind === 'agent') {
+            expect(main.harness).toBe('cas');
+        }
     });
 });

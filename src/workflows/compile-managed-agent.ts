@@ -16,11 +16,10 @@
 
 import type { ManagedAgentMd } from '../managed-agents/from-md';
 import { toAgentDeclaration } from '../managed-agents/from-md';
+import { resolveHarness } from '../managed-agents/resolve-harness';
 import type {
     WorkflowDeclaration,
     AgentStep,
-    AgentCasStep,
-    AgentFraguaPiStep,
     WorkflowInput,
     WorkflowOutput,
     JsonSchemaOutputFormat,
@@ -31,36 +30,29 @@ export function compileManagedAgentMdToWorkflow(
     md: ManagedAgentMd,
 ): WorkflowDeclaration {
     // Re-use the existing field-projection: it already handles every
-    // frontmatter quirk (provider, outputFormat shape, scope/callableAs
-    // strict typing, slug regex). The systemPrompt it composes IS the
-    // body-becomes-prompt rule we need for steps.main.
+    // frontmatter quirk (provider, harness, outputFormat shape,
+    // scope/callableAs strict typing, slug regex). The systemPrompt it
+    // composes IS the body-becomes-prompt rule we need for steps.main.
     const decl = toAgentDeclaration(md);
 
-    // Map the managed-agent provider to a concrete agent-step kind:
-    //   provider: ANTHROPIC | (absent)  → kind: agent-cas
-    //   provider: OPEN_ROUTER           → kind: agent-fragua-pi + providerOverride: openrouter
-    // There is no managed-agent shorthand for Cursor — authors who want
-    // Cursor must graduate to a hand-written workflow YAML.
-    const mainStep: AgentStep = decl.provider === 'OPEN_ROUTER'
-        ? ({
-            kind: 'agent-fragua-pi',
-            providerOverride: 'openrouter',
-            model: decl.model,
-            systemPrompt: decl.systemPrompt as SystemPromptConfig,
-            maxTurns: decl.maxTurns,
-            mcpServers: decl.mcpServers,
-            prompt: '{{ inputs.prompt }}',
-            next: 'outputs.result',
-        } as AgentFraguaPiStep)
-        : ({
-            kind: 'agent-cas',
-            model: decl.model,
-            systemPrompt: decl.systemPrompt as SystemPromptConfig,
-            maxTurns: decl.maxTurns,
-            mcpServers: decl.mcpServers,
-            prompt: '{{ inputs.prompt }}',
-            next: 'outputs.result',
-        } as AgentCasStep);
+    // Single `kind: 'agent'` step; harness on the step preserves the
+    // resolved declaration value (or its `provider:` shorthand) so
+    // wire-fragua's agent handler dispatches to the right runtime
+    // without re-reading the declaration.
+    const harness = resolveHarness(decl);
+    const mainStep: AgentStep = {
+        kind: 'agent',
+        harness,
+        model: decl.model,
+        systemPrompt: decl.systemPrompt as SystemPromptConfig,
+        maxTurns: decl.maxTurns,
+        mcpServers: decl.mcpServers,
+        prompt: '{{ inputs.prompt }}',
+        next: 'outputs.result',
+        ...(harness === 'fragua-pi' && decl.provider === 'OPEN_ROUTER'
+            ? { providerOverride: 'openrouter' as const }
+            : {}),
+    };
     if (decl.outputFormat) {
         mainStep.outputFormat = decl.outputFormat as JsonSchemaOutputFormat;
     }

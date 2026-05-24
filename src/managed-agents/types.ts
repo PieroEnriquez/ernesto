@@ -49,6 +49,14 @@ export interface AgentDeclaration {
     id: string;
     name: string;
     description: string;
+    /**
+     * Runtime backend. Defaults to `'cas'` when absent. The legacy
+     * `provider` field (ANTHROPIC | OPEN_ROUTER) maps to harness at
+     * compile time: ANTHROPIC → cas, OPEN_ROUTER → fragua-pi (the
+     * multi-provider harness). Authors writing new agents should set
+     * `harness:` directly.
+     */
+    harness?: 'cas' | 'cursor' | 'fragua-pi';
     provider?: 'ANTHROPIC' | 'OPEN_ROUTER';
     model: string;
     systemPrompt: SystemPromptConfig;

@@ -14,7 +14,7 @@ function baseDecl(overrides: Partial<WorkflowDeclaration> = {}): WorkflowDeclara
         version: 1,
         steps: {
             main: {
-                kind: 'agent-cas',
+                kind: 'agent',
                 model: 'm',
                 systemPrompt: 'sys',
                 prompt: 'p',
@@ -106,14 +106,15 @@ describe('validateWorkflow', () => {
         expect(res.errors.some(e => e.code === 'workflow_unknown_route')).toBe(false);
     });
 
-    it('emits workflow_unknown_harness for foreign harness suffix', () => {
+    it('emits workflow_unknown_harness when explicit harness is not in registered set', () => {
         const decl = baseDecl({
             steps: {
                 main: {
-                    // bypass typing — simulating a YAML-driven typo
-                    kind: 'agent-fragua-pi' as 'agent-cas', model: 'm',
+                    kind: 'agent',
+                    harness: 'fragua-pi' as never,
+                    model: 'm',
                     systemPrompt: 'sys', prompt: 'p', next: 'outputs.r',
-                } as never,
+                },
             },
             outputs: { r: { from: 'main' } },
         });
@@ -125,9 +126,11 @@ describe('validateWorkflow', () => {
         const decl = baseDecl({
             steps: {
                 main: {
-                    kind: 'agent-claude' as 'agent-cas', model: 'm',
+                    kind: 'agent',
+                    harness: 'claude' as never,
+                    model: 'm',
                     systemPrompt: 'sys', prompt: 'p', next: 'outputs.r',
-                } as never,
+                },
             },
             outputs: { r: { from: 'main' } },
         });
@@ -139,11 +142,13 @@ describe('validateWorkflow', () => {
         expect(hit?.message).toMatch(/did you mean cas\?/);
     });
 
-    it('accepts a known agent-cursor kind under knownHarnesses', () => {
+    it('accepts a known harness: cursor under knownHarnesses', () => {
         const decl = baseDecl({
             steps: {
                 main: {
-                    kind: 'agent-cursor', model: 'm',
+                    kind: 'agent',
+                    harness: 'cursor',
+                    model: 'm',
                     systemPrompt: 'sys', prompt: 'p', next: 'outputs.r',
                 },
             },
@@ -186,7 +191,7 @@ describe('validateWorkflow', () => {
         const decl = baseDecl({
             steps: {
                 main: {
-                    kind: 'agent-cas', model: 'm', systemPrompt: 'sys',
+                    kind: 'agent', model: 'm', systemPrompt: 'sys',
                     prompt: 'use {{ inputs.missing }}',
                     next: 'outputs.r',
                 },
@@ -202,7 +207,7 @@ describe('validateWorkflow', () => {
         const decl = baseDecl({
             steps: {
                 main: {
-                    kind: 'agent-cas', model: 'm', systemPrompt: 'sys',
+                    kind: 'agent', model: 'm', systemPrompt: 'sys',
                     prompt: 'use {{ steps.bogus.output }}',
                     next: 'outputs.r',
                 },
@@ -219,7 +224,7 @@ describe('validateWorkflow', () => {
             steps: {
                 a: { kind: 'route', uri: 'r://q', params: { x: '${{ inputs.product }}' }, next: 'b' },
                 b: {
-                    kind: 'agent-cas', model: 'm', systemPrompt: 'sys',
+                    kind: 'agent', model: 'm', systemPrompt: 'sys',
                     prompt: '{{ steps.a.output }} for {{ context.tier }}',
                     next: 'outputs.r',
                 },

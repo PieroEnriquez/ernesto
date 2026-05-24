@@ -31,6 +31,7 @@ import type {
 } from '../types/runner';
 import type { FactEvent } from '../types/event';
 import { compileSteps } from '../types/graph';
+import { projectStepOutput } from './render-projection';
 
 export interface WalkerDeps {
     bus: EventBus;
@@ -162,12 +163,18 @@ export async function walk(
                 continue;
             }
 
-            outputs[stepId] = result.output;
+            const projected = projectStepOutput(
+                result.output,
+                stepEmit,
+                deps.log,
+                stepId,
+            );
+            outputs[stepId] = projected;
             emit(deps, {
                 runId,
                 seq: deps.nextSeq(runId),
                 type: 'fact.node_completed',
-                payload: { nodeId: stepId, output: result.output },
+                payload: { nodeId: stepId, output: projected },
                 ts: Date.now(),
                 routing,
             });
@@ -208,6 +215,7 @@ export async function walk(
 function expandStepTemplates<T>(step: T, inputs: Record<string, unknown>): T {
     return walkValue(step, inputs) as T;
 }
+
 
 const INPUTS_REF_RE = /\{\{\s*inputs\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 

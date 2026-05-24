@@ -45,15 +45,19 @@ export interface WorkflowDeclaration {
 
 // ─── Step kinds ────────────────────────────────────────────────────────────
 
-export type WorkflowStep = RouteStep | InputStep | AgentStep | SubworkflowStep;
+export type WorkflowStep =
+    | RouteStep
+    | InputStep
+    | AgentStep
+    | SubworkflowStep
+    | ParallelStep;
 
 export type StepKind =
     | 'route'
     | 'input'
-    | 'agent-cas'
-    | 'agent-cursor'
-    | 'agent-fragua-pi'
-    | 'subworkflow';
+    | 'agent'
+    | 'subworkflow'
+    | 'parallel';
 
 export interface BaseStep {
     /** Default outgoing edge. `outputs` or `outputs.<name>` is the terminal sink. */
@@ -89,15 +93,40 @@ export interface InputStep extends BaseStep {
 }
 
 /**
- * Fields common to every agent step variant. The runtime harness is
- * encoded in the `kind` discriminator on the concrete subtype — not in
- * a separate `harness` field.
+ * Runtime backend that executes an agent step. The choice belongs to
+ * the agent declaration (`AgentDeclaration.harness`), not to the step
+ * kind — every agent step is `kind: 'agent'`. Defaults to `'cas'`.
  */
-export interface AgentBaseStep extends BaseStep {
-    /** Opaque per-harness model identifier. */
-    model: string;
-    /** Re-uses managed-agents' `SystemPromptConfig` (string or preset). */
-    systemPrompt: SystemPromptConfig;
+export type AgentHarness = 'cas' | 'cursor' | 'fragua-pi';
+
+/**
+ * Single agent step. Two forms:
+ *
+ * **Reference form (common case).** `ref:` names a managed-agent /
+ * workflow slug; the runtime resolves it through the workflow reader
+ * and merges in any per-call overrides (`prompt`, `inputs`, `harness`,
+ * `model`, etc.). Authoring stays DRY — the agent's identity lives in
+ * one MD file, call sites supply only what varies.
+ *
+ * **Inline form (escape hatch).** Omit `ref:` and provide `model` +
+ * `systemPrompt` + `prompt` directly. Useful for one-off agents that
+ * don't deserve their own declaration. `harness:` defaults to `'cas'`.
+ *
+ * `providerOverride` is only meaningful when the resolved harness is
+ * `'fragua-pi'`; validate.ts rejects it elsewhere.
+ */
+export interface AgentStep extends BaseStep {
+    kind: 'agent';
+    /** Managed-agent / workflow slug to resolve. */
+    ref?: string;
+    /** Inputs passed to the resolved workflow (or ignored for inline). */
+    inputs?: Record<string, unknown>;
+    /** Per-call harness override (rarely needed when `ref` is set). */
+    harness?: AgentHarness;
+    /** Per-call model override; required in inline form. */
+    model?: string;
+    /** Required in inline form; optional override in ref form. */
+    systemPrompt?: SystemPromptConfig;
     maxTurns?: number;
     mcpServers?: string[];
     /** Built-in tool allow-list; absent/empty ⇒ harness default. */
@@ -107,34 +136,16 @@ export interface AgentBaseStep extends BaseStep {
     /** Optional structured output schema. */
     outputFormat?: JsonSchemaOutputFormat;
     /** User-turn prompt body; supports `{{ }}` string templating. */
-    prompt: string;
+    prompt?: string;
     /** Callable child workflows exposed to the LLM via the Task tool. */
     subagents?: Record<string, { ref: string }>;
-}
-
-export interface AgentCasStep extends AgentBaseStep {
-    kind: 'agent-cas';
-}
-
-export interface AgentCursorStep extends AgentBaseStep {
-    kind: 'agent-cursor';
-}
-
-export interface AgentFraguaPiStep extends AgentBaseStep {
-    kind: 'agent-fragua-pi';
-    /** Override the harness env's default provider for this specific step. */
+    /** Only valid when resolved harness is `'fragua-pi'`. */
     providerOverride?: 'anthropic' | 'openai' | 'google' | 'ollama' | 'openrouter';
 }
 
-export type AgentStep = AgentCasStep | AgentCursorStep | AgentFraguaPiStep;
-
-/** Type guard: narrow a `WorkflowStep` to the agent-step union. */
+/** Type guard: narrow a `WorkflowStep` to an agent step. */
 export function isAgentStep(step: WorkflowStep): step is AgentStep {
-    return (
-        step.kind === 'agent-cas' ||
-        step.kind === 'agent-cursor' ||
-        step.kind === 'agent-fragua-pi'
-    );
+    return step.kind === 'agent';
 }
 
 export interface SubworkflowStep extends BaseStep {
@@ -145,6 +156,27 @@ export interface SubworkflowStep extends BaseStep {
     inputs?: Record<string, unknown>;
     /** Optional further-narrowing scope. */
     scope?: string[];
+}
+
+/**
+ * Scatter-gather: dispatch every entry in `branches` concurrently
+ * through the same step-kind registry. The step's output is a record
+ * `{ [branchKey]: <branchOutput>, ... }` — readable downstream via
+ * `{ from: <parallelStepId> }.<branchKey>`.
+ *
+ * Branches may be any deterministic step kind (route, agent,
+ * subworkflow, nested parallel). `input` steps are rejected at
+ * dispatch time — HITL pauses belong at the workflow level so one
+ * branch can't strand its siblings mid-flight.
+ *
+ * First branch failure surfaces as the parallel step's error; sibling
+ * branches finish on their own (no cross-cancellation in v1). Routes
+ * are cheap so this is rarely material; if it becomes one, layer an
+ * abort-on-error controller later without changing this contract.
+ */
+export interface ParallelStep extends BaseStep {
+    kind: 'parallel';
+    branches: Record<string, WorkflowStep>;
 }
 
 // ─── Inputs & outputs ─────────────────────────────────────────────────────

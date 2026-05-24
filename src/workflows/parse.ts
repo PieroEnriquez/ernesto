@@ -10,6 +10,8 @@ import { load as yamlLoad, YAMLException } from 'js-yaml';
 import type {
     WorkflowDeclaration,
     WorkflowStep,
+    AgentStep,
+    AgentHarness,
     WorkflowInput,
     WorkflowOutput,
 } from './types';
@@ -148,7 +150,7 @@ function projectStep(
     if (typeof kind !== 'string') {
         throw new Error(
             `${filename}: step "${stepId}" is missing "kind:" ` +
-            `(expected one of route | input | agent-cas | agent-cursor | agent-fragua-pi | subworkflow)`,
+            `(expected one of route | input | agent | subworkflow | parallel)`,
         );
     }
     const next = raw.next === undefined ? undefined : asString(raw.next, `${filename}: step "${stepId}".next`);
@@ -187,50 +189,96 @@ function projectStep(
                 ...(on ? { on } : {}),
             };
         }
-        case 'agent-cas':
-        case 'agent-cursor':
-        case 'agent-fragua-pi': {
-            const model = requireString(raw, 'model', `${filename}: agent step "${stepId}"`);
-            const prompt = requireString(raw, 'prompt', `${filename}: agent step "${stepId}"`);
-            const systemPrompt = projectSystemPrompt(raw.systemPrompt, stepId, filename);
+        case 'agent': {
+            // Single agent kind. Reference form (ref:) and inline form
+            // (model + systemPrompt + prompt) share the same shape;
+            // validate.ts enforces "ref XOR required inline fields".
+            const harness = projectHarness(raw.harness, stepId, filename);
+            const ref = raw.ref === undefined
+                ? undefined
+                : requireString(raw, 'ref', `${filename}: agent step "${stepId}"`);
+            const model = raw.model === undefined
+                ? undefined
+                : requireString(raw, 'model', `${filename}: agent step "${stepId}"`);
+            const prompt = raw.prompt === undefined
+                ? undefined
+                : requireString(raw, 'prompt', `${filename}: agent step "${stepId}"`);
+            const systemPrompt = raw.systemPrompt === undefined
+                ? undefined
+                : projectSystemPrompt(raw.systemPrompt, stepId, filename);
             const outputFormat = projectOutputFormat(raw.outputFormat, stepId, filename);
-            if (raw.harness !== undefined) {
+            // providerOverride only legal when resolved harness is fragua-pi.
+            // Parser-level rule: if the step pins `harness:` to anything
+            // other than fragua-pi, reject. (When `harness:` is absent
+            // here, leave to validate.ts after ref resolution.)
+            if (raw.providerOverride !== undefined && harness && harness !== 'fragua-pi') {
                 throw new Error(
-                    `${filename}: agent step "${stepId}" has a "harness:" field; ` +
-                    `the harness is now encoded in "kind" (use kind: agent-cas | agent-cursor | agent-fragua-pi)`,
+                    `${filename}: agent step "${stepId}" has "providerOverride" but harness is "${harness}"; ` +
+                    `providerOverride is only valid when harness resolves to "fragua-pi"`,
                 );
             }
-            // providerOverride only legal on agent-fragua-pi.
-            if (raw.providerOverride !== undefined && kind !== 'agent-fragua-pi') {
-                throw new Error(
-                    `${filename}: agent step "${stepId}" has "providerOverride" but kind is "${kind}"; ` +
-                    `providerOverride is only valid on kind: agent-fragua-pi`,
-                );
+            const providerOverride = projectProviderOverride(raw.providerOverride, stepId, filename);
+            // Inline form requires model + systemPrompt + prompt. Ref
+            // form draws those from the referenced agent declaration
+            // and may omit them. Parser enforces the structural rule;
+            // validate.ts later checks that `ref` resolves.
+            if (ref === undefined) {
+                if (model === undefined) {
+                    throw new Error(
+                        `${filename}: agent step "${stepId}" must declare either "ref" or inline "model" (inline form needs model + systemPrompt + prompt)`,
+                    );
+                }
+                if (systemPrompt === undefined) {
+                    throw new Error(
+                        `${filename}: agent step "${stepId}" (inline form) is missing "systemPrompt"`,
+                    );
+                }
+                if (prompt === undefined) {
+                    throw new Error(
+                        `${filename}: agent step "${stepId}" (inline form) is missing "prompt"`,
+                    );
+                }
             }
-            const providerOverride = kind === 'agent-fragua-pi'
-                ? projectProviderOverride(raw.providerOverride, stepId, filename)
-                : undefined;
-            const common = {
-                model,
-                systemPrompt,
+            const out: AgentStep = {
+                kind: 'agent',
+                ...(ref !== undefined ? { ref } : {}),
+                ...(raw.inputs !== undefined ? { inputs: asRecord(raw.inputs, `step "${stepId}".inputs`, filename) } : {}),
+                ...(harness !== undefined ? { harness } : {}),
+                ...(model !== undefined ? { model } : {}),
+                ...(systemPrompt !== undefined ? { systemPrompt } : {}),
                 ...(raw.maxTurns !== undefined ? { maxTurns: asInt(raw.maxTurns, `step "${stepId}".maxTurns`, filename) } : {}),
                 ...(raw.mcpServers !== undefined ? { mcpServers: projectStringArray(raw.mcpServers, `step "${stepId}".mcpServers`, filename) ?? [] } : {}),
                 ...(raw.tools !== undefined ? { tools: projectStringArray(raw.tools, `step "${stepId}".tools`, filename) ?? [] } : {}),
                 ...(raw.disallowedTools !== undefined ? { disallowedTools: projectStringArray(raw.disallowedTools, `step "${stepId}".disallowedTools`, filename) ?? [] } : {}),
                 ...(outputFormat ? { outputFormat } : {}),
-                prompt,
+                ...(prompt !== undefined ? { prompt } : {}),
                 ...(raw.subagents !== undefined ? { subagents: projectSubagents(raw.subagents, stepId, filename) } : {}),
+                ...(providerOverride ? { providerOverride } : {}),
                 ...(next !== undefined ? { next } : {}),
                 ...(on ? { on } : {}),
             };
-            if (kind === 'agent-fragua-pi') {
-                return {
-                    kind: 'agent-fragua-pi',
-                    ...common,
-                    ...(providerOverride ? { providerOverride } : {}),
-                };
+            return out;
+        }
+        case 'parallel': {
+            // Branches are nested step definitions; recurse via
+            // projectStep so each child kind parses through the normal
+            // path. Templates inside branches expand at walk time.
+            const branchesRaw = raw.branches;
+            if (typeof branchesRaw !== 'object' || branchesRaw === null || Array.isArray(branchesRaw)) {
+                throw new Error(
+                    `${filename}: parallel step "${stepId}".branches must be a mapping of branchKey → step`,
+                );
             }
-            return { kind: kind as 'agent-cas' | 'agent-cursor', ...common };
+            const branches: Record<string, WorkflowStep> = {};
+            for (const [bk, bv] of Object.entries(branchesRaw as Record<string, unknown>)) {
+                branches[bk] = projectStep(`${stepId}.${bk}`, bv, filename);
+            }
+            return {
+                kind: 'parallel',
+                branches,
+                ...(next !== undefined ? { next } : {}),
+                ...(on ? { on } : {}),
+            };
         }
         case 'subworkflow': {
             const ref = requireString(raw, 'ref', `${filename}: subworkflow step "${stepId}"`);
@@ -374,6 +422,18 @@ function projectSubagents(
         out[k] = { ref };
     }
     return out;
+}
+
+function projectHarness(
+    v: unknown,
+    stepId: string,
+    filename: string,
+): AgentHarness | undefined {
+    if (v === undefined) return undefined;
+    if (v === 'cas' || v === 'cursor' || v === 'fragua-pi') return v;
+    throw new Error(
+        `${filename}: agent step "${stepId}".harness must be "cas" | "cursor" | "fragua-pi"`,
+    );
 }
 
 const PROVIDER_OVERRIDES = new Set([

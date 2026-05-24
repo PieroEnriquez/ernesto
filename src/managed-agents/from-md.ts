@@ -29,7 +29,7 @@ export interface ManagedAgentMd {
  * for stops 7+ but rejected nowhere else.
  */
 const PROJECTED_FRONTMATTER_KEYS = new Set([
-    'slug', 'name', 'description', 'provider', 'model',
+    'slug', 'name', 'description', 'provider', 'harness', 'model',
     'systemPrompt', 'maxTurns', 'mcpServers', 'outputFormat',
     'disallowedTools', 'scope', 'callableAs',
 ]);
@@ -134,6 +134,7 @@ export function toAgentDeclaration(md: ManagedAgentMd): AgentDeclaration {
     }
 
     const provider = providerField(fm, slug);
+    const harness = harnessField(fm, slug);
     const systemPrompt = composeSystemPrompt(fm.systemPrompt, md.body, slug);
     const outputFormat = outputFormatField(fm, slug);
     const scope = strArrayField(fm, 'scope');
@@ -143,6 +144,7 @@ export function toAgentDeclaration(md: ManagedAgentMd): AgentDeclaration {
         id: slug,
         name: strField(fm, 'name'),
         description: strField(fm, 'description'),
+        ...(harness !== undefined ? { harness } : {}),
         provider,
         model: strField(fm, 'model'),
         systemPrompt,
@@ -230,6 +232,18 @@ function providerField(
     if (v === 'ANTHROPIC' || v === 'OPEN_ROUTER') return v;
     throw new Error(
         `managed-agents/${slug}.md: provider must be "ANTHROPIC" or "OPEN_ROUTER"`,
+    );
+}
+
+function harnessField(
+    fm: Record<string, unknown>,
+    slug: string,
+): 'cas' | 'cursor' | 'fragua-pi' | undefined {
+    const v = fm.harness;
+    if (v === undefined) return undefined;
+    if (v === 'cas' || v === 'cursor' || v === 'fragua-pi') return v;
+    throw new Error(
+        `managed-agents/${slug}.md: harness must be "cas" | "cursor" | "fragua-pi"`,
     );
 }
 

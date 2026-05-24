@@ -23,6 +23,7 @@ import { HandlerDispatcher } from './dispatch';
 import { InMemoryStore } from './store/in-memory-store';
 import { HitlController, type HitlPauseInput } from './hitl';
 import { walk } from './engine/walker';
+import { makeParallelHandler } from './engine/parallel-handler';
 
 const NULL_LOG: EngineLogger = {
     info: () => undefined,
@@ -59,6 +60,13 @@ class Runner implements WorkflowRunner {
             for (const [kind, handler] of opts.stepKindHandlers.entries()) {
                 this.dispatcher.register(kind as StepKind, handler);
             }
+        }
+        // `parallel` composes other kinds via the dispatcher, so it's
+        // an engine primitive — auto-registered regardless of which
+        // tier-specific handlers the caller wires. Skip if the caller
+        // already supplied an override via `stepKindHandlers`.
+        if (!this.dispatcher.has('parallel')) {
+            this.dispatcher.register('parallel', makeParallelHandler(this.dispatcher));
         }
         this.hitl = new HitlController(this.bus, this.store, (runId) =>
             this.nextSeq(runId),

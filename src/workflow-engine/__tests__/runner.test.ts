@@ -148,7 +148,7 @@ describe('createRunner', () => {
                 { kind: 'status', status: 'completed', runId },
             ],
         });
-        runner.registerStepKind('agent-cas', async (step) => {
+        runner.registerStepKind('agent', async (step) => {
             const agent = await harness.createAgent({
                 systemPrompt: (step as any).systemPrompt,
                 model: (step as any).model,
@@ -170,7 +170,7 @@ describe('createRunner', () => {
                 version: 1,
                 steps: {
                     s1: {
-                        kind: 'agent-cas',
+                        kind: 'agent',
                         model: 'claude-opus-4-7',
                         systemPrompt: 'you are a test',
                         prompt: 'hi',

@@ -13,7 +13,7 @@ description: A one-step hello.
 version: 1
 steps:
   main:
-    kind: agent-cas
+    kind: agent
     model: claude-haiku-4-5
     systemPrompt: |
       You say hello.
@@ -28,27 +28,52 @@ outputs:
 `;
 
 describe('parseWorkflowYaml', () => {
-    it('parses a minimal one-step agent workflow', () => {
+    it('parses a minimal one-step agent workflow (inline form)', () => {
         const decl = parseWorkflowYaml(MINIMAL_YAML);
         expect(decl.name).toBe('hello');
         expect(decl.version).toBe(1);
         expect(Object.keys(decl.steps)).toEqual(['main']);
         const main = decl.steps.main;
-        expect(main.kind).toBe('agent-cas');
-        if (main.kind === 'agent-cas') {
+        expect(main.kind).toBe('agent');
+        if (main.kind === 'agent') {
             expect(main.model).toBe('claude-haiku-4-5');
             expect(main.prompt).toBe('{{ inputs.prompt }}');
             expect(main.next).toBe('outputs.result');
+            // No explicit harness on the step — wire-fragua defaults to cas.
+            expect(main.harness).toBeUndefined();
         }
         expect(decl.inputs?.prompt?.type).toBe('string');
         expect(decl.outputs?.result?.from).toBe('main');
+    });
+
+    it('parses a ref-form agent step', () => {
+        const yaml = `name: ref
+description: reference-form agent.
+version: 1
+steps:
+  main:
+    kind: agent
+    ref: investigator
+    prompt: "Investigate {{ inputs.date }}"
+    next: outputs.r
+inputs: { date: { type: string } }
+outputs: { r: { from: main } }
+`;
+        const decl = parseWorkflowYaml(yaml);
+        const main = decl.steps.main;
+        expect(main.kind).toBe('agent');
+        if (main.kind === 'agent') {
+            expect(main.ref).toBe('investigator');
+            expect(main.prompt).toBe('Investigate {{ inputs.date }}');
+            expect(main.model).toBeUndefined();
+            expect(main.systemPrompt).toBeUndefined();
+        }
     });
 
     it('round-trips through yaml.dump → parseWorkflowYaml unchanged on key fields', () => {
         const first = parseWorkflowYaml(MINIMAL_YAML);
         const reEmitted = yamlDump(first);
         const second = parseWorkflowYaml(reEmitted);
-        // Names / shapes must match exactly after serialize→parse.
         expect(second.name).toBe(first.name);
         expect(second.description).toBe(first.description);
         expect(second.version).toBe(first.version);
@@ -132,7 +157,7 @@ steps:
     render: table
     next: analyze
   analyze:
-    kind: agent-cas
+    kind: agent
     model: claude-opus-4-7
     systemPrompt: "You analyze."
     maxTurns: 8
@@ -149,17 +174,18 @@ outputs:
         const decl = parseWorkflowYaml(yaml);
         expect(decl.steps.collect.kind).toBe('input');
         expect(decl.steps.fetch.kind).toBe('route');
-        expect(decl.steps.analyze.kind).toBe('agent-cas');
+        expect(decl.steps.analyze.kind).toBe('agent');
         expect(decl.steps.review.kind).toBe('subworkflow');
     });
 
-    it('parses kind: agent-cursor', () => {
+    it('parses an agent step with harness: cursor', () => {
         const yaml = `name: cursor
 description: cursor.
 version: 1
 steps:
   main:
-    kind: agent-cursor
+    kind: agent
+    harness: cursor
     model: gpt-5
     systemPrompt: "You are a Cursor agent."
     prompt: "{{ inputs.prompt }}"
@@ -168,20 +194,22 @@ inputs: { prompt: { type: string } }
 outputs: { result: { from: main } }
 `;
         const decl = parseWorkflowYaml(yaml);
-        expect(decl.steps.main.kind).toBe('agent-cursor');
         const main = decl.steps.main;
-        if (main.kind === 'agent-cursor') {
+        expect(main.kind).toBe('agent');
+        if (main.kind === 'agent') {
+            expect(main.harness).toBe('cursor');
             expect(main.model).toBe('gpt-5');
         }
     });
 
-    it('parses kind: agent-fragua-pi with providerOverride', () => {
+    it('parses an agent step with harness: fragua-pi + providerOverride', () => {
         const yaml = `name: fragua
 description: fragua-pi step.
 version: 1
 steps:
   main:
-    kind: agent-fragua-pi
+    kind: agent
+    harness: fragua-pi
     providerOverride: openrouter
     model: anthropic/claude-3.5-sonnet
     systemPrompt: "You are a Fragua agent."
@@ -192,37 +220,22 @@ outputs: { result: { from: main } }
 `;
         const decl = parseWorkflowYaml(yaml);
         const main = decl.steps.main;
-        expect(main.kind).toBe('agent-fragua-pi');
-        if (main.kind === 'agent-fragua-pi') {
+        expect(main.kind).toBe('agent');
+        if (main.kind === 'agent') {
+            expect(main.harness).toBe('fragua-pi');
             expect(main.providerOverride).toBe('openrouter');
             expect(main.model).toBe('anthropic/claude-3.5-sonnet');
         }
     });
 
-    it('rejects a legacy "harness:" field on an agent step', () => {
-        const yaml = `name: legacy
-description: legacy.
-version: 1
-steps:
-  main:
-    kind: agent-cas
-    harness: cas
-    model: m
-    systemPrompt: sys
-    prompt: p
-    next: outputs.r
-outputs: { r: { from: main } }
-`;
-        expect(() => parseWorkflowYaml(yaml)).toThrow(/has a "harness:" field/);
-    });
-
-    it('rejects providerOverride on a non-fragua-pi agent step', () => {
+    it('rejects providerOverride when harness is pinned to a non-fragua-pi value', () => {
         const yaml = `name: bad
 description: bad.
 version: 1
 steps:
   main:
-    kind: agent-cas
+    kind: agent
+    harness: cas
     providerOverride: openrouter
     model: m
     systemPrompt: sys
@@ -230,7 +243,39 @@ steps:
     next: outputs.r
 outputs: { r: { from: main } }
 `;
-        expect(() => parseWorkflowYaml(yaml)).toThrow(/providerOverride is only valid on kind: agent-fragua-pi/);
+        expect(() => parseWorkflowYaml(yaml)).toThrow(/providerOverride is only valid when harness resolves to "fragua-pi"/);
+    });
+
+    it('rejects an inline agent step missing model', () => {
+        const yaml = `name: bad
+description: bad.
+version: 1
+steps:
+  main:
+    kind: agent
+    systemPrompt: sys
+    prompt: p
+    next: outputs.r
+outputs: { r: { from: main } }
+`;
+        expect(() => parseWorkflowYaml(yaml)).toThrow(/must declare either "ref" or inline "model"/);
+    });
+
+    it('rejects an unknown harness value', () => {
+        const yaml = `name: bad
+description: bad.
+version: 1
+steps:
+  main:
+    kind: agent
+    harness: claude
+    model: m
+    systemPrompt: sys
+    prompt: p
+    next: outputs.r
+outputs: { r: { from: main } }
+`;
+        expect(() => parseWorkflowYaml(yaml)).toThrow(/harness must be "cas" \| "cursor" \| "fragua-pi"/);
     });
 
     it('preserves the agent preset systemPrompt shape', () => {
@@ -239,7 +284,7 @@ description: preset.
 version: 1
 steps:
   main:
-    kind: agent-cas
+    kind: agent
     model: m
     systemPrompt:
       type: preset
@@ -250,7 +295,30 @@ steps:
 outputs: { r: { from: main } }
 `;
         const decl = parseWorkflowYaml(yaml);
-        const m = decl.steps.main as Extract<WorkflowDeclaration['steps'][string], { kind: 'agent-cas' }>;
+        const m = decl.steps.main as Extract<WorkflowDeclaration['steps'][string], { kind: 'agent' }>;
         expect(m.systemPrompt).toEqual({ type: 'preset', preset: 'claude_code', append: 'hello' });
+    });
+
+    it('parses kind: parallel with nested branch steps', () => {
+        const yaml = `name: par
+description: parallel test.
+version: 1
+steps:
+  fan:
+    kind: parallel
+    branches:
+      a: { kind: route, uri: x://a }
+      b: { kind: route, uri: x://b }
+    next: outputs.r
+outputs: { r: { from: fan } }
+`;
+        const decl = parseWorkflowYaml(yaml);
+        const fan = decl.steps.fan;
+        expect(fan.kind).toBe('parallel');
+        if (fan.kind === 'parallel') {
+            expect(Object.keys(fan.branches)).toEqual(['a', 'b']);
+            expect(fan.branches.a.kind).toBe('route');
+            expect(fan.branches.b.kind).toBe('route');
+        }
     });
 });

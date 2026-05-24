@@ -39,10 +39,9 @@ export interface WorkflowValidateContext {
 const KNOWN_STEP_KINDS = new Set([
     'route',
     'input',
-    'agent-cas',
-    'agent-cursor',
-    'agent-fragua-pi',
+    'agent',
     'subworkflow',
+    'parallel',
 ]);
 
 /** Events that satisfy a step's "no dead-end" requirement when no `next:`. */
@@ -51,16 +50,10 @@ const DEFAULT_TERMINAL_EVENTS: Record<string, string[]> = {
     // must cover the default success event.
     route: ['success'],
     input: ['submitted'],
-    'agent-cas': ['success'],
-    'agent-cursor': ['success'],
-    'agent-fragua-pi': ['success'],
+    agent: ['success'],
     subworkflow: ['success'],
+    parallel: ['success'],
 };
-
-/** Extract the harness slug from an agent-step kind (e.g. 'agent-cas' → 'cas'). */
-function harnessOfAgentKind(kind: string): string {
-    return kind.startsWith('agent-') ? kind.slice('agent-'.length) : kind;
-}
 
 export function validateWorkflow(
     decl: WorkflowDeclaration,
@@ -239,15 +232,12 @@ function checkRoutes(
 // ─── workflow_unknown_harness ───────────────────────────────────────────
 
 /**
- * Hint-quality rule. Fires only when:
- *   - `ctx.knownHarnesses` is provided, AND
- *   - the step's kind is `agent-<x>` (i.e. it parses as an agent step
- *     structurally — possibly via a typo), AND
- *   - `<x>` is not in the known set.
- *
- * Emits a "did you mean…" message pointing at the closest known harness.
- * The `workflow_unknown_kind` rule catches anything that isn't even
- * `agent-*`; this rule is the typo catcher for the harness suffix.
+ * Hint-quality rule for the `agent` step kind's `harness:` field.
+ * Fires only when `ctx.knownHarnesses` is provided AND the step pins
+ * an explicit harness that's not in the registered set. Inline-form
+ * agent steps without `harness:` fall back to `'cas'` at dispatch;
+ * ref-form steps resolve harness from the referenced declaration —
+ * neither is the parser's concern.
  */
 function checkHarnesses(
     decl: WorkflowDeclaration,
@@ -256,16 +246,17 @@ function checkHarnesses(
 ): void {
     if (!ctx.knownHarnesses) return;
     for (const [id, step] of Object.entries(decl.steps)) {
-        if (!step.kind.startsWith('agent-')) continue;
-        const harness = harnessOfAgentKind(step.kind);
+        if (step.kind !== 'agent') continue;
+        const harness = (step as { harness?: string }).harness;
+        if (!harness) continue;
         if (ctx.knownHarnesses.has(harness)) continue;
         const suggestion = closestHarness(harness, ctx.knownHarnesses);
         const hint = suggestion ? ` — did you mean ${suggestion}?` : '';
         errors.push({
             code: 'workflow_unknown_harness',
             stepId: id,
-            field: 'kind',
-            message: `agent step "${id}" has kind "${step.kind}"; harness "${harness}" is not in the registered set [${[...ctx.knownHarnesses].sort().join(', ')}]${hint}`,
+            field: 'harness',
+            message: `agent step "${id}".harness "${harness}" is not in the registered set [${[...ctx.knownHarnesses].sort().join(', ')}]${hint}`,
         });
     }
 }
@@ -466,7 +457,7 @@ function collectTemplateRefs(step: WorkflowStep): TemplateRef[] {
     };
     if (isAgentStep(step)) {
         const a: AgentStep = step;
-        visit(a.prompt, 'prompt');
+        if (a.prompt !== undefined) visit(a.prompt, 'prompt');
         if (typeof a.systemPrompt === 'string') visit(a.systemPrompt, 'systemPrompt');
         else if (a.systemPrompt && a.systemPrompt.append) {
             visit(a.systemPrompt.append, 'systemPrompt.append');

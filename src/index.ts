@@ -59,8 +59,8 @@ export {
 } from './workflows';
 export type {
     WorkflowDeclaration, WorkflowStep, RouteStep, InputStep,
-    AgentStep, AgentCasStep, AgentCursorStep, AgentFraguaPiStep, AgentBaseStep,
-    SubworkflowStep,
+    AgentStep, AgentHarness,
+    SubworkflowStep, ParallelStep,
     WorkflowInput, WorkflowOutput, StepKind,
     WorkflowValidationResult, WorkflowValidationError, WorkflowLintCode,
     WorkflowValidateContext,
@@ -98,6 +98,7 @@ export {
     parseManagedAgentMd, toAgentDeclaration,
     composeExtends, MAX_EXTENDS_DEPTH,
     gitBlobShaOf, verifyContentMatchesFileSha,
+    resolveHarness,
 } from './managed-agents';
 export type {
     AgentDeclaration, AgentContext, CompiledAgent,
