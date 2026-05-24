@@ -12,6 +12,7 @@ import type {
     WorkflowStep,
     AgentStep,
     AgentHarness,
+    RouteStep,
     WorkflowInput,
     WorkflowOutput,
 } from './types';
@@ -314,11 +315,42 @@ function projectRender(
     if (typeof v === 'string' && allowed.includes(v)) {
         return v as RouteStepRender;
     }
+    // Manifest form — `RenderEntry[]`. Shape-check just the surface:
+    // every entry must be an object with a `path` string + `ui` string.
+    // Deeper shape validation lives in the route render walker; bad
+    // entries silently project nothing rather than blocking the parse.
+    if (Array.isArray(v)) {
+        for (let i = 0; i < v.length; i++) {
+            const e = v[i];
+            if (!e || typeof e !== 'object' || Array.isArray(e)) {
+                throw new Error(
+                    `${filename}: step "${stepId}".render[${i}] must be an object`,
+                );
+            }
+            const o = e as { path?: unknown; ui?: unknown };
+            if (typeof o.path !== 'string') {
+                throw new Error(
+                    `${filename}: step "${stepId}".render[${i}].path must be a string`,
+                );
+            }
+            if (typeof o.ui !== 'string') {
+                throw new Error(
+                    `${filename}: step "${stepId}".render[${i}].ui must be a string`,
+                );
+            }
+        }
+        return v as unknown as RouteStepRender;
+    }
     throw new Error(
-        `${filename}: step "${stepId}".render must be one of ${allowed.join(' | ')}`,
+        `${filename}: step "${stepId}".render must be a string hint (${allowed.join(' | ')}) or a RenderEntry[] manifest`,
     );
 }
-type RouteStepRender = 'chart' | 'table' | 'value' | 'markdown' | 'json' | 'none';
+// Mirror of `RouteStep['render']`. The validator only shape-checks
+// `{ path, ui }` at the array form (deeper validation lives in
+// `applyRenderManifest`); the parse-time return is structurally a
+// `RenderEntry[]` since each entry has the two required string
+// fields. The runtime walker is permissive about extra fields.
+type RouteStepRender = NonNullable<RouteStep['render']>;
 
 function projectOnMap(
     v: unknown,

@@ -117,6 +117,38 @@ export interface ExecuteVerbContext {
      *  produced them. Optional; the dispatch layer fabricates a
      *  synthetic id when absent. */
     runId?: string;
+    /** Parent-run routing snapshot (slackThreadId, slackChannelId,
+     *  tier, parentRunId, …). Routes that fan out to child workflow
+     *  runs propagate selected keys here onto the child's
+     *  dispatchWorkflow context — the child inherits the parent's UI
+     *  surface and tier subscribers route the child's events via
+     *  `parentRunId`. See `RouteContext.inheritedRouting`. */
+    inheritedRouting?: Readonly<Record<string, unknown>>;
+    /**
+     * Workflow-by-name dispatcher.
+     *
+     * **The unification.** Every callable thing is a workflow. Routes
+     * happen to be single-step workflows (one `kind: 'route'` step
+     * around a URI). Agents are single-step workflows (one
+     * `kind: 'agent'` step). Dashboards are multi-step workflows.
+     * From the agent's tool surface, all dispatches should look like
+     * `execute(name, inputs)` — one verb, one shape.
+     *
+     * If this hook is wired AND the call's `uri` resolves to a known
+     * workflow slug, `handleExecute` dispatches through it (returning
+     * the workflow's outputs wrapped in the standard `DispatchResult`
+     * envelope). Else it falls through to the route registry — the
+     * existing route dispatch path is preserved for back-compat and
+     * for routes that aren't yet auto-wrapped as workflows.
+     *
+     * Returns `null` when the name doesn't resolve to a workflow
+     * (caller falls through to route dispatch). Returns a non-null
+     * `DispatchResult` either way on dispatch.
+     */
+    dispatchWorkflowByName?: (
+        name: string,
+        inputs: Record<string, unknown>,
+    ) => Promise<DispatchResult | null>;
 }
 
 /**
@@ -160,6 +192,24 @@ export async function handleExecute(
     }
 
     ctx.log.info('execute verb', { uri: parsed.data.uri, userId: ctx.user.id });
+
+    // The unification: try the workflow registry first. If the name
+    // resolves to a known workflow slug (single-step or multi-step,
+    // doesn't matter), dispatch via fragua with full parent-surface
+    // inheritance. Else fall through to route dispatch.
+    //
+    // From the agent's view, `execute('whales')`, `execute('redshift://run-query')`,
+    // and `execute('whale-investigation')` are all the same shape —
+    // run the named workflow with these inputs and tell me the result.
+    // Single-step routes, single-step agents, multi-step dashboards
+    // share one verb and one shape.
+    if (ctx.dispatchWorkflowByName) {
+        const wfResult = await ctx.dispatchWorkflowByName(
+            parsed.data.uri,
+            (params as Record<string, unknown>) ?? {},
+        );
+        if (wfResult !== null) return wfResult;
+    }
     return dispatchRoute(registry, parsed.data.uri, params, {
         user: ctx.user,
         scopes: ctx.scopes,
@@ -172,6 +222,7 @@ export async function handleExecute(
         onSubagentCost: ctx.onSubagentCost,
         ...(ctx.emitComponent ? { emitComponent: ctx.emitComponent } : {}),
         ...(ctx.runId !== undefined ? { runId: ctx.runId } : {}),
+        ...(ctx.inheritedRouting ? { inheritedRouting: ctx.inheritedRouting } : {}),
         ...(parsed.data.previewLimit !== undefined
             ? { previewLimit: parsed.data.previewLimit }
             : {}),

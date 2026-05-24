@@ -15,6 +15,7 @@ import type {
     SystemPromptConfig,
     JsonSchemaOutputFormat,
 } from '../managed-agents/types';
+import type { RenderEntry } from '../route/render';
 
 // ─── Top-level declaration ────────────────────────────────────────────────
 
@@ -41,6 +42,33 @@ export interface WorkflowDeclaration {
     steps: Record<string, WorkflowStep>;
     /** What the workflow returns to its caller. */
     outputs?: Record<string, WorkflowOutput>;
+    /**
+     * Optional auto-dispatch trigger. Workflows without a trigger run
+     * only when explicitly dispatched (via the agent's `execute`, the
+     * Slack subscriber, `_platform://task`, etc.). Workflows *with* a
+     * trigger run on the trigger's schedule — these are the "static"
+     * workflows the user identified: extractions, periodic refreshes,
+     * scheduled audits, anything that historically had its own worker
+     * loop.
+     *
+     * Per the unification: an extraction is just a workflow with
+     * `trigger: { cron: ... }` + a `route` step that calls an
+     * `extract://<source>` route + a `brain://write` step that lands
+     * the result under `workspaces/<w>/extracted/`. The legacy
+     * `defineExtraction` + extraction-worker pair retires when every
+     * plugin migrates.
+     */
+    trigger?: WorkflowTrigger;
+}
+
+export interface WorkflowTrigger {
+    /** Standard 5-field cron expression. UTC. Set to `null`/absent to
+     *  disable auto-dispatch (workflow stays on-demand). */
+    cron?: string;
+    /** Optional invariant inputs the scheduler always passes — kept
+     *  here rather than inline in `steps` so the trigger row is the
+     *  single source of truth for the auto-dispatched shape. */
+    inputs?: Record<string, unknown>;
 }
 
 // ─── Step kinds ────────────────────────────────────────────────────────────
@@ -72,8 +100,23 @@ export interface RouteStep extends BaseStep {
     uri: string;
     /** Parameters; supports `${{ }}` template expansion. */
     params?: Record<string, unknown>;
-    /** Render hint for the per-tier subscriber. */
-    render?: 'chart' | 'table' | 'value' | 'markdown' | 'json' | 'none';
+    /**
+     * Render projection for the step's output.
+     *
+     * **Manifest form** (`RenderEntry[]`) — full per-step projection.
+     * The walker attaches this to step output as `render: [...]` and
+     * `projectStepOutput` walks it to emit `fact.component` events.
+     * Use this when the route doesn't have its own manifest (generic
+     * SQL runners, ad-hoc routes) or when a workflow author wants a
+     * tailored view of the data.
+     *
+     * **String form** (legacy coarse hint) — a single rendering kind
+     * preserved for back-compat. Subscribers MAY honor it via their
+     * own heuristics; the walker treats it as a no-op.
+     */
+    render?:
+        | 'chart' | 'table' | 'value' | 'markdown' | 'json' | 'none'
+        | ReadonlyArray<RenderEntry>;
     timeoutMs?: number;
     retries?: number;
 }

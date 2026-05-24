@@ -220,12 +220,25 @@ export function materializeResumePrompt(
     return out;
 }
 
-/** Best-effort route extraction — mirrors the backend's
- *  `extractRoutesFromSchema`. Single-enum-required fields become the
- *  flat route list. */
+/** Best-effort route extraction. Surfaces the enum values a renderer
+ *  can render as one-click buttons. Two supported shapes:
+ *
+ *  - Top-level enum: `{ type: 'string', enum: [...] }`
+ *  - Single-property object: `{ type: 'object', properties: { <name>:
+ *    { type: 'string', enum: [...] } }, required: [<name>] }`
+ *
+ *  Anything else returns `['submit']` — the renderer falls back to a
+ *  generic form/modal affordance keyed off the full schema. */
 function extractRoutesFromSchema(
     schema: Record<string, unknown>,
 ): string[] {
+    // Top-level enum (the natural shape for a single yes/no or pick-one
+    // input where the workflow author doesn't want to nest in an object).
+    const topEnum = (schema as { enum?: unknown[] }).enum;
+    if (Array.isArray(topEnum) && topEnum.length > 0) {
+        const out = topEnum.filter((e): e is string => typeof e === 'string');
+        if (out.length > 0) return out;
+    }
     const props = (schema as { properties?: Record<string, { enum?: unknown[] }> })
         .properties;
     if (!props) return ['submit'];

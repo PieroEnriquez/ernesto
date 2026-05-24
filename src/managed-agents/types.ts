@@ -73,6 +73,13 @@ export interface AgentDeclaration {
      */
     scope?: string[];
     /**
+     * Child workflows exposed to the agent via the Task tool. Each
+     * entry's `ref` resolves through the workflow reader at dispatch
+     * time. Frontmatter shape: `subagents: { <slug>: { ref:
+     * <workflow-name> } }` — same as `AgentStep.subagents`.
+     */
+    subagents?: Record<string, { ref: string }>;
+    /**
      * Managed-agents §7.12 — opt-in tags. `'subagent'` permits invocation
      * via the `_platform://task` route. Default (absent) means the agent
      * is NOT callable as a subagent — workspaces curate their public menu,

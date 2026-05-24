@@ -165,6 +165,14 @@ export type {
 export { createMockHarness } from './harness/mock';
 // CAS harness is sub-export only (peer dep): import from 'ernesto/harness/cas'
 
+// ─── Brain FS routes (the universal primitive) ───────────────────────────
+// `brain://read|write|edit|glob|grep` — same route family on every
+// tier. Tiers register this once; the agent calls them via `execute`.
+// Per-tier specialization is in the dispatch transport (in-process,
+// MCP-over-HTTP, Claude-Code-hook), not in the contract. "The brain"
+// is Ernesto's master-fs — its canonical persistent state.
+export { registerBrainRoutes } from './routes/brain';
+
 // ─── Components (declarative UI intent) ──────────────────────────────────
 export {
     UI_COMPONENT_KINDS,

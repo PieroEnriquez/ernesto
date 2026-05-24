@@ -31,7 +31,7 @@ export interface ManagedAgentMd {
 const PROJECTED_FRONTMATTER_KEYS = new Set([
     'slug', 'name', 'description', 'provider', 'harness', 'model',
     'systemPrompt', 'maxTurns', 'mcpServers', 'outputFormat',
-    'disallowedTools', 'scope', 'callableAs',
+    'disallowedTools', 'scope', 'callableAs', 'subagents',
 ]);
 const RESERVED_FRONTMATTER_KEYS = new Set([
     'trigger', 'requires', 'consumes',
@@ -139,6 +139,7 @@ export function toAgentDeclaration(md: ManagedAgentMd): AgentDeclaration {
     const outputFormat = outputFormatField(fm, slug);
     const scope = strArrayField(fm, 'scope');
     const callableAs = strArrayField(fm, 'callableAs');
+    const subagents = subagentsField(fm, slug);
 
     return {
         id: slug,
@@ -154,7 +155,40 @@ export function toAgentDeclaration(md: ManagedAgentMd): AgentDeclaration {
         disallowedTools: strArrayField(fm, 'disallowedTools'),
         ...(scope !== undefined ? { scope } : {}),
         ...(callableAs !== undefined ? { callableAs } : {}),
+        ...(subagents !== undefined ? { subagents } : {}),
     };
+}
+
+/** Project `subagents: { <slug>: { ref: <workflow-name> } }`. Shape-
+ *  validates each entry; deeper resolution (does `ref` resolve to a
+ *  known workflow?) belongs to wire-fragua's `resolveSubagents`. */
+function subagentsField(
+    fm: Record<string, unknown>,
+    slug: string,
+): Record<string, { ref: string }> | undefined {
+    const raw = fm.subagents;
+    if (raw === undefined) return undefined;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        throw new Error(
+            `managed-agents/${slug}.md: frontmatter "subagents" must be an object mapping slug → { ref }`,
+        );
+    }
+    const out: Record<string, { ref: string }> = {};
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            throw new Error(
+                `managed-agents/${slug}.md: subagents.${key} must be an object with a "ref" string`,
+            );
+        }
+        const ref = (value as { ref?: unknown }).ref;
+        if (typeof ref !== 'string' || ref.length === 0) {
+            throw new Error(
+                `managed-agents/${slug}.md: subagents.${key}.ref must be a non-empty string`,
+            );
+        }
+        out[key] = { ref };
+    }
+    return out;
 }
 
 // ─── system prompt composition ────────────────────────────────────────────

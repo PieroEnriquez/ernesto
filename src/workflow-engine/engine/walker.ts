@@ -134,7 +134,16 @@ export async function walk(
                 await markEnded(deps.store, runId, 'errored', {
                     message: result.message,
                 });
-                return { runId, status: 'errored', outputs };
+                return {
+                    runId,
+                    status: 'errored',
+                    outputs,
+                    error: {
+                        code: result.code,
+                        message: result.message,
+                        stepId,
+                    },
+                };
             }
 
             if (result.kind === 'paused_human') {
@@ -201,7 +210,7 @@ export async function walk(
             routing,
         });
         await markEnded(deps.store, runId, 'errored', { message });
-        return { runId, status: 'errored', outputs };
+        return { runId, status: 'errored', outputs, error: { message } };
     }
 }
 

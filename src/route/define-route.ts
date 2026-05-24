@@ -105,6 +105,17 @@ export interface RouteContext {
      */
     runId?: string;
     /**
+     * Parent-run routing inherited from the workflow context the route
+     * is dispatched from. Routes that fan out to child runs (notably
+     * `_platform://task`) propagate selected keys here onto the child's
+     * `dispatchWorkflow.context` so the child inherits the parent's UI
+     * surface — events from the child carry `parentRunId` + tier
+     * routing (slackThreadId/slackChannelId/…), and tier subscribers
+     * look up state via parentRunId fallback. Absent on routes called
+     * from outside a workflow run (top-level HTTP, tests).
+     */
+    inheritedRouting?: Readonly<Record<string, unknown>>;
+    /**
      * Override for the inline preview row cap. Default is 5 rows. `0`
      * suppresses the inline preview entirely (agent gets only the
      * `file` pointer). The string sentinel `'all'` bypasses the

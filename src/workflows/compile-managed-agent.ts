@@ -59,6 +59,14 @@ export function compileManagedAgentMdToWorkflow(
     if (decl.disallowedTools && decl.disallowedTools.length > 0) {
         mainStep.disallowedTools = decl.disallowedTools;
     }
+    // Subagents whitelist — forwarded onto the agent step so the
+    // dispatcher can resolve `ref`s through the workflow reader at
+    // Task-tool-call time. Without this, frontmatter `subagents:` is
+    // silently ignored and the agent's Task tool falls back to whatever
+    // the harness defaults expose.
+    if (decl.subagents && Object.keys(decl.subagents).length > 0) {
+        mainStep.subagents = decl.subagents;
+    }
 
     const inputs: Record<string, WorkflowInput> = {
         prompt: {

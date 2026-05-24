@@ -44,6 +44,15 @@ export interface DispatchWorkflowResult {
     runId: string;
     outputs: Record<string, unknown>;
     status: 'completed' | 'errored' | 'canceled' | 'paused';
+    /** Failure details — set when `status === 'errored'`. The walker
+     *  copies these from the terminal `fact.run_terminated` payload
+     *  so callers (notably `_platform://task`) can surface a useful
+     *  message instead of an opaque "errored" string. */
+    error?: {
+        code?: string;
+        message?: string;
+        stepId?: string;
+    };
 }
 
 /** Resume intent supplied by a HITL submitter. */
