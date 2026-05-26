@@ -186,6 +186,35 @@ export interface AgentStep extends BaseStep {
     subagents?: Record<string, { ref: string }>;
     /** Only valid when resolved harness is `'fragua-pi'`. */
     providerOverride?: 'anthropic' | 'openai' | 'google' | 'ollama' | 'openrouter';
+    /**
+     * Within-dispatch session inheritance.
+     *
+     *   - `'fresh'` (default) — start a new SDK session. The agent
+     *      sees only its own `systemPrompt` + `prompt`, with whatever
+     *      cross-dispatch resume the renderer's `conversationKey`
+     *      provides.
+     *   - `'inherit'` — resume the immediately-prior `agent` step's
+     *      SDK session in the same workflow run. The current step
+     *      becomes turn N+1 of the prior turn — the SDK loads the
+     *      prior conversation history natively, doesn't re-pay for
+     *      cached prompts, and the new `prompt` reads as a follow-up
+     *      user message rather than a one-shot.
+     *
+     * The pattern: write multi-step workflows where each agent step
+     * is a "turn" with its own model / tools / system prompt, and
+     * declare `sessionContinuation: 'inherit'` on the follow-ups to
+     * share conversation history. This is the canonical
+     * composed-turns shape — multi-step workflow IS the composition.
+     *
+     * Inheritance is best-effort: if the prior step changed
+     * `systemPrompt` or `tools` the SDK may reject the resume (the
+     * SDK's prompt cache is keyed by both). Callers control the
+     * coherence — typically inherit when the persona is constant and
+     * only the user message changes (draft → critique → revise of
+     * the SAME text), fresh when the persona changes (plan with one
+     * agent, execute with a different one).
+     */
+    sessionContinuation?: 'fresh' | 'inherit';
 }
 
 /** Type guard: narrow a `WorkflowStep` to an agent step. */
