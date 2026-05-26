@@ -82,14 +82,12 @@ export type WorkflowStep =
     | RouteStep
     | InputStep
     | AgentStep
-    | SubworkflowStep
     | GroupStep;
 
 export type StepKind =
     | 'route'
     | 'input'
     | 'agent'
-    | 'subworkflow'
     | 'group';
 
 /**
@@ -243,16 +241,6 @@ export function isAgentStep(step: WorkflowStep): step is AgentStep {
     return step.kind === 'agent';
 }
 
-export interface SubworkflowStep extends BaseStep {
-    kind: 'subworkflow';
-    /** Workspace-relative path OR registered slug. */
-    ref: string;
-    /** Inputs to pass; supports `${{ }}` template expansion. */
-    inputs?: Record<string, unknown>;
-    /** Optional further-narrowing scope. */
-    scope?: string[];
-}
-
 /**
  * A nested sub-DAG node. The workflow itself is a DAG; a `group` is a
  * DAG *inside* a node — for sub-pipelines that want their own
@@ -340,7 +328,6 @@ export type WorkflowLintCode =
     | 'workflow_unknown_kind'
     | 'workflow_unknown_route'
     | 'workflow_unknown_harness'
-    | 'workflow_subworkflow_unknown'
     | 'workflow_scope_widens'
     | 'workflow_template_unresolved'
     | 'workflow_input_schema_invalid';

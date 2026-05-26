@@ -151,7 +151,7 @@ function projectStep(
     if (typeof kind !== 'string') {
         throw new Error(
             `${filename}: step "${stepId}" is missing "kind:" ` +
-            `(expected one of route | input | agent | subworkflow | group)`,
+            `(expected one of route | input | agent | group)`,
         );
     }
     const base = projectStepBase(raw, stepId, filename);
@@ -280,16 +280,6 @@ function projectStep(
                 ...(raw.outputs !== undefined
                     ? { outputs: projectOutputs(raw.outputs, filename) ?? {} }
                     : {}),
-                ...base,
-            };
-        }
-        case 'subworkflow': {
-            const ref = requireString(raw, 'ref', `${filename}: subworkflow step "${stepId}"`);
-            return {
-                kind: 'subworkflow',
-                ref,
-                ...(raw.inputs !== undefined ? { inputs: asRecord(raw.inputs, `step "${stepId}".inputs`, filename) } : {}),
-                ...(raw.scope !== undefined ? { scope: projectStringArray(raw.scope, `step "${stepId}".scope`, filename) ?? [] } : {}),
                 ...base,
             };
         }

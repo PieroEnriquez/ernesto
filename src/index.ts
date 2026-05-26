@@ -60,7 +60,7 @@ export {
 export type {
     WorkflowDeclaration, WorkflowStep, RouteStep, InputStep,
     AgentStep, AgentHarness,
-    SubworkflowStep, GroupStep,
+    GroupStep,
     WorkflowInput, WorkflowOutput, StepKind,
     WorkflowValidationResult, WorkflowValidationError, WorkflowLintCode,
     WorkflowValidateContext,

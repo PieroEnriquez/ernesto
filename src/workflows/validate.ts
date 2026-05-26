@@ -19,7 +19,6 @@ import type {
     AgentStep,
     RouteStep,
     InputStep,
-    SubworkflowStep,
 } from './types';
 import { isAgentStep } from './types';
 
@@ -40,7 +39,6 @@ const KNOWN_STEP_KINDS = new Set([
     'route',
     'input',
     'agent',
-    'subworkflow',
     'group',
 ]);
 
@@ -56,7 +54,6 @@ export function validateWorkflow(
     checkDag(decl, errors);
     checkRoutes(decl, ctx, errors);
     checkHarnesses(decl, ctx, errors);
-    checkSubworkflows(decl, ctx, errors);
     checkScopeWidens(decl, ctx, errors);
     checkTemplateRefs(decl, errors);
     checkInputSchemas(decl, errors);
@@ -297,30 +294,6 @@ function editDistance(a: string, b: string): number {
     return prev[n];
 }
 
-// ─── workflow_subworkflow_unknown ───────────────────────────────────────
-
-function checkSubworkflows(
-    decl: WorkflowDeclaration,
-    ctx: WorkflowValidateContext,
-    errors: WorkflowValidationError[],
-): void {
-    if (!ctx.knownWorkflows) return;
-    for (const [id, step] of Object.entries(decl.steps)) {
-        if (step.kind !== 'subworkflow') continue;
-        const ref = (step as SubworkflowStep).ref;
-        // Path refs (./foo.yaml) are not checked here — only slug refs.
-        if (ref.includes('/') || ref.endsWith('.yaml') || ref.endsWith('.yml')) continue;
-        if (!ctx.knownWorkflows.has(ref)) {
-            errors.push({
-                code: 'workflow_subworkflow_unknown',
-                stepId: id,
-                field: 'ref',
-                message: `subworkflow step "${id}".ref "${ref}" does not resolve to a known workflow`,
-            });
-        }
-    }
-}
-
 // ─── workflow_scope_widens ──────────────────────────────────────────────
 
 function checkScopeWidens(
@@ -328,51 +301,19 @@ function checkScopeWidens(
     ctx: WorkflowValidateContext,
     errors: WorkflowValidationError[],
 ): void {
-    // A step (subworkflow) declaring scopes outside the workflow's own
-    // declared scope is a widening — flag it. The workspace-level
-    // narrowing applies at dispatch, not here.
-    const declaredSet = new Set(decl.scope ?? []);
-    // Optionally additionally check against workspace-declared scopes.
-    const workspaceSet = new Set(ctx.declaredWorkspaceScopes ?? []);
-
-    for (const [id, step] of Object.entries(decl.steps)) {
-        if (step.kind !== 'subworkflow') continue;
-        const stepScope = (step as SubworkflowStep).scope;
-        if (!stepScope) continue;
-        for (const s of stepScope) {
-            if (decl.scope !== undefined && !declaredSet.has(s)) {
-                errors.push({
-                    code: 'workflow_scope_widens',
-                    stepId: id,
-                    field: 'scope',
-                    message: `subworkflow step "${id}".scope contains "${s}" which the workflow's top-level scope does not declare`,
-                });
-                continue;
-            }
-            if (
-                ctx.declaredWorkspaceScopes !== undefined &&
-                !workspaceSet.has(s)
-            ) {
-                errors.push({
-                    code: 'workflow_scope_widens',
-                    stepId: id,
-                    field: 'scope',
-                    message: `subworkflow step "${id}".scope contains "${s}" which is not in the workspace's declared scopes`,
-                });
-            }
-        }
-    }
-
-    // Also: top-level workflow.scope shouldn't widen vs workspace.
-    if (ctx.declaredWorkspaceScopes !== undefined && decl.scope) {
-        for (const s of decl.scope) {
-            if (!workspaceSet.has(s)) {
-                errors.push({
-                    code: 'workflow_scope_widens',
-                    field: 'scope',
-                    message: `workflow.scope contains "${s}" which is not in the workspace's declared scopes`,
-                });
-            }
+    // The top-level workflow.scope shouldn't widen vs the workspace's
+    // declared scopes. Step-level widening doesn't apply post-subworkflow-
+    // removal — dispatches through `kind: route` to other workflows
+    // narrow via the principal at runtime, not via static step scope.
+    if (ctx.declaredWorkspaceScopes === undefined || !decl.scope) return;
+    const workspaceSet = new Set(ctx.declaredWorkspaceScopes);
+    for (const s of decl.scope) {
+        if (!workspaceSet.has(s)) {
+            errors.push({
+                code: 'workflow_scope_widens',
+                field: 'scope',
+                message: `workflow.scope contains "${s}" which is not in the workspace's declared scopes`,
+            });
         }
     }
 }
@@ -414,23 +355,51 @@ function checkTemplateRefs(
         }
     }
 
-    // Also check outputs[].pick: pick paths reference step.output.<...>;
-    // their `from` must be a known step.
+    // `outputs[].from` accepts two shapes:
+    //   - a literal step id ("compute-metric") → idiomatic; pair with
+    //     `pick: <path>` for sub-field extraction.
+    //   - a template expression ("${{ steps.X.outputs.Y }}") → also
+    //     accepted; the embedded `steps.X.<path>` ref is validated
+    //     through the same `checkTemplateReference` path as inline
+    //     refs in step params/prompts.
+    // Anything else (plain string that isn't a step id and isn't a
+    // template) is rejected as an unknown step.
     if (decl.outputs) {
         const stepIds = new Set(Object.keys(decl.steps));
         for (const [outName, out] of Object.entries(decl.outputs)) {
             const fromArr = Array.isArray(out.from) ? out.from : [out.from];
             for (const from of fromArr) {
-                if (!stepIds.has(from)) {
-                    errors.push({
-                        code: 'workflow_template_unresolved',
-                        field: `outputs.${outName}.from`,
-                        message: `outputs.${outName}.from references unknown step "${from}"`,
-                    });
+                if (stepIds.has(from)) continue;
+                // Template expression — validate the embedded ref.
+                if (looksLikeTemplate(from)) {
+                    TEMPLATE_RE.lastIndex = 0;
+                    let m: RegExpExecArray | null;
+                    while ((m = TEMPLATE_RE.exec(from)) !== null) {
+                        const refErr = checkTemplateReference(
+                            m[1].trim(), knownInputs, knownSteps,
+                        );
+                        if (refErr) {
+                            errors.push({
+                                code: 'workflow_template_unresolved',
+                                field: `outputs.${outName}.from`,
+                                message: `outputs.${outName}.from references unresolved template "${m[1].trim()}": ${refErr}`,
+                            });
+                        }
+                    }
+                    continue;
                 }
+                errors.push({
+                    code: 'workflow_template_unresolved',
+                    field: `outputs.${outName}.from`,
+                    message: `outputs.${outName}.from references unknown step "${from}"`,
+                });
             }
         }
     }
+}
+
+function looksLikeTemplate(s: string): boolean {
+    return s.includes('{{') && s.includes('}}');
 }
 
 interface TemplateRef {
@@ -477,11 +446,6 @@ function collectTemplateRefs(step: WorkflowStep): TemplateRef[] {
                 visit(i.prompt, 'prompt');
                 break;
             }
-            case 'subworkflow': {
-                const s = step as SubworkflowStep;
-                if (s.inputs) visit(s.inputs, 'inputs');
-                break;
-            }
         }
     }
     return refs;
@@ -507,16 +471,24 @@ function checkTemplateReference(
         return null;
     }
     if (root === 'steps') {
-        if (parts.length < 3) {
-            return 'reference must be of the form steps.<id>.output[...]';
+        if (parts.length < 2) {
+            return 'reference must be of the form steps.<id>.outputs[.<path>] or steps.<id>.<field>';
         }
         const sid = parts[1];
         if (!knownSteps.has(sid)) {
             return `unknown step "${sid}"`;
         }
-        if (parts[2] !== 'output') {
-            return `steps.${sid}.<x> — only ".output" is addressable (got "${parts[2]}")`;
-        }
+        // After `steps.<id>` we accept either:
+        //   - `steps.<id>` (whole output object)
+        //   - `steps.<id>.outputs[.<path>]` (engine's magic skip segment;
+        //     the runtime resolver strips `outputs` and continues into
+        //     the step's output object — see `engine/run-graph.ts:resolveExpression`)
+        //   - `steps.<id>.<field>` (direct field access on the step's
+        //     output object — equivalent to the `outputs`-prefixed form
+        //     without the magic segment)
+        // Field-name validity isn't checkable without a per-step output
+        // schema, so anything past the step id passes lint and is
+        // resolved (or undef-resolved) at runtime.
         return null;
     }
     if (root === 'context') {

@@ -163,30 +163,21 @@ describe('validateWorkflow', () => {
         expect(res.errors.some(e => e.code === 'workflow_unknown_harness')).toBe(false);
     });
 
-    it('emits workflow_subworkflow_unknown when ref slug is unknown', () => {
+    it('emits workflow_scope_widens when workflow scope exceeds workspace scope', () => {
         const decl = baseDecl({
-            steps: {
-                main: { kind: 'subworkflow', ref: 'nope', next: 'outputs.r' },
-            },
-            outputs: { r: { from: 'main' } },
-        });
-        const res = validateWorkflow(decl, { knownWorkflows: new Set(['reviewer']) });
-        expect(res.errors.some(e => e.code === 'workflow_subworkflow_unknown')).toBe(true);
-    });
-
-    it('emits workflow_scope_widens when subworkflow scope exceeds parent scope', () => {
-        const decl = baseDecl({
-            scope: ['payments:read'],
+            scope: ['payments:read', 'admin:*'],
             steps: {
                 main: {
-                    kind: 'subworkflow', ref: 'reviewer',
-                    scope: ['payments:read', 'admin:*'],
+                    kind: 'route',
+                    uri: 'r://q',
                     next: 'outputs.r',
                 },
             },
             outputs: { r: { from: 'main' } },
         });
-        const res = validateWorkflow(decl);
+        const res = validateWorkflow(decl, {
+            declaredWorkspaceScopes: ['payments:read'],
+        });
         expect(res.errors.some(e => e.code === 'workflow_scope_widens')).toBe(true);
     });
 
