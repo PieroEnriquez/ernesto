@@ -182,3 +182,22 @@ export {
     IdempotencyConflictError,
 } from './middleware/idempotency-dedup';
 export type { IdempotencyDedupOpts } from './middleware/idempotency-dedup';
+export { workspaceAllocatorMiddleware } from './middleware/workspace-allocator';
+export type {
+    WorkspaceAllocator,
+    WorkspaceAllocation,
+    WorkspaceAllocatorMiddlewareOpts,
+} from './middleware/workspace-allocator';
+export { sandboxBindMiddleware } from './middleware/sandbox-bind';
+export type {
+    SandboxBinder,
+    SandboxHooks,
+    SandboxBindMiddlewareOpts,
+} from './middleware/sandbox-bind';
+export { toolSurfaceComposeMiddleware } from './middleware/tool-surface-compose';
+export type {
+    ToolSurfaceComposer,
+    ToolSurfaceComposeInput,
+    ToolSurfaceComposition,
+    ToolSurfaceComposeMiddlewareOpts,
+} from './middleware/tool-surface-compose';

@@ -60,6 +60,10 @@ export interface WalkInput {
     inputs: Record<string, unknown>;
     principal: Principal;
     opts: DispatchOpts;
+    /** Workdir root set by middleware (workspace-allocator). Threaded
+     *  into every step's HandlerContext.workdirRoot so step handlers
+     *  can pin route/agent dispatches to the allocated workdir. */
+    workdirRoot?: string;
 }
 
 export async function walk(
@@ -133,6 +137,9 @@ export async function walk(
                 signal,
                 log: deps.log,
                 emit: stepEmit,
+                ...(input.workdirRoot !== undefined
+                    ? { workdirRoot: input.workdirRoot }
+                    : {}),
             };
             const result = await handler(expandedStep, ctx);
 

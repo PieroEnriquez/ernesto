@@ -235,6 +235,9 @@ class Runner implements WorkflowRunner {
                     inputs: postPreCtx.inputs,
                     principal: postPreCtx.principal,
                     opts: { ...postPreCtx.opts, abortSignal: ac.signal },
+                    ...(postPreCtx.workdirRoot !== undefined
+                        ? { workdirRoot: postPreCtx.workdirRoot }
+                        : {}),
                 },
                 {
                     bus: this.bus,
