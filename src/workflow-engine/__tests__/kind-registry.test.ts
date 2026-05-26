@@ -1,0 +1,100 @@
+/**
+ * M5 tests — KindRegistry, unified registration for routes + workflows.
+ */
+
+import { describe, it, expect } from 'vitest';
+import { KindRegistry } from '../kind-registry';
+import { defineRoute } from '../../route/define-route';
+import { z } from 'zod';
+import type { WorkflowDeclaration } from '../../workflows/types';
+
+const noopRoute = defineRoute({
+    uri: 'marketing://cohorts',
+    description: 'cohorts',
+    scope: ['marketing:read'],
+    input: z.object({ date: z.string() }),
+    output: z.object({ rows: z.array(z.any()) }),
+    async handler() {
+        return { rows: [] };
+    },
+});
+
+const wfDecl: WorkflowDeclaration = {
+    name: 'product-enablement://pipeline',
+    description: 'autofill',
+    version: 1,
+    steps: { s1: { kind: 'route', uri: 'x' } },
+};
+
+describe('KindRegistry', () => {
+    it('registers + resolves routes and workflows', () => {
+        const r = new KindRegistry();
+        r.registerRoute(noopRoute);
+        r.registerWorkflow(wfDecl);
+
+        const route = r.resolve('marketing://cohorts');
+        expect(route?.kind).toBe('route');
+        if (route?.kind !== 'route') throw new Error('unreachable');
+        expect(route.route.description).toBe('cohorts');
+
+        const wf = r.resolve('product-enablement://pipeline');
+        expect(wf?.kind).toBe('workflow');
+        if (wf?.kind !== 'workflow') throw new Error('unreachable');
+        expect(wf.declaration.name).toBe('product-enablement://pipeline');
+    });
+
+    it('rejects duplicate URI registration as a programming error', () => {
+        const r = new KindRegistry();
+        r.registerRoute(noopRoute);
+        expect(() => r.registerRoute(noopRoute)).toThrow(/duplicate URI/);
+    });
+
+    it('returns undefined for unknown URIs (no fallback)', () => {
+        const r = new KindRegistry();
+        expect(r.resolve('nope://nope')).toBeUndefined();
+        expect(r.has('nope://nope')).toBe(false);
+    });
+
+    it('list() filters by kind type', () => {
+        const r = new KindRegistry();
+        r.registerRoute(noopRoute);
+        r.registerWorkflow(wfDecl);
+        expect(r.list().length).toBe(2);
+        expect(r.list({ kind: 'route' }).length).toBe(1);
+        expect(r.list({ kind: 'workflow' }).length).toBe(1);
+    });
+
+    it('list() filters by workspace prefix from URI', () => {
+        const r = new KindRegistry();
+        r.registerRoute(noopRoute);
+        r.registerWorkflow(wfDecl);
+        expect(r.list({ workspace: 'marketing' }).length).toBe(1);
+        expect(r.list({ workspace: 'product-enablement' }).length).toBe(1);
+        expect(r.list({ workspace: 'nope' }).length).toBe(0);
+    });
+
+    it('carries optional KindPolicy through registration', () => {
+        const r = new KindRegistry();
+        r.registerWorkflow(wfDecl, {
+            cwd: 'workspace-workdir',
+            workspace: 'product-enablement',
+            hitl: 'available-if-user',
+            idempotent: { key: '${{ inputs.productId }}', scope: 'per-key' },
+        });
+        const wf = r.resolve('product-enablement://pipeline');
+        expect(wf?.policy?.cwd).toBe('workspace-workdir');
+        expect(wf?.policy?.idempotent?.key).toBe('${{ inputs.productId }}');
+    });
+
+    it('unregister + clear + size', () => {
+        const r = new KindRegistry();
+        r.registerRoute(noopRoute);
+        r.registerWorkflow(wfDecl);
+        expect(r.size).toBe(2);
+        expect(r.unregister('marketing://cohorts')).toBe(true);
+        expect(r.size).toBe(1);
+        expect(r.unregister('nope://nope')).toBe(false);
+        r.clear();
+        expect(r.size).toBe(0);
+    });
+});

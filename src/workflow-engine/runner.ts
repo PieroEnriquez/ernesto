@@ -28,7 +28,7 @@ import type {
     WorkflowRunner,
 } from './types/runner';
 import { ZERO_USAGE } from './types/runner';
-import type { WorkflowReader } from './workflow-reader';
+import type { WorkflowReader, WorkflowDetail } from './workflow-reader';
 import type { StorePort } from './store/port';
 import type { Principal } from './principal';
 import { EventBus } from './event-bus';
@@ -38,6 +38,14 @@ import { HitlController, type HitlPauseInput } from './hitl';
 import { walk, type WalkResult } from './engine/walker';
 import { makeParallelHandler } from './engine/parallel-handler';
 import { makeOrchestrationHandler } from './engine/orchestration-handler';
+import { KindRegistry } from './kind-registry';
+import {
+    type DispatchMiddleware,
+    type DispatchPreContext,
+    buildPreContext,
+    runBefore,
+    runAfter,
+} from './middleware';
 
 const NULL_LOG: EngineLogger = {
     info: () => undefined,
@@ -58,6 +66,15 @@ class Runner implements WorkflowRunner {
     private readonly store: StorePort;
     private readonly log: EngineLogger;
     private reader: WorkflowReader | undefined;
+
+    // M5: unified kind registry. The reader continues to load
+    // workflows lazily from disk; programmatic kinds (routes,
+    // backend-registered workflows) live here.
+    readonly kindRegistry = new KindRegistry();
+
+    // M6: ordered middleware chain. Runs around every dispatch via
+    // `runBefore` + `runAfter`. Registered via `runner.use(mw)`.
+    private readonly middlewares: DispatchMiddleware[] = [];
 
     // Per-run seq allocators. The store also tracks event seqs but
     // the bus needs a synchronous counter so `pauseForHuman` can emit
@@ -105,6 +122,14 @@ class Runner implements WorkflowRunner {
         this.reader = reader;
     }
 
+    /** M6: register a middleware in the dispatch chain. Order matters:
+     *  `before` hooks run in registration order; `after` hooks run in
+     *  reverse (LIFO). No de-registration — boot wires the chain
+     *  once. */
+    use(mw: DispatchMiddleware): void {
+        this.middlewares.push(mw);
+    }
+
     async subscribeEvents(
         opts: SubscribeEventsOpts,
     ): Promise<EventSubscription> {
@@ -121,13 +146,56 @@ class Runner implements WorkflowRunner {
         principal: Principal,
         opts: DispatchOpts = {},
     ): Promise<Run<TOut>> {
-        if (!this.reader) {
-            throw new Error('no workflow reader registered');
+        // M5: resolve via the kind registry first. Falls back to the
+        // workflow reader for workspace-loaded workflows that haven't
+        // been registered programmatically.
+        const declFromRegistry = this.kindRegistry.resolve(kind);
+        let workflowDecl: WorkflowDetail;
+        if (declFromRegistry && declFromRegistry.kind === 'workflow') {
+            workflowDecl = {
+                name: declFromRegistry.declaration.name,
+                path: `kind-registry://${declFromRegistry.uri}`,
+                sha: '',
+                source: 'kind-registry',
+                declaration: declFromRegistry.declaration,
+            };
+        } else if (declFromRegistry && declFromRegistry.kind === 'route') {
+            // Route kinds dispatch as a single-step workflow with one
+            // route step. The substrate's promise: dispatch is uniform
+            // across routes and workflows.
+            workflowDecl = {
+                name: declFromRegistry.uri,
+                path: `kind-registry://${declFromRegistry.uri}`,
+                sha: '',
+                source: 'kind-registry',
+                declaration: {
+                    name: declFromRegistry.uri,
+                    description: declFromRegistry.route.description,
+                    version: 1 as const,
+                    ...(declFromRegistry.route.scope &&
+                    Array.isArray(declFromRegistry.route.scope)
+                        ? { scope: [...declFromRegistry.route.scope] }
+                        : {}),
+                    steps: {
+                        main: {
+                            kind: 'route' as const,
+                            uri: declFromRegistry.uri,
+                            params: inputs,
+                        },
+                    },
+                },
+            };
+        } else {
+            if (!this.reader) {
+                throw new Error('no workflow reader registered');
+            }
+            const detail = await this.reader.read(kind);
+            if (!detail) {
+                throw new Error(`workflow not found: ${kind}`);
+            }
+            workflowDecl = detail;
         }
-        const detail = await this.reader.read(kind);
-        if (!detail) {
-            throw new Error(`workflow not found: ${kind}`);
-        }
+
         const runId =
             opts.preallocatedRunId ?? `run-${kind}-${randomUUID()}`;
         this.seqByRun.set(runId, 0);
@@ -145,16 +213,23 @@ class Runner implements WorkflowRunner {
         const startedAt = Date.now();
         const surfaceRunId = opts.surfaceRunId ?? runId;
 
+        // M6: run pre-dispatch middleware chain. Errors from `before`
+        // hooks (e.g. scope-check throws ScopeEscalationError) abort
+        // the dispatch — the caller sees the rejection directly.
+        const preCtx: DispatchPreContext = buildPreContext(kind, inputs, principal, opts);
+        if (declFromRegistry) preCtx.decl = declFromRegistry;
+        const postPreCtx = await runBefore(this.middlewares, preCtx);
+
         let walkResult: WalkResult;
         try {
             walkResult = await walk(
                 runId,
-                detail.declaration,
+                workflowDecl.declaration,
                 {
                     kind,
-                    inputs,
-                    principal,
-                    opts: { ...opts, abortSignal: ac.signal },
+                    inputs: postPreCtx.inputs,
+                    principal: postPreCtx.principal,
+                    opts: { ...postPreCtx.opts, abortSignal: ac.signal },
                 },
                 {
                     bus: this.bus,
@@ -169,12 +244,25 @@ class Runner implements WorkflowRunner {
             this.inflightAborts.delete(runId);
         }
 
-        return projectRunHandle<TOut>(
+        const run = projectRunHandle<TOut>(
             walkResult,
             surfaceRunId,
             startedAt,
             (filterRunId) => this.subscribeRunEvents(filterRunId),
         );
+
+        // M6: post-dispatch middleware chain (reverse order). Errors
+        // here don't override the run's terminal status — they're
+        // logged + dropped so resource cleanup always completes.
+        await runAfter(this.middlewares, postPreCtx, run, (mw, err) => {
+            this.log.warn('middleware after-hook failed', {
+                name: mw.name,
+                runId: run.runId,
+                errorMessage: (err as Error).message,
+            });
+        });
+
+        return run;
     }
 
     async resumeRun(input: ResumeRunInput): Promise<void> {

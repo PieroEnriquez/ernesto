@@ -147,3 +147,24 @@ export type { HitlPauseRequest, TierEventFilter } from './tier-port';
 // Exposed for parsers / validators that want to surface unresolved
 // `${{ }}` token errors at settle time before runtime.
 export { resolveExpression } from './engine/orchestration-handler';
+
+// ─── M5 — Unified kind registry ──────────────────────────────────────
+// One registry for routes + workflows. `runner.kindRegistry.resolve(uri)`
+// is the resolution path; the runner's `dispatch()` consults this
+// first, then falls back to the workflow reader.
+export { KindRegistry } from './kind-registry';
+export type { KindDecl, KindPolicy } from './kind-registry';
+
+// ─── M6 — Middleware chain ───────────────────────────────────────────
+// `runner.use(mw)` wires ordered hooks around every dispatch.
+// `before` runs in registration order; `after` runs in reverse (LIFO).
+export type { DispatchMiddleware, DispatchPreContext } from './middleware';
+export { buildPreContext, runBefore, runAfter } from './middleware';
+
+// ─── M6 — Concrete middleware: scope check ───────────────────────────
+// The §7.4 chokepoint, lifted from the subworkflow handler into a
+// uniform per-dispatch hook.
+export {
+    scopeCheckMiddleware,
+    ScopeEscalationError,
+} from './middleware/scope-check';

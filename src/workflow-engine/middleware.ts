@@ -1,0 +1,121 @@
+/**
+ * DispatchMiddleware — ordered hooks around every `dispatch(...)`.
+ *
+ * The substrate's promise is "one dispatch, many policies." Policy
+ * effects (scope check, workspace allocation, sandbox bind, tool-
+ * surface composition, model routing, idempotency dedup, event-log
+ * init) are expressed as ordered middleware that read the kind's
+ * declared `KindPolicy` and act accordingly.
+ *
+ * Lifecycle per dispatch:
+ *   1. `before(ctx)` runs for each middleware in registration order;
+ *      can transform the ctx (set workdirRoot, narrow principal,
+ *      attach MCP factory) or short-circuit by throwing.
+ *   2. The runner's walker executes the workflow.
+ *   3. `after(ctx, result)` runs in REVERSE order (post-order) for
+ *      each middleware; can read the terminal result, write
+ *      projections, release resources.
+ *
+ * Middleware are registered via `runner.use(middleware)`. There is no
+ * de-registration — the chain is set at boot and stable across
+ * dispatches. Tests use a fresh runner.
+ *
+ * See workspaces/agent-ops/unified-runtime/architecture.md §"The
+ * 17-step middleware chain".
+ */
+
+import type { Principal } from './principal';
+import type { DispatchOpts, KindRef, Run } from './types/runner';
+import type { KindDecl } from './kind-registry';
+
+/** Mutable per-dispatch context the middleware chain reads/writes. */
+export interface DispatchPreContext {
+    kind: KindRef;
+    inputs: Record<string, unknown>;
+    principal: Principal;
+    opts: DispatchOpts;
+    /** Resolved by the runner before invoking middleware. Middleware
+     *  read `decl.policy` to decide whether to act. */
+    decl?: KindDecl;
+    /** Workdir root — middleware (workspace-allocator) sets this. */
+    workdirRoot?: string;
+    /** Session id — middleware (session-resolve) sets/reuses this. */
+    sessionId?: string;
+    /** Free-form per-middleware annotations — extension point for
+     *  middleware to communicate with later middleware in the chain
+     *  without polluting the public DispatchOpts surface. */
+    annotations: Record<string, unknown>;
+}
+
+/** A middleware ships a `name`, optional `before`, optional `after`,
+ *  or both. */
+export interface DispatchMiddleware {
+    /** Identifier for debugging + observability. Should be unique
+     *  across the chain. */
+    name: string;
+    /** Pre-dispatch hook. Runs in registration order. May transform
+     *  ctx or throw to abort dispatch. Returning the same ctx object
+     *  is fine — mutate in place or return a fresh one. */
+    before?(
+        ctx: DispatchPreContext,
+    ): Promise<DispatchPreContext> | DispatchPreContext;
+    /** Post-dispatch hook. Runs in REVERSE order (LIFO) so resource
+     *  acquisition + release nest correctly. Errors here are logged
+     *  but don't override the dispatch result. */
+    after?(
+        ctx: DispatchPreContext,
+        run: Run,
+    ): Promise<void> | void;
+}
+
+/** Run the middleware chain's `before` hooks, in registration order.
+ *  Returns the final transformed ctx. Errors in `before` propagate —
+ *  the caller catches and rejects the dispatch. */
+export async function runBefore(
+    middlewares: ReadonlyArray<DispatchMiddleware>,
+    ctx: DispatchPreContext,
+): Promise<DispatchPreContext> {
+    let cur = ctx;
+    for (const mw of middlewares) {
+        if (!mw.before) continue;
+        cur = await mw.before(cur);
+    }
+    return cur;
+}
+
+/** Run the middleware chain's `after` hooks in REVERSE order (LIFO).
+ *  Errors are caught + logged via `errorSink` so resource cleanup
+ *  always completes even if one middleware throws. */
+export async function runAfter(
+    middlewares: ReadonlyArray<DispatchMiddleware>,
+    ctx: DispatchPreContext,
+    run: Run,
+    errorSink?: (mw: DispatchMiddleware, err: unknown) => void,
+): Promise<void> {
+    for (let i = middlewares.length - 1; i >= 0; i--) {
+        const mw = middlewares[i]!;
+        if (!mw.after) continue;
+        try {
+            await mw.after(ctx, run);
+        } catch (err) {
+            if (errorSink) errorSink(mw, err);
+        }
+    }
+}
+
+/** Build a fresh DispatchPreContext snapshot. Used by the runner at
+ *  the top of every dispatch. */
+export function buildPreContext(
+    kind: KindRef,
+    inputs: Record<string, unknown>,
+    principal: Principal,
+    opts: DispatchOpts,
+): DispatchPreContext {
+    return {
+        kind,
+        inputs,
+        principal,
+        opts,
+        annotations: {},
+    };
+}
