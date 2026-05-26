@@ -25,6 +25,8 @@ import type { FactEvent } from './event';
 import type { WorkflowReader } from '../workflow-reader';
 import type { HitlPauseInput } from '../hitl';
 import type { Principal } from '../principal';
+import type { DispatchMiddleware } from '../middleware';
+import type { KindRegistry } from '../kind-registry';
 
 export interface SubscribeEventsOpts {
     lastEventId?: string;
@@ -152,6 +154,16 @@ export interface WorkflowRunner {
     registerStepKind(kind: StepKind, handler: StepKindHandler<any>): void;
     registerWorkflowReader(reader: WorkflowReader): void;
     subscribeEvents(opts: SubscribeEventsOpts): Promise<EventSubscription>;
+
+    /** The unified kind registry — routes + workflows + managed-agents
+     *  + dashboards live behind the same resolver. Backend boot wires
+     *  per-kind policy via `kindRegistry.registerRoute(...)` /
+     *  `kindRegistry.registerWorkflow(...)`. */
+    readonly kindRegistry: KindRegistry;
+
+    /** Register a dispatch-middleware in the chain. Order matters:
+     *  `before` runs in registration order, `after` runs in reverse. */
+    use(middleware: DispatchMiddleware): void;
 
     /**
      * Dispatch a kind. Returns a `Run<TOut>` handle.

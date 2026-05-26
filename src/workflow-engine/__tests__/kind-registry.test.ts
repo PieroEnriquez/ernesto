@@ -86,6 +86,63 @@ describe('KindRegistry', () => {
         expect(wf?.policy?.idempotent?.key).toBe('${{ inputs.productId }}');
     });
 
+    it('defaults policy.cwd to workspace-workdir for agent-main workflows', () => {
+        const r = new KindRegistry();
+        const agentWf: WorkflowDeclaration = {
+            name: 'managed-agents://example',
+            description: 'an agent',
+            version: 1,
+            steps: {
+                main: {
+                    kind: 'agent',
+                    model: 'claude-opus-4-7',
+                    systemPrompt: 'sys',
+                    prompt: 'hi',
+                } as WorkflowDeclaration['steps'][string],
+            },
+        };
+        r.registerWorkflow(agentWf);
+        const wf = r.resolve('managed-agents://example');
+        // Safety default — agent kinds without an explicit cwd land on
+        // workspace-workdir so the workspace-allocator middleware fires.
+        // Without this, agent steps would run unsandboxed.
+        expect(wf?.policy?.cwd).toBe('workspace-workdir');
+    });
+
+    it('does NOT override an explicitly-pinned policy.cwd on an agent workflow', () => {
+        const r = new KindRegistry();
+        const agentWf: WorkflowDeclaration = {
+            name: 'managed-agents://opt-out',
+            description: 'pinned',
+            version: 1,
+            steps: {
+                main: {
+                    kind: 'agent',
+                    model: 'claude-opus-4-7',
+                    systemPrompt: 'sys',
+                    prompt: 'hi',
+                } as WorkflowDeclaration['steps'][string],
+            },
+        };
+        r.registerWorkflow(agentWf, { cwd: 'ephemeral', hitl: 'never' });
+        const wf = r.resolve('managed-agents://opt-out');
+        expect(wf?.policy?.cwd).toBe('ephemeral');
+        expect(wf?.policy?.hitl).toBe('never');
+    });
+
+    it('does NOT default cwd for non-agent-main workflows', () => {
+        const r = new KindRegistry();
+        const routeWf: WorkflowDeclaration = {
+            name: 'cron://warmer',
+            description: 'just calls a route',
+            version: 1,
+            steps: { main: { kind: 'route', uri: 'x' } as WorkflowDeclaration['steps'][string] },
+        };
+        r.registerWorkflow(routeWf);
+        const wf = r.resolve('cron://warmer');
+        expect(wf?.policy?.cwd).toBeUndefined();
+    });
+
     it('unregister + clear + size', () => {
         const r = new KindRegistry();
         r.registerRoute(noopRoute);

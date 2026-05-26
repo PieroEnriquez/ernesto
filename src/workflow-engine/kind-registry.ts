@@ -118,16 +118,25 @@ export class KindRegistry {
     }
 
     /** Convenience: register a workflow kind. Policy is read from the
-     *  declaration's frontmatter today; the caller can override. */
+     *  declaration's frontmatter today; the caller can override.
+     *
+     *  Safe default: when the main step is `kind: 'agent'` and the
+     *  caller didn't pin `policy.cwd`, default to `'workspace-workdir'`.
+     *  Agent steps without a sandboxed workdir would let the SDK's
+     *  native Read/Write/Edit/Glob/Grep escape to the process CWD with
+     *  no path-guard — never the intent. Callers that explicitly want
+     *  `cwd: 'none'` for an agent step have to set it themselves and
+     *  accept the risk. */
     registerWorkflow(
         declaration: WorkflowDeclaration,
         policy?: KindPolicy,
     ): void {
+        const merged = mergeWorkflowPolicyDefaults(declaration, policy);
         this.register({
             kind: 'workflow',
             uri: declaration.name,
             declaration,
-            ...(policy ? { policy } : {}),
+            ...(merged ? { policy: merged } : {}),
         });
     }
 
@@ -182,4 +191,20 @@ function extractWorkspaceFromUri(uri: string): string | undefined {
     const idx = uri.indexOf('://');
     if (idx <= 0) return undefined;
     return uri.slice(0, idx);
+}
+
+/** Apply safe defaults to a workflow's policy. The only default
+ *  applied today is `cwd: 'workspace-workdir'` when the main step is
+ *  an agent kind and the caller didn't pin `cwd` — see the comment on
+ *  `registerWorkflow` for why this is a safety invariant, not just an
+ *  ergonomic shortcut. */
+function mergeWorkflowPolicyDefaults(
+    declaration: WorkflowDeclaration,
+    policy: KindPolicy | undefined,
+): KindPolicy | undefined {
+    const main = declaration.steps?.main;
+    const mainIsAgent = !!main && (main as { kind?: string }).kind === 'agent';
+    if (!mainIsAgent) return policy;
+    if (policy?.cwd !== undefined) return policy;
+    return { ...(policy ?? {}), cwd: 'workspace-workdir' };
 }
