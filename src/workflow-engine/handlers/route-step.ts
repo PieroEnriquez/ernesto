@@ -38,6 +38,51 @@ export function makeRouteStepHandler(
     deps: RouteStepHandlerDeps,
 ): StepKindHandler<RouteStep> {
     return async (step, ctx) => {
+        const decl = deps.kindRegistry.resolve(step.uri);
+        if (!decl) {
+            return {
+                kind: 'error',
+                code: 'uri_not_found',
+                message: `${step.uri} not registered in kind registry`,
+            };
+        }
+
+        // Non-route kinds (workflow, future kinds) — recursive dispatch
+        // through the runner. The step's `uri` resolves to a registered
+        // declaration that isn't a route; `ctx.dispatch` is the pre-bound
+        // closure the walker installed (inherits principal + routing).
+        // This is what makes `kind: route` work as "dispatch by URI" —
+        // the original route-only restriction was the artifact of an
+        // earlier separate `kind: subworkflow` that has since been
+        // unified away.
+        if (decl.kind !== 'route') {
+            if (!ctx.dispatch) {
+                return {
+                    kind: 'error',
+                    code: 'no_recursive_dispatch',
+                    message: `${step.uri} resolves to ${decl.kind} but ctx.dispatch is unavailable`,
+                };
+            }
+            const child = await ctx.dispatch(step.uri, step.params ?? {});
+            if (child.status === 'completed') {
+                return { kind: 'completed', output: child.output ?? {} };
+            }
+            if (child.status === 'errored') {
+                return {
+                    kind: 'error',
+                    code: child.error?.code ?? 'child_workflow_errored',
+                    message:
+                        child.error?.message ??
+                        `child workflow ${step.uri} errored`,
+                };
+            }
+            return {
+                kind: 'error',
+                code: 'child_workflow_unfinished',
+                message: `child workflow ${step.uri} returned status=${child.status}`,
+            };
+        }
+
         if (ctx.principal.kind !== 'user') {
             // Route handlers expect a user principal — `RouteContext.user`
             // carries the id (+ optional email). Service principals
@@ -47,14 +92,6 @@ export function makeRouteStepHandler(
                 kind: 'error',
                 code: 'missing_principal',
                 message: 'route step requires a user principal',
-            };
-        }
-        const decl = deps.kindRegistry.resolve(step.uri);
-        if (!decl || decl.kind !== 'route') {
-            return {
-                kind: 'error',
-                code: 'route_not_found',
-                message: `route ${step.uri} not registered in kind registry`,
             };
         }
 

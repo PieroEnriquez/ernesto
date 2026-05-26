@@ -325,6 +325,28 @@ outputs: { r: { from: fan } }
         }
     });
 
+    it('parses kind: call as an alias for kind: route (transition alias)', () => {
+        // `call` is the new authoring name for the dispatch-by-URI
+        // step; `route` is the legacy name kept as a parser alias
+        // during the workspace-wide rename. Both produce the same
+        // internal `kind: 'route'` shape.
+        const yaml = `name: aliased
+description: call alias test.
+version: 1
+steps:
+  callShape: { kind: call,  uri: x://a, params: { sql: 1 } }
+  routeShape: { kind: route, uri: x://b, params: { sql: 2 } }
+outputs: { r: { from: routeShape } }
+`;
+        const decl = parseWorkflowYaml(yaml);
+        expect(decl.steps.callShape.kind).toBe('route');
+        expect(decl.steps.routeShape.kind).toBe('route');
+        if (decl.steps.callShape.kind === 'route') {
+            expect(decl.steps.callShape.uri).toBe('x://a');
+            expect(decl.steps.callShape.params).toEqual({ sql: 1 });
+        }
+    });
+
     it('parses depends / skipIf / fallback on a step', () => {
         const yaml = `name: dag
 description: dag test.

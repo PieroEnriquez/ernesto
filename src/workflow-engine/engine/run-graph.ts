@@ -36,6 +36,24 @@ import { projectStepOutput } from './render-projection';
 /** Everything the scheduler needs that's constant across the run. */
 export interface RunGraphDeps {
     dispatcher: HandlerDispatcher;
+    /** Recursive dispatch handle threaded into every step's
+     *  `HandlerContext.dispatch`. The walker pre-binds principal +
+     *  routing inheritance; step handlers call it with just the URI
+     *  + inputs. Optional — `walk()` sets it when called from the
+     *  runner; unit-test setups that drive `runGraph` directly may
+     *  omit it (step handlers receiving an undefined `dispatch` is a
+     *  contract failure only for handlers that NEED recursion — the
+     *  route step handler's "dispatch any kind" path is the canonical
+     *  consumer; others continue to no-op). */
+    dispatch?: (
+        uri: string,
+        inputs: Record<string, unknown>,
+    ) => Promise<{
+        runId: string;
+        status: 'completed' | 'errored' | 'canceled' | 'running' | 'awaiting_input';
+        output?: Record<string, unknown>;
+        error?: { code?: string; message?: string; stepId?: string };
+    }>;
     hitl: HitlController;
     log: EngineLogger;
     signal: AbortSignal;
@@ -181,6 +199,9 @@ export async function runGraph(
                     emit: stepEmit,
                     ...(deps.workdirRoot !== undefined
                         ? { workdirRoot: deps.workdirRoot }
+                        : {}),
+                    ...(deps.dispatch !== undefined
+                        ? { dispatch: deps.dispatch }
                         : {}),
                 };
                 result = await handler(resolved, ctx);

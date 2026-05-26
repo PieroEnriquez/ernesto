@@ -28,6 +28,21 @@ export interface WalkerDeps {
     log: EngineLogger;
     /** Hands out the next event seq for a given run. */
     nextSeq(runId: string): number;
+    /** Recursive dispatch closure built by the runner. Pre-binds the
+     *  parent run's principal + routing (tier, parentRunId =
+     *  ctx.runId, surfaceRunId, conversationKey) so step handlers can
+     *  call `ctx.dispatch(uri, inputs)` without re-supplying them.
+     *  Optional for unit-test setups that don't recurse. */
+    dispatch?: (
+        uri: string,
+        inputs: Record<string, unknown>,
+        parent: { runId: string; principal: Principal; routing: HandlerRouting },
+    ) => Promise<{
+        runId: string;
+        status: 'completed' | 'errored' | 'canceled' | 'running' | 'awaiting_input';
+        output?: Record<string, unknown>;
+        error?: { code?: string; message?: string; stepId?: string };
+    }>;
 }
 
 /** Internal terminal shape returned by `walk`. The runner wraps this
@@ -96,6 +111,21 @@ export async function walk(
         nextSeq: (id) => deps.nextSeq(id),
         storeRouting,
         ...(input.workdirRoot !== undefined ? { workdirRoot: input.workdirRoot } : {}),
+        // Pre-bind the recursive-dispatch closure for step handlers
+        // (`ctx.dispatch(uri, inputs)`). Parent identity (runId,
+        // principal, routing) is captured here so handlers don't
+        // re-supply it; the runner-side closure threads it into
+        // `dispatchOpts` as `parentRunId` + routing inheritance.
+        ...(deps.dispatch !== undefined
+            ? {
+                  dispatch: (uri: string, inputs: Record<string, unknown>) =>
+                      deps.dispatch!(uri, inputs, {
+                          runId,
+                          principal: input.principal,
+                          routing,
+                      }),
+              }
+            : {}),
     };
 
     const result = await runGraph(

@@ -285,6 +285,45 @@ class Runner implements WorkflowRunner {
                         hitl: this.hitl,
                         log: this.log,
                         nextSeq: (id) => this.nextSeq(id),
+                        // Recursive dispatch closure — step handlers get
+                        // a pre-bound `ctx.dispatch(uri, inputs)` that
+                        // threads the parent run's identity + routing
+                        // into the child dispatch's opts. This is what
+                        // makes `kind: route uri: <workflow>` work for
+                        // workflow-from-workflow without a subworkflow
+                        // step kind.
+                        dispatch: async (uri, inputs, parent) => {
+                            const childOpts: DispatchOpts = {
+                                ...parent.routing.context,
+                                parentRunId: parent.runId,
+                                ...(parent.routing.tier !== undefined
+                                    ? { tier: parent.routing.tier }
+                                    : {}),
+                                ...(parent.routing.surfaceRunId !== undefined
+                                    ? { surfaceRunId: parent.routing.surfaceRunId }
+                                    : {}),
+                                ...(parent.routing.conversationKey !== undefined
+                                    ? { conversationKey: parent.routing.conversationKey }
+                                    : {}),
+                                context: parent.routing.context,
+                            };
+                            const child = await this.dispatch(
+                                uri,
+                                inputs,
+                                parent.principal,
+                                childOpts,
+                            );
+                            return {
+                                runId: child.runId,
+                                status: child.status,
+                                ...(child.output !== undefined
+                                    ? { output: child.output }
+                                    : {}),
+                                ...(child.error !== undefined
+                                    ? { error: child.error }
+                                    : {}),
+                            };
+                        },
                     },
                 );
                 // Only retry on `errored` — completed, paused, canceled

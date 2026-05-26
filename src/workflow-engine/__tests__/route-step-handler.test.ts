@@ -52,7 +52,7 @@ describe('makeRouteStepHandler', () => {
         expect(result).toEqual({ kind: 'completed', output: { rows: ['select 1'] } });
     });
 
-    it('returns route_not_found when the URI is not in the registry', async () => {
+    it('returns uri_not_found when the URI is not in the registry', async () => {
         const kindRegistry = new KindRegistry();
         const handler = makeRouteStepHandler({
             kindRegistry,
@@ -64,7 +64,7 @@ describe('makeRouteStepHandler', () => {
         );
         expect(result.kind).toBe('error');
         if (result.kind === 'error') {
-            expect(result.code).toBe('route_not_found');
+            expect(result.code).toBe('uri_not_found');
         }
     });
 
@@ -177,6 +177,88 @@ describe('makeRouteStepHandler', () => {
         expect(result.kind).toBe('error');
         if (result.kind === 'error') {
             expect(result.code).toBe('missing_principal');
+        }
+    });
+
+    it('falls through to ctx.dispatch when the URI resolves to a non-route kind (workflow-from-workflow)', async () => {
+        const kindRegistry = new KindRegistry();
+        // Stub-register a workflow declaration so resolve() returns
+        // something with kind !== 'route'. The step handler should
+        // hand off to ctx.dispatch rather than trying to call the
+        // route handler.
+        kindRegistry.registerWorkflow({
+            name: 'child-wf',
+            description: 'd',
+            version: 1,
+            steps: {},
+        });
+        const dispatchSpy = vi.fn(async () => ({
+            runId: 'child-1',
+            status: 'completed' as const,
+            output: { from_child: true },
+        }));
+        const handler = makeRouteStepHandler({
+            kindRegistry,
+            log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        });
+        const result = await handler(
+            { kind: 'route', uri: 'child-wf', params: { x: 1 } } as RouteStep,
+            makeCtx({ dispatch: dispatchSpy }),
+        );
+        expect(dispatchSpy).toHaveBeenCalledWith('child-wf', { x: 1 });
+        expect(result).toEqual({
+            kind: 'completed',
+            output: { from_child: true },
+        });
+    });
+
+    it('returns no_recursive_dispatch when the URI resolves to a non-route but ctx.dispatch is absent', async () => {
+        const kindRegistry = new KindRegistry();
+        kindRegistry.registerWorkflow({
+            name: 'child-wf',
+            description: 'd',
+            version: 1,
+            steps: {},
+        });
+        const handler = makeRouteStepHandler({
+            kindRegistry,
+            log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        });
+        const result = await handler(
+            { kind: 'route', uri: 'child-wf', params: {} } as RouteStep,
+            makeCtx(), // no dispatch
+        );
+        expect(result.kind).toBe('error');
+        if (result.kind === 'error') {
+            expect(result.code).toBe('no_recursive_dispatch');
+        }
+    });
+
+    it('propagates child workflow errors as the step error', async () => {
+        const kindRegistry = new KindRegistry();
+        kindRegistry.registerWorkflow({
+            name: 'child-wf',
+            description: 'd',
+            version: 1,
+            steps: {},
+        });
+        const dispatchSpy = vi.fn(async () => ({
+            runId: 'child-1',
+            status: 'errored' as const,
+            error: { code: 'child_blew_up', message: 'specific reason' },
+        }));
+        const handler = makeRouteStepHandler({
+            kindRegistry,
+            log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        });
+        const result = await handler(
+            { kind: 'route', uri: 'child-wf', params: {} } as RouteStep,
+            makeCtx({ dispatch: dispatchSpy }),
+        );
+        expect(result.kind).toBe('error');
+        if (result.kind === 'error') {
+            expect(result.code).toBe('child_blew_up');
+            expect(result.message).toBe('specific reason');
         }
     });
 });

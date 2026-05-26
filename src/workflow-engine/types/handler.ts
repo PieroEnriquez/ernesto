@@ -145,6 +145,35 @@ export interface HandlerContext {
      *  ignore this just lose mid-step granularity (lifecycle events
      *  still flow through the walker). */
     emit?: EmitFactEvent;
+    /** Recursive dispatch back into the runner. Pre-bound by the
+     *  walker to inherit this run's principal + routing (tier,
+     *  parentRunId set to `ctx.runId`, surfaceRunId, conversationKey).
+     *  Step handlers call this when a step needs to invoke another
+     *  callable by URI — workflow-from-workflow, route-from-step,
+     *  or any future registry kind. The route step kind handler is
+     *  the canonical caller: when `step.uri` resolves to a non-route
+     *  kind, the handler falls through to `ctx.dispatch(step.uri,
+     *  step.params)` and the runner takes it from there.
+     *
+     *  Optional because legacy step handlers and unit-test contexts
+     *  don't need to recurse; only the route step handler currently
+     *  threads it. */
+    dispatch?: (
+        uri: string,
+        inputs: Record<string, unknown>,
+    ) => Promise<RecursiveDispatchResult>;
+}
+
+/** Minimal recursive-dispatch return shape exposed to step handlers.
+ *  Mirrors the runner's `Run<T>` projection at the fields a step
+ *  handler reasonably needs to decide how to project the result back
+ *  into its own output. Kept narrow so the handler API doesn't drag
+ *  the full `Run<T>` type into every step file. */
+export interface RecursiveDispatchResult {
+    runId: string;
+    status: 'completed' | 'errored' | 'canceled' | 'running' | 'awaiting_input';
+    output?: Record<string, unknown>;
+    error?: { code?: string; message?: string; stepId?: string };
 }
 
 /** Typed routing — replaces the previously-untyped

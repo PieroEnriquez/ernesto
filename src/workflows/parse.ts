@@ -151,12 +151,19 @@ function projectStep(
     if (typeof kind !== 'string') {
         throw new Error(
             `${filename}: step "${stepId}" is missing "kind:" ` +
-            `(expected one of route | input | agent | group)`,
+            `(expected one of call | route | input | agent | group)`,
         );
     }
     const base = projectStepBase(raw, stepId, filename);
 
     switch (kind) {
+        // `call` is the new canonical name for the dispatch-by-URI
+        // step kind; `route` is the legacy spelling, kept as a parser
+        // alias during the workspace-wide rename. Both produce the
+        // same `kind: 'route'` internal shape — when the rename
+        // settles, the internal kind will move to `'call'` and the
+        // `route` alias will retire.
+        case 'call':
         case 'route': {
             const uri = requireString(raw, 'uri', `${filename}: step "${stepId}"`);
             return {
