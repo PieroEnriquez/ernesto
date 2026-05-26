@@ -200,25 +200,30 @@ class Runner implements WorkflowRunner {
             opts.preallocatedRunId ?? `run-${kind}-${randomUUID()}`;
         this.seqByRun.set(runId, 0);
 
-        // Tie the run to an abort controller. If the caller passed a
-        // signal, chain to it; otherwise we own a fresh one so
-        // `abortRun` can land.
-        const ac = new AbortController();
-        if (opts.abortSignal) {
-            if (opts.abortSignal.aborted) ac.abort();
-            else opts.abortSignal.addEventListener('abort', () => ac.abort());
-        }
-        this.inflightAborts.set(runId, ac);
-
         const startedAt = Date.now();
         const surfaceRunId = opts.surfaceRunId ?? runId;
 
-        // M6: run pre-dispatch middleware chain. Errors from `before`
-        // hooks (e.g. scope-check throws ScopeEscalationError) abort
-        // the dispatch — the caller sees the rejection directly.
+        // M6: run pre-dispatch middleware chain BEFORE setting up the
+        // abort controller. Middleware (notably `timeoutMiddleware`)
+        // may replace `opts.abortSignal` with a composed signal; the
+        // runner reads the post-middleware value when building its
+        // own AbortController. Errors from `before` hooks (e.g.
+        // scope-check throws ScopeEscalationError) abort the dispatch
+        // — the caller sees the rejection directly.
         const preCtx: DispatchPreContext = buildPreContext(kind, inputs, principal, opts);
         if (declFromRegistry) preCtx.decl = declFromRegistry;
         const postPreCtx = await runBefore(this.middlewares, preCtx);
+
+        // Tie the run to an abort controller chained to whatever
+        // signal middleware left on opts.abortSignal (could be the
+        // caller's original, a composed timeout signal, or both).
+        const ac = new AbortController();
+        const upstreamSignal = postPreCtx.opts.abortSignal;
+        if (upstreamSignal) {
+            if (upstreamSignal.aborted) ac.abort();
+            else upstreamSignal.addEventListener('abort', () => ac.abort());
+        }
+        this.inflightAborts.set(runId, ac);
 
         let walkResult: WalkResult;
         try {

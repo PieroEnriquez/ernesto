@@ -161,10 +161,19 @@ export type { KindDecl, KindPolicy } from './kind-registry';
 export type { DispatchMiddleware, DispatchPreContext } from './middleware';
 export { buildPreContext, runBefore, runAfter } from './middleware';
 
-// ─── M6 — Concrete middleware: scope check ───────────────────────────
-// The §7.4 chokepoint, lifted from the subworkflow handler into a
-// uniform per-dispatch hook.
+// ─── M6 — Concrete middleware library ────────────────────────────────
+// Each middleware is independently shippable, follows the same
+// before(ctx)/after(ctx, run) pattern, reads `ctx.decl.policy` to
+// decide whether to act.
 export {
     scopeCheckMiddleware,
     ScopeEscalationError,
 } from './middleware/scope-check';
+export {
+    modelRouterMiddleware,
+    ModelRouterError,
+} from './middleware/model-router';
+export type { ModelRouterOpts } from './middleware/model-router';
+export { timeoutMiddleware } from './middleware/timeout';
+export { loggingMiddleware } from './middleware/logging';
+export type { LoggingMiddlewareOpts } from './middleware/logging';
