@@ -34,6 +34,11 @@ export interface DispatchPreContext {
     inputs: Record<string, unknown>;
     principal: Principal;
     opts: DispatchOpts;
+    /** Runner-minted runId for this dispatch. Available before any
+     *  middleware runs so durable-claim middleware
+     *  (`eventLogInitMiddleware`) can write a row keyed by it
+     *  pre-walk, and so any middleware can reference the run by id. */
+    runId: string;
     /** Resolved by the runner before invoking middleware. Middleware
      *  read `decl.policy` to decide whether to act. */
     decl?: KindDecl;
@@ -110,12 +115,14 @@ export function buildPreContext(
     inputs: Record<string, unknown>,
     principal: Principal,
     opts: DispatchOpts,
+    runId: string,
 ): DispatchPreContext {
     return {
         kind,
         inputs,
         principal,
         opts,
+        runId,
         annotations: {},
     };
 }

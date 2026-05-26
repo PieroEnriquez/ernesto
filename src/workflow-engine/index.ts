@@ -210,6 +210,12 @@ export type {
     ResultCacheStore,
     CachedEntry,
 } from './middleware/result-cache';
+export { eventLogInitMiddleware } from './middleware/event-log-init';
+export type {
+    EventLogInitMiddlewareOpts,
+    ClaimRunInput,
+    ClaimRunResult,
+} from './middleware/event-log-init';
 
 // ─── Built-in step-kind handlers ──────────────────────────────────
 // Lib-shipped handlers for step kinds whose dispatch logic is

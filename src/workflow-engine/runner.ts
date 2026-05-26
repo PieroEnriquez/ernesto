@@ -210,7 +210,7 @@ class Runner implements WorkflowRunner {
         // own AbortController. Errors from `before` hooks (e.g.
         // scope-check throws ScopeEscalationError) abort the dispatch
         // — the caller sees the rejection directly.
-        const preCtx: DispatchPreContext = buildPreContext(kind, inputs, principal, opts);
+        const preCtx: DispatchPreContext = buildPreContext(kind, inputs, principal, opts, runId);
         if (declFromRegistry) preCtx.decl = declFromRegistry;
         const postPreCtx = await runBefore(this.middlewares, preCtx);
 
