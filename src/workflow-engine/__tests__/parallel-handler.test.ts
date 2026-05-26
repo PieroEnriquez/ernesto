@@ -5,6 +5,7 @@ import { HandlerDispatcher } from '../dispatch';
 import { InMemoryStore } from '../store/in-memory-store';
 import { HitlController } from '../hitl';
 import { makeParallelHandler } from '../engine/parallel-handler';
+import { userPrincipal } from '../principal';
 import type { FactEvent } from '../types/event';
 import type { WorkflowDeclaration } from '../../workflows/types';
 
@@ -69,10 +70,10 @@ describe('parallel step handler', () => {
             'run-par',
             decl,
             {
-                slug: 'wf-par',
+                kind: 'wf-par',
                 inputs: {},
-                principal: { userId: 'u', scopes: new Set() },
-                context: {},
+                principal: userPrincipal('u', []),
+                opts: {},
             },
             { ...rig, log: NOOP_LOG },
         );
@@ -121,10 +122,10 @@ describe('parallel step handler', () => {
             'run-fail',
             decl,
             {
-                slug: 'wf-fail',
+                kind: 'wf-fail',
                 inputs: {},
-                principal: { userId: 'u', scopes: new Set() },
-                context: {},
+                principal: userPrincipal('u', []),
+                opts: {},
             },
             { ...rig, log: NOOP_LOG },
         );
@@ -168,10 +169,10 @@ describe('parallel step handler', () => {
             'run-pause',
             decl,
             {
-                slug: 'wf-pause',
+                kind: 'wf-pause',
                 inputs: {},
-                principal: { userId: 'u', scopes: new Set() },
-                context: {},
+                principal: userPrincipal('u', []),
+                opts: {},
             },
             { ...rig, log: NOOP_LOG },
         );
@@ -221,10 +222,10 @@ describe('parallel step handler', () => {
             'run-render',
             decl,
             {
-                slug: 'wf-render',
+                kind: 'wf-render',
                 inputs: {},
-                principal: { userId: 'u', scopes: new Set() },
-                context: {},
+                principal: userPrincipal('u', []),
+                opts: {},
             },
             { ...rig, log: NOOP_LOG },
         );
@@ -291,10 +292,10 @@ describe('parallel step handler', () => {
             'run-nested',
             decl,
             {
-                slug: 'wf-nested',
+                kind: 'wf-nested',
                 inputs: {},
-                principal: { userId: 'u', scopes: new Set() },
-                context: {},
+                principal: userPrincipal('u', []),
+                opts: {},
             },
             { ...rig, log: NOOP_LOG },
         );
@@ -325,10 +326,10 @@ describe('parallel step handler', () => {
             'run-empty',
             decl,
             {
-                slug: 'wf-empty',
+                kind: 'wf-empty',
                 inputs: {},
-                principal: { userId: 'u', scopes: new Set() },
-                context: {},
+                principal: userPrincipal('u', []),
+                opts: {},
             },
             { ...rig, log: NOOP_LOG },
         );

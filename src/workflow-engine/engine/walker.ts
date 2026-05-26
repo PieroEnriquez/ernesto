@@ -1,17 +1,17 @@
 /**
- * Step-graph walker. Promoted from the backend's
- * `real-fragua-instance.ts:dispatchWorkflow` body, with HITL pause
- * integration grafted on top.
+ * Step-graph walker — the inner loop of every `dispatch(...)`.
+ *
+ * Takes a resolved `WorkflowDeclaration` + the dispatch input (kind,
+ * inputs, principal, opts), iterates the steps in declaration order,
+ * calls the registered step-kind handler for each, threads outputs
+ * forward, blocks on HITL pauses, halts on errors, and emits the
+ * canonical `fact.*` event taxonomy through the bus + store.
  *
  * Walking strategy (Phase 0): declaration-order iteration. The
  * `edge-selection` module exists for the eventual graph-driven walk
- * but the current shape matches what the backend stub already does
- * — flat enumeration of `steps:` keys, halting on the first non-
- * `completed` result.
- *
- * The walker emits the canonical `fact.*` event taxonomy through the
- * event bus + the store; `wire-fragua.ts:translateFactEvent` converts
- * those to `ErnestoTierEvent` for per-tier subscribers.
+ * but the current shape matches what the prior stub did — flat
+ * enumeration of `steps:` keys, halting on the first non-`completed`
+ * result.
  */
 
 import type { WorkflowDeclaration } from '../../workflows/types';
@@ -24,11 +24,10 @@ import type {
     EmitFactEvent,
     EmitFactEventInput,
     HandlerContext,
+    HandlerRouting,
 } from '../types/handler';
-import type {
-    DispatchWorkflowInput,
-    DispatchWorkflowResult,
-} from '../types/runner';
+import type { DispatchOpts, KindRef } from '../types/runner';
+import type { Principal } from '../principal';
 import type { FactEvent } from '../types/event';
 import { compileSteps } from '../types/graph';
 import { projectStepOutput } from './render-projection';
@@ -43,36 +42,54 @@ export interface WalkerDeps {
     nextSeq(runId: string): number;
 }
 
+/** Internal terminal shape returned by `walk`. The runner wraps this
+ *  into a `Run<TOut>` handle for the caller. */
+export interface WalkResult {
+    runId: string;
+    status: 'completed' | 'errored' | 'canceled' | 'paused';
+    outputs: Record<string, unknown>;
+    error?: {
+        code?: string;
+        message?: string;
+        stepId?: string;
+    };
+}
+
+export interface WalkInput {
+    kind: KindRef;
+    inputs: Record<string, unknown>;
+    principal: Principal;
+    opts: DispatchOpts;
+}
+
 export async function walk(
     runId: string,
     declaration: WorkflowDeclaration,
-    input: DispatchWorkflowInput,
+    input: WalkInput,
     deps: WalkerDeps,
-): Promise<DispatchWorkflowResult> {
-    const routing: Record<string, unknown> = {
-        ...input.context,
-        userId: input.principal.userId,
-        scopes: [...input.principal.scopes],
-    };
-    const signal = input.signal ?? new AbortController().signal;
+): Promise<WalkResult> {
+    const routing: HandlerRouting = buildRouting(input);
+    const signal = input.opts.abortSignal ?? new AbortController().signal;
 
-    // Persist run-state row + emit fact.run_started.
+    // Persist run-state row + emit fact.run_started. The store-row
+    // routing carries the typed shape so projection reducers don't
+    // need to fish keys out of an untyped record.
     const startedAt = Date.now();
     await deps.store.putRunState({
         runId,
-        workflow: input.slug,
+        workflow: input.kind,
         status: 'running',
         inputs: input.inputs,
-        routing,
+        routing: routingForStore(routing, input.principal),
         startedAt,
     });
     emit(deps, {
         runId,
         seq: deps.nextSeq(runId),
         type: 'fact.run_started',
-        payload: { workflow: input.slug, inputs: input.inputs },
+        payload: { workflow: input.kind, inputs: input.inputs },
         ts: startedAt,
-        routing,
+        routing: routingForStore(routing, input.principal),
     });
 
     const outputs: Record<string, unknown> = {};
@@ -87,7 +104,7 @@ export async function walk(
                     type: 'fact.run_terminated',
                     payload: { status: 'aborted' },
                     ts: Date.now(),
-                    routing,
+                    routing: routingForStore(routing, input.principal),
                 });
                 await markEnded(deps.store, runId, 'aborted');
                 return { runId, status: 'canceled', outputs };
@@ -95,22 +112,24 @@ export async function walk(
 
             const handler = deps.dispatcher.require(step.kind);
             const expandedStep = expandStepTemplates(step, input.inputs);
-            const stepEmit: EmitFactEvent = (input: EmitFactEventInput) => {
-                const ts = input.ts ?? Date.now();
-                const { ts: _t, ...rest } = input;
+            const stepEmit: EmitFactEvent = (raw: EmitFactEventInput) => {
+                const ts = raw.ts ?? Date.now();
+                const { ts: _t, ...rest } = raw;
                 emit(deps, {
                     runId,
                     seq: deps.nextSeq(runId),
-                    type: input.type,
+                    type: raw.type,
                     payload: { stepId, ...rest } as Record<string, unknown>,
                     ts,
-                    routing,
+                    routing: routingForStore(routing, input.principal),
                 });
             };
             const ctx: HandlerContext = {
                 runId,
                 stepId,
+                principal: input.principal,
                 routing,
+                runInputs: input.inputs,
                 signal,
                 log: deps.log,
                 emit: stepEmit,
@@ -129,7 +148,7 @@ export async function walk(
                         stepId,
                     },
                     ts: Date.now(),
-                    routing,
+                    routing: routingForStore(routing, input.principal),
                 });
                 await markEnded(deps.store, runId, 'errored', {
                     message: result.message,
@@ -158,7 +177,7 @@ export async function walk(
                         (result.schema as Record<string, unknown>) ?? {},
                     prompt: result.prompt,
                     routes: result.routes,
-                    routing,
+                    routing: routingForStore(routing, input.principal),
                 });
                 outputs[stepId] = resumed;
                 emit(deps, {
@@ -167,7 +186,7 @@ export async function walk(
                     type: 'fact.node_completed',
                     payload: { nodeId: stepId, output: resumed },
                     ts: Date.now(),
-                    routing,
+                    routing: routingForStore(routing, input.principal),
                 });
                 continue;
             }
@@ -185,7 +204,7 @@ export async function walk(
                 type: 'fact.node_completed',
                 payload: { nodeId: stepId, output: projected },
                 ts: Date.now(),
-                routing,
+                routing: routingForStore(routing, input.principal),
             });
         }
 
@@ -195,7 +214,7 @@ export async function walk(
             type: 'fact.run_terminated',
             payload: { status: 'completed' },
             ts: Date.now(),
-            routing,
+            routing: routingForStore(routing, input.principal),
         });
         await markEnded(deps.store, runId, 'completed');
         return { runId, status: 'completed', outputs };
@@ -207,11 +226,45 @@ export async function walk(
             type: 'fact.run_terminated',
             payload: { status: 'errored', message },
             ts: Date.now(),
-            routing,
+            routing: routingForStore(routing, input.principal),
         });
         await markEnded(deps.store, runId, 'errored', { message });
         return { runId, status: 'errored', outputs, error: { message } };
     }
+}
+
+/** Build the typed `HandlerRouting` from the dispatch input. */
+function buildRouting(input: WalkInput): HandlerRouting {
+    const r: HandlerRouting = {
+        context: input.opts.context ?? {},
+    };
+    if (input.opts.tier !== undefined) r.tier = input.opts.tier;
+    if (input.opts.surfaceRunId !== undefined) r.surfaceRunId = input.opts.surfaceRunId;
+    if (input.opts.parentRunId !== undefined) r.parentRunId = input.opts.parentRunId;
+    if (input.opts.conversationKey !== undefined) r.conversationKey = input.opts.conversationKey;
+    return r;
+}
+
+/** Project the typed routing into the store/event-row payload shape.
+ *  Includes the principal identity for audit + reducer convenience.
+ *  The store's `routing` field stays an untyped record because
+ *  downstream projection workers may add their own keys without
+ *  changing this schema. */
+function routingForStore(
+    r: HandlerRouting,
+    p: Principal,
+): Record<string, unknown> {
+    return {
+        ...r.context,
+        ...(r.tier !== undefined ? { tier: r.tier } : {}),
+        ...(r.surfaceRunId !== undefined ? { surfaceRunId: r.surfaceRunId } : {}),
+        ...(r.parentRunId !== undefined ? { parentRunId: r.parentRunId } : {}),
+        ...(r.conversationKey !== undefined ? { conversationKey: r.conversationKey } : {}),
+        principalKind: p.kind,
+        ...(p.kind === 'user'
+            ? { userId: p.userId, scopes: [...p.scopes] }
+            : { workerId: p.workerId, requestId: p.requestId }),
+    };
 }
 
 /**
@@ -226,7 +279,11 @@ function expandStepTemplates<T>(step: T, inputs: Record<string, unknown>): T {
 }
 
 
-const INPUTS_REF_RE = /\{\{\s*inputs\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
+// Match `{{ inputs.X }}` but NOT `${{ inputs.X }}` — the `${{ }}` form
+// is the new orchestration interpolation grammar (handled by the
+// orchestration-handler, not the walker). Negative lookbehind on `$`
+// keeps the two grammars from colliding when nested.
+const INPUTS_REF_RE = /(?<!\$)\{\{\s*inputs\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
 function walkValue(value: unknown, inputs: Record<string, unknown>): unknown {
     if (typeof value === 'string') return substituteString(value, inputs);

@@ -78,14 +78,16 @@ export type WorkflowStep =
     | InputStep
     | AgentStep
     | SubworkflowStep
-    | ParallelStep;
+    | ParallelStep
+    | OrchestrationStep;
 
 export type StepKind =
     | 'route'
     | 'input'
     | 'agent'
     | 'subworkflow'
-    | 'parallel';
+    | 'parallel'
+    | 'orchestration';
 
 export interface BaseStep {
     /** Default outgoing edge. `outputs` or `outputs.<name>` is the terminal sink. */
@@ -220,6 +222,84 @@ export interface SubworkflowStep extends BaseStep {
 export interface ParallelStep extends BaseStep {
     kind: 'parallel';
     branches: Record<string, WorkflowStep>;
+}
+
+/**
+ * Declarative multi-step DAG composition — the substrate replacement
+ * for hand-rolled `orchestrate.ts` style TypeScript pipelines.
+ *
+ * Each entry in `steps` is a `WorkflowStep` (any kind: route, agent,
+ * subworkflow, parallel, expression, nested orchestration). Steps
+ * declare dependencies via `depends:` — the runtime computes the
+ * topological order, executes independent steps in parallel up to
+ * `concurrency`, and threads each step's output into downstream steps
+ * via `${{ steps.<id>.outputs.<field> }}` token expansion (resolved
+ * by the orchestration handler before each step's inputs are passed
+ * to its handler).
+ *
+ * Examples of the pattern this kind subsumes:
+ *
+ *   - Product autofill pipeline (logo + tcSearch in parallel → gate
+ *     on tcLink → metadata + category + countries + faq in parallel
+ *     → texts/howToRedeem in parallel → translation fanout).
+ *   - Dashboard data assembly (per-block route call + render manifest).
+ *   - Multi-step extraction (fetch → transform → write to brain://).
+ *
+ * Unlike `ParallelStep` (which dispatches every branch unconditionally
+ * in lockstep), `OrchestrationStep` honors the dependency graph and
+ * gates each child step on its dependencies producing terminal output.
+ * A failure in one step terminates the whole orchestration with the
+ * first error (siblings may still complete before the cancel
+ * cascades — v1 acceptable).
+ *
+ * Steps may declare `skipIf:` — when its expression evaluates to a
+ * truthy value (against `inputs.*` + `steps.*.outputs.*` references),
+ * the step is skipped entirely and its output is `{ skipped: true,
+ * reason }`. Downstream consumers that depend on skipped steps see
+ * `undefined` interpolation slots; they must handle absence.
+ */
+export interface OrchestrationStep extends BaseStep {
+    kind: 'orchestration';
+    /** Step graph; keys are step ids, values are step declarations
+     *  with optional `depends` + `skipIf` extensions. */
+    steps: Record<string, OrchestrationChild>;
+    /** Map of orchestration-level output ids → expressions referencing
+     *  child step outputs. Resolved after every step terminates. */
+    outputs?: Record<string, OrchestrationOutputBinding>;
+    /** Max parallel in-flight child steps (semaphore). Default
+     *  unbounded — limited only by the DAG's topological width. */
+    concurrency?: number;
+}
+
+/** A step inside an OrchestrationStep — wraps a WorkflowStep with
+ *  dependency + skip metadata. The discriminator on `step.kind`
+ *  identifies which step kind the runtime dispatches. */
+export interface OrchestrationChild {
+    /** The wrapped step; dispatched through the same step-kind
+     *  registry the top-level walker uses. */
+    step: WorkflowStep;
+    /** Ids of steps in the same orchestration whose terminal output
+     *  must be available before this step runs. */
+    depends?: string[];
+    /** Skip-predicate expression. When the expression evaluates to a
+     *  truthy value (against the orchestration's `inputs.*` + prior
+     *  child outputs), this step is skipped without dispatching its
+     *  handler. The skip output is `{ skipped: true, reason: '<expr>' }`. */
+    skipIf?: string;
+    /** Optional fallback expression — when the step errors, the
+     *  orchestration tries this expression's value as the step's
+     *  output instead of failing the whole DAG. Used for the
+     *  "provider-supplied" carve-outs in autofill (e.g.
+     *  howToRedeem fallback to `product.instructions.en`). */
+    fallback?: string;
+}
+
+/** How an orchestration output is computed from child outputs. */
+export interface OrchestrationOutputBinding {
+    /** Expression referencing child outputs via `${{ steps.X.outputs.Y }}`. */
+    from: string;
+    /** Optional shape hint for the workflow-level output projection. */
+    shape?: 'value' | 'object' | 'array';
 }
 
 // ─── Inputs & outputs ─────────────────────────────────────────────────────

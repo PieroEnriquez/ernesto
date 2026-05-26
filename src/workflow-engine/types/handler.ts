@@ -1,18 +1,18 @@
 /**
  * Per-step-kind handler interface.
  *
- * Mirrors the `StepKindHandlerCtx` / `StepKindHandlerResult` shape the
- * backend's `wire-fragua.ts` declares, but lives here in the lib so the
- * backend can import it from `ernesto/workflow-engine` rather than
- * redeclare a structurally-compatible copy.
- *
- * `routing` is the per-run untyped scratch surface — tier metadata,
- * principal id, scope set, slackThreadId, etc. live in there.
+ * Each step kind's handler receives a typed `HandlerContext` carrying
+ * the principal (user vs service), the typed routing surface
+ * (tier/surfaceRunId/parentRunId/conversationKey + free-form context),
+ * a per-step `emit` for fact events, an abort signal, and a logger.
+ * Handlers return one of three terminal shapes (`completed`,
+ * `paused_human`, `error`).
  */
 
 import type { WorkflowStep } from '../../workflows/types';
 import type { UiComponent } from '../../components/types';
 import type { TypedFactEvent } from './event';
+import type { Principal } from '../principal';
 
 /** Logger surface — matches the backend's `RouteLogger`. */
 export interface EngineLogger {
@@ -99,7 +99,31 @@ export type EmitFactEventInput =
 export interface HandlerContext {
     runId: string;
     stepId: string;
-    routing: Readonly<Record<string, unknown>>;
+    /**
+     * Typed principal of the dispatch — either a user principal
+     * (with `userId` + scope set) or a service principal (with
+     * `workerId` + `requestId`). Step handlers read this for scope
+     * narrowing, billing attribution, render gating, and HITL
+     * availability decisions.
+     */
+    principal: Principal;
+    /**
+     * Per-run typed dispatch context. Carries the structured
+     * fields previously buried in an untyped `routing` record:
+     * `tier`, `parentRunId`, `surfaceRunId`, `conversationKey`,
+     * plus the originating caller's free-form `context` blob for
+     * tier-port-specific metadata. Step handlers thread these
+     * into recursive dispatches so descendants inherit the surface.
+     */
+    routing: HandlerRouting;
+    /**
+     * Top-level workflow inputs — the `inputs` argument to
+     * `runner.dispatch(...)`. Step handlers that interpolate
+     * `${{ inputs.X }}` references (orchestration, expression,
+     * future kinds) read from here. The walker threads this
+     * unchanged into every step's context.
+     */
+    runInputs: Readonly<Record<string, unknown>>;
     signal: AbortSignal;
     log: EngineLogger;
     /** Working tree pinned for this run (route + agent handlers thread
@@ -112,9 +136,32 @@ export interface HandlerContext {
     emit?: EmitFactEvent;
 }
 
+/** Typed routing — replaces the previously-untyped
+ *  `Readonly<Record<string, unknown>>`. Workflow-substrate fields
+ *  are explicit; tier-port-specific metadata lives in `context`. */
+export interface HandlerRouting {
+    /** Tier port that originated this dispatch chain. */
+    tier?: 'A' | 'B' | 'C';
+    /** UI anchor — top-level runId; propagates AS-IS through every
+     *  descendant of a dispatch tree. Tier ports filter events by
+     *  this id to render the whole subtree in one surface. */
+    surfaceRunId?: string;
+    /** Parent run's id (set when this run is a recursive
+     *  dispatch — subworkflow step or agent's `execute()` call). */
+    parentRunId?: string;
+    /** Long-lived conversation continuity key (workspace-tier
+     *  sessions). When set, the runner reuses session resources. */
+    conversationKey?: string;
+    /** Free-form metadata from the caller — slackThreadId,
+     *  claudeAiConvId, cliPid, etc. Subscriber-typed; the engine
+     *  doesn't read keys here. */
+    context: Readonly<Record<string, unknown>>;
+}
+
 // Re-export so callers can import the typed event shapes from the
 // same module they import `HandlerContext` from.
 export type { TypedFactEvent };
+export type { Principal } from '../principal';
 
 /** What a per-kind handler returns. */
 export type HandlerResult =
@@ -132,6 +179,7 @@ export type StepKindHandler<S extends WorkflowStep = WorkflowStep> = (
     ctx: HandlerContext,
 ) => Promise<HandlerResult>;
 
-// Legacy aliases kept for the backend shim's type import path.
+// Type aliases for back-references in the lib's own implementation;
+// they share the same definitions.
 export type StepKindHandlerCtx = HandlerContext;
 export type StepKindHandlerResult = HandlerResult;

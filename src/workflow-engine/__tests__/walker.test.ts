@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { walk } from '../engine/walker';
+import { userPrincipal } from '../principal';
 import { EventBus } from '../event-bus';
 import { HandlerDispatcher } from '../dispatch';
 import { InMemoryStore } from '../store/in-memory-store';
@@ -56,10 +57,10 @@ describe('walker', () => {
             'run-1',
             decl,
             {
-                slug: 'wf1',
+                kind: 'wf1',
                 inputs: {},
-                principal: { userId: 'u', scopes: new Set() },
-                context: {},
+                principal: userPrincipal('u', []),
+                opts: {},
             },
             { ...rig, log: NOOP_LOG },
         );
@@ -93,10 +94,10 @@ describe('walker', () => {
             'run-2',
             decl,
             {
-                slug: 'wf2',
+                kind: 'wf2',
                 inputs: {},
-                principal: { userId: 'u', scopes: new Set() },
-                context: {},
+                principal: userPrincipal('u', []),
+                opts: {},
             },
             { ...rig, log: NOOP_LOG },
         );
@@ -141,10 +142,10 @@ describe('walker', () => {
             'run-3',
             decl,
             {
-                slug: 'wf3',
+                kind: 'wf3',
                 inputs: {},
-                principal: { userId: 'u', scopes: new Set() },
-                context: {},
+                principal: userPrincipal('u', []),
+                opts: {},
             },
             { ...rig, log: NOOP_LOG },
         );
@@ -183,11 +184,10 @@ describe('walker', () => {
             'run-4',
             decl,
             {
-                slug: 'wf4',
+                kind: 'wf4',
                 inputs: {},
-                principal: { userId: 'u', scopes: new Set() },
-                context: {},
-                signal: ac.signal,
+                principal: userPrincipal('u', []),
+                opts: { abortSignal: ac.signal },
             },
             { ...rig, log: NOOP_LOG },
         );
@@ -264,10 +264,10 @@ describe('walker', () => {
             'run-emit',
             decl,
             {
-                slug: 'wf-emit',
+                kind: 'wf-emit',
                 inputs: {},
-                principal: { userId: 'u', scopes: new Set() },
-                context: {},
+                principal: userPrincipal('u', []),
+                opts: {},
             },
             { ...rig, log: NOOP_LOG },
         );
@@ -378,10 +378,10 @@ describe('walker', () => {
             'run-component',
             decl,
             {
-                slug: 'wf-component',
+                kind: 'wf-component',
                 inputs: {},
-                principal: { userId: 'u', scopes: new Set() },
-                context: {},
+                principal: userPrincipal('u', []),
+                opts: {},
             },
             { ...rig, log: NOOP_LOG },
         );
@@ -430,10 +430,10 @@ describe('walker', () => {
             'run-manifest',
             decl,
             {
-                slug: 'wf-manifest',
+                kind: 'wf-manifest',
                 inputs: {},
-                principal: { userId: 'u', scopes: new Set() },
-                context: {},
+                principal: userPrincipal('u', []),
+                opts: {},
             },
             { ...rig, log: NOOP_LOG },
         );
@@ -485,10 +485,10 @@ describe('walker', () => {
             'run-empty-manifest',
             decl,
             {
-                slug: 'wf-empty-manifest',
+                kind: 'wf-empty-manifest',
                 inputs: {},
-                principal: { userId: 'u', scopes: new Set() },
-                context: {},
+                principal: userPrincipal('u', []),
+                opts: {},
             },
             { ...rig, log: NOOP_LOG },
         );
@@ -515,10 +515,10 @@ describe('walker', () => {
             'run-5',
             decl,
             {
-                slug: 'wf5',
+                kind: 'wf5',
                 inputs: {},
-                principal: { userId: 'u', scopes: new Set() },
-                context: {},
+                principal: userPrincipal('u', []),
+                opts: {},
             },
             { ...rig, log: NOOP_LOG },
         );
