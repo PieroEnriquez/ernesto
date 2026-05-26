@@ -151,11 +151,10 @@ function projectStep(
     if (typeof kind !== 'string') {
         throw new Error(
             `${filename}: step "${stepId}" is missing "kind:" ` +
-            `(expected one of route | input | agent | subworkflow | parallel)`,
+            `(expected one of route | input | agent | subworkflow | group)`,
         );
     }
-    const next = raw.next === undefined ? undefined : asString(raw.next, `${filename}: step "${stepId}".next`);
-    const on = projectOnMap(raw.on, stepId, filename);
+    const base = projectStepBase(raw, stepId, filename);
 
     switch (kind) {
         case 'route': {
@@ -167,8 +166,7 @@ function projectStep(
                 ...(raw.render !== undefined ? { render: projectRender(raw.render, stepId, filename) } : {}),
                 ...(raw.timeoutMs !== undefined ? { timeoutMs: asInt(raw.timeoutMs, `step "${stepId}".timeoutMs`, filename) } : {}),
                 ...(raw.retries !== undefined ? { retries: asInt(raw.retries, `step "${stepId}".retries`, filename) } : {}),
-                ...(next !== undefined ? { next } : {}),
-                ...(on ? { on } : {}),
+                ...base,
             };
         }
         case 'input': {
@@ -186,8 +184,7 @@ function projectStep(
                 ...(raw.defaults !== undefined ? { defaults: asRecord(raw.defaults, `step "${stepId}".defaults`, filename) } : {}),
                 ...(raw.skipIfProvided !== undefined ? { skipIfProvided: asBoolean(raw.skipIfProvided, `step "${stepId}".skipIfProvided`, filename) } : {}),
                 ...(raw.timeout !== undefined ? { timeout: projectTimeout(raw.timeout, stepId, filename) } : {}),
-                ...(next !== undefined ? { next } : {}),
-                ...(on ? { on } : {}),
+                ...base,
             };
         }
         case 'agent': {
@@ -255,30 +252,35 @@ function projectStep(
                 ...(prompt !== undefined ? { prompt } : {}),
                 ...(raw.subagents !== undefined ? { subagents: projectSubagents(raw.subagents, stepId, filename) } : {}),
                 ...(providerOverride ? { providerOverride } : {}),
-                ...(next !== undefined ? { next } : {}),
-                ...(on ? { on } : {}),
+                ...base,
             };
             return out;
         }
-        case 'parallel': {
-            // Branches are nested step definitions; recurse via
-            // projectStep so each child kind parses through the normal
-            // path. Templates inside branches expand at walk time.
-            const branchesRaw = raw.branches;
-            if (typeof branchesRaw !== 'object' || branchesRaw === null || Array.isArray(branchesRaw)) {
+        case 'group': {
+            // Nested sub-DAG. `steps` recurse via projectStep so each
+            // child parses through the normal path; the engine runs the
+            // sub-graph with its own `concurrency`. `${{ }}` tokens in
+            // children resolve at run time.
+            const stepsRaw = raw.steps;
+            if (typeof stepsRaw !== 'object' || stepsRaw === null || Array.isArray(stepsRaw)) {
                 throw new Error(
-                    `${filename}: parallel step "${stepId}".branches must be a mapping of branchKey → step`,
+                    `${filename}: group step "${stepId}".steps must be a mapping of stepId → step`,
                 );
             }
-            const branches: Record<string, WorkflowStep> = {};
-            for (const [bk, bv] of Object.entries(branchesRaw as Record<string, unknown>)) {
-                branches[bk] = projectStep(`${stepId}.${bk}`, bv, filename);
+            const steps: Record<string, WorkflowStep> = {};
+            for (const [sk, sv] of Object.entries(stepsRaw as Record<string, unknown>)) {
+                steps[sk] = projectStep(`${stepId}.${sk}`, sv, filename);
             }
             return {
-                kind: 'parallel',
-                branches,
-                ...(next !== undefined ? { next } : {}),
-                ...(on ? { on } : {}),
+                kind: 'group',
+                steps,
+                ...(raw.concurrency !== undefined
+                    ? { concurrency: asInt(raw.concurrency, `step "${stepId}".concurrency`, filename) }
+                    : {}),
+                ...(raw.outputs !== undefined
+                    ? { outputs: projectOutputs(raw.outputs, filename) ?? {} }
+                    : {}),
+                ...base,
             };
         }
         case 'subworkflow': {
@@ -288,8 +290,7 @@ function projectStep(
                 ref,
                 ...(raw.inputs !== undefined ? { inputs: asRecord(raw.inputs, `step "${stepId}".inputs`, filename) } : {}),
                 ...(raw.scope !== undefined ? { scope: projectStringArray(raw.scope, `step "${stepId}".scope`, filename) ?? [] } : {}),
-                ...(next !== undefined ? { next } : {}),
-                ...(on ? { on } : {}),
+                ...base,
             };
         }
         default:
@@ -300,8 +301,7 @@ function projectStep(
                 // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
                 kind: kind as 'route',
                 uri: typeof raw.uri === 'string' ? raw.uri : '<unknown-kind>',
-                ...(next !== undefined ? { next } : {}),
-                ...(on ? { on } : {}),
+                ...base,
             };
     }
 }
@@ -352,23 +352,28 @@ function projectRender(
 // fields. The runtime walker is permissive about extra fields.
 type RouteStepRender = NonNullable<RouteStep['render']>;
 
-function projectOnMap(
-    v: unknown,
+/** Project the DAG metadata every step may carry: `depends`, `next`
+ *  (linear sugar), `skipIf`, `fallback`. Spread into each step's
+ *  typed shape as `...base`. */
+function projectStepBase(
+    raw: Record<string, unknown>,
     stepId: string,
     filename: string,
-): Record<string, string> | undefined {
-    if (v === undefined) return undefined;
-    if (typeof v !== 'object' || v === null || Array.isArray(v)) {
-        throw new Error(`${filename}: step "${stepId}".on must be a mapping of event → stepId`);
+): { depends?: string[]; next?: string; skipIf?: string; fallback?: string } {
+    const base: { depends?: string[]; next?: string; skipIf?: string; fallback?: string } = {};
+    if (raw.depends !== undefined) {
+        base.depends = projectStringArray(raw.depends, `step "${stepId}".depends`, filename) ?? [];
     }
-    const out: Record<string, string> = {};
-    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
-        if (typeof val !== 'string') {
-            throw new Error(`${filename}: step "${stepId}".on.${k} must be a string stepId`);
-        }
-        out[k] = val;
+    if (raw.next !== undefined) {
+        base.next = asString(raw.next, `${filename}: step "${stepId}".next`);
     }
-    return out;
+    if (raw.skipIf !== undefined) {
+        base.skipIf = asString(raw.skipIf, `${filename}: step "${stepId}".skipIf`);
+    }
+    if (raw.fallback !== undefined) {
+        base.fallback = asString(raw.fallback, `${filename}: step "${stepId}".fallback`);
+    }
+    return base;
 }
 
 function projectTimeout(

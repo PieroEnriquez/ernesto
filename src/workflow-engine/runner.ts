@@ -36,8 +36,6 @@ import { HandlerDispatcher } from './dispatch';
 import { InMemoryStore } from './store/in-memory-store';
 import { HitlController, type HitlPauseInput } from './hitl';
 import { walk, type WalkResult } from './engine/walker';
-import { makeParallelHandler } from './engine/parallel-handler';
-import { makeOrchestrationHandler } from './engine/orchestration-handler';
 import { KindRegistry } from './kind-registry';
 import {
     type DispatchMiddleware,
@@ -92,20 +90,12 @@ class Runner implements WorkflowRunner {
                 this.dispatcher.register(kind as StepKind, handler);
             }
         }
-        // `parallel` + `orchestration` compose other kinds via the
-        // dispatcher, so they're engine primitives — auto-registered
-        // regardless of which tier-specific handlers the caller
-        // wires. Skip if the caller supplied an override via
-        // `stepKindHandlers`.
-        if (!this.dispatcher.has('parallel')) {
-            this.dispatcher.register('parallel', makeParallelHandler(this.dispatcher));
-        }
-        if (!this.dispatcher.has('orchestration')) {
-            this.dispatcher.register(
-                'orchestration',
-                makeOrchestrationHandler(this.dispatcher),
-            );
-        }
+        // No `parallel`/`orchestration` handlers to register — the DAG
+        // engine (`runGraph`) IS the composition primitive now. The
+        // workflow's step map is a DAG; a `group` step is a nested DAG
+        // handled inline by the engine (not a dispatcher kind). The
+        // dispatcher carries only leaf handlers (route/input/agent/
+        // subworkflow), supplied by the caller.
         this.hitl = new HitlController(this.bus, this.store, (runId) =>
             this.nextSeq(runId),
         );

@@ -7,7 +7,6 @@ import { InMemoryStore } from '../store/in-memory-store';
 import { HitlController } from '../hitl';
 import type { FactEvent } from '../types/event';
 import type { WorkflowDeclaration } from '../../workflows/types';
-import { pickNextStepId, isTerminalDest } from '../engine/edge-selection';
 
 function makeRig(): {
     bus: EventBus;
@@ -532,32 +531,101 @@ describe('walker', () => {
     });
 });
 
-describe('edge-selection', () => {
-    it('pickNextStepId picks from `on` first', () => {
-        expect(
-            pickNextStepId(
-                {
+describe('walker — DAG semantics', () => {
+    it('threads ${{ steps.X.outputs.Y }} from one step to the next via depends', async () => {
+        const rig = makeRig();
+        rig.dispatcher.register('route', async (step) => ({
+            kind: 'completed',
+            output: { echoed: (step as { params?: { in?: unknown } }).params?.in ?? null },
+        }));
+        const decl: WorkflowDeclaration = {
+            name: 'wf-dag',
+            description: 'd',
+            version: 1,
+            steps: {
+                first: { kind: 'route', uri: 'x://y', params: { in: 'hello' } },
+                second: {
                     kind: 'route',
-                    uri: 'x',
-                    next: 's2',
-                    on: { completed: 's3' },
-                } as any,
-                'completed',
-            ),
-        ).toBe('s3');
+                    uri: 'x://z',
+                    params: { in: '${{ steps.first.outputs.echoed }}' },
+                    depends: ['first'],
+                },
+            },
+        };
+        const result = await walk(
+            'run-dag',
+            decl,
+            { kind: 'wf-dag', inputs: {}, principal: userPrincipal('u', []), opts: {} },
+            { ...rig, log: NOOP_LOG },
+        );
+        expect(result.status).toBe('completed');
+        expect((result.outputs.second as { echoed: string }).echoed).toBe('hello');
     });
-    it('pickNextStepId falls back to `next` on completed', () => {
-        expect(
-            pickNextStepId(
-                { kind: 'route', uri: 'x', next: 's2' } as any,
-                'completed',
-            ),
-        ).toBe('s2');
+
+    it('skipIf skips a step without dispatching its handler', async () => {
+        const rig = makeRig();
+        let calls = 0;
+        rig.dispatcher.register('route', async () => {
+            calls++;
+            return { kind: 'completed', output: { ok: true } };
+        });
+        const decl: WorkflowDeclaration = {
+            name: 'wf-skip',
+            description: 'd',
+            version: 1,
+            steps: {
+                gate: { kind: 'route', uri: 'x://gate' },
+                skipped: {
+                    kind: 'route',
+                    uri: 'x://never',
+                    depends: ['gate'],
+                    skipIf: '${{ steps.gate.outputs.ok }}',
+                },
+            },
+        };
+        const result = await walk(
+            'run-skip',
+            decl,
+            { kind: 'wf-skip', inputs: {}, principal: userPrincipal('u', []), opts: {} },
+            { ...rig, log: NOOP_LOG },
+        );
+        expect(result.status).toBe('completed');
+        // gate ran (1), skipped did not.
+        expect(calls).toBe(1);
+        expect(result.outputs.skipped).toMatchObject({ skipped: true });
     });
-    it('isTerminalDest recognises outputs sinks', () => {
-        expect(isTerminalDest(undefined)).toBe(true);
-        expect(isTerminalDest('outputs')).toBe(true);
-        expect(isTerminalDest('outputs.result')).toBe(true);
-        expect(isTerminalDest('s2')).toBe(false);
+
+    it('runs a nested group sub-DAG and namespaces its output', async () => {
+        const rig = makeRig();
+        rig.dispatcher.register('route', async (step) => ({
+            kind: 'completed',
+            output: { uri: (step as { uri: string }).uri },
+        }));
+        const decl: WorkflowDeclaration = {
+            name: 'wf-group',
+            description: 'd',
+            version: 1,
+            steps: {
+                grp: {
+                    kind: 'group',
+                    steps: {
+                        a: { kind: 'route', uri: 'x://a' },
+                        b: { kind: 'route', uri: 'x://b' },
+                    },
+                },
+            },
+        };
+        const result = await walk(
+            'run-group',
+            decl,
+            { kind: 'wf-group', inputs: {}, principal: userPrincipal('u', []), opts: {} },
+            { ...rig, log: NOOP_LOG },
+        );
+        expect(result.status).toBe('completed');
+        // The group node's output is its child-output map.
+        expect(result.outputs.grp).toMatchObject({
+            a: { uri: 'x://a' },
+            b: { uri: 'x://b' },
+        });
     });
 });

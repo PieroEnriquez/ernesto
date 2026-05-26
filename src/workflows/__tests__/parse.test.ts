@@ -299,26 +299,49 @@ outputs: { r: { from: main } }
         expect(m.systemPrompt).toEqual({ type: 'preset', preset: 'claude_code', append: 'hello' });
     });
 
-    it('parses kind: parallel with nested branch steps', () => {
-        const yaml = `name: par
-description: parallel test.
+    it('parses kind: group with nested sub-DAG steps + concurrency', () => {
+        const yaml = `name: grp
+description: group test.
 version: 1
 steps:
   fan:
-    kind: parallel
-    branches:
+    kind: group
+    concurrency: 2
+    steps:
       a: { kind: route, uri: x://a }
-      b: { kind: route, uri: x://b }
-    next: outputs.r
+      b: { kind: route, uri: x://b, depends: [a] }
+    outputs: { r: { from: "\${{ steps.a.outputs }}" } }
 outputs: { r: { from: fan } }
 `;
         const decl = parseWorkflowYaml(yaml);
         const fan = decl.steps.fan;
-        expect(fan.kind).toBe('parallel');
-        if (fan.kind === 'parallel') {
-            expect(Object.keys(fan.branches)).toEqual(['a', 'b']);
-            expect(fan.branches.a.kind).toBe('route');
-            expect(fan.branches.b.kind).toBe('route');
+        expect(fan.kind).toBe('group');
+        if (fan.kind === 'group') {
+            expect(Object.keys(fan.steps)).toEqual(['a', 'b']);
+            expect(fan.steps.a.kind).toBe('route');
+            expect(fan.steps.b.depends).toEqual(['a']);
+            expect(fan.concurrency).toBe(2);
+            expect(fan.outputs).toBeDefined();
         }
+    });
+
+    it('parses depends / skipIf / fallback on a step', () => {
+        const yaml = `name: dag
+description: dag test.
+version: 1
+steps:
+  first: { kind: route, uri: x://a }
+  second:
+    kind: route
+    uri: x://b
+    depends: [first]
+    skipIf: "\${{ steps.first.outputs.done }}"
+    fallback: "\${{ inputs.fallbackValue }}"
+`;
+        const decl = parseWorkflowYaml(yaml);
+        const second = decl.steps.second;
+        expect(second.depends).toEqual(['first']);
+        expect(second.skipIf).toBe('${{ steps.first.outputs.done }}');
+        expect(second.fallback).toBe('${{ inputs.fallbackValue }}');
     });
 });

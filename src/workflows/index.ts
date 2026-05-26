@@ -26,7 +26,7 @@ export type {
     AgentStep,
     AgentHarness,
     SubworkflowStep,
-    ParallelStep,
+    GroupStep,
     WorkflowInput,
     WorkflowOutput,
     StepKind,

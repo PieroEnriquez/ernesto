@@ -128,7 +128,6 @@ export type {
 
 export { HandlerDispatcher } from './dispatch';
 export { EventBus } from './event-bus';
-export { pickNextStepId, isTerminalDest } from './engine/edge-selection';
 
 // ─── M3 — Cost rollup reducer ────────────────────────────────────────
 // Aggregates fact.usage events into a `RunUsage` projection per run,
@@ -142,10 +141,11 @@ export { aggregateUsage, rollupBySurface } from './cost-rollup';
 export { TierPort } from './tier-port';
 export type { HitlPauseRequest, TierEventFilter } from './tier-port';
 
-// ─── M2 — Orchestration step kind expression helpers ─────────────────
-// Exposed for parsers / validators that want to surface unresolved
-// `${{ }}` token errors at settle time before runtime.
-export { resolveExpression } from './engine/orchestration-handler';
+// ─── DAG engine expression helper ────────────────────────────────────
+// Resolves `${{ inputs.X }}` / `${{ steps.X.outputs.Y }}` tokens.
+// Exposed for parsers / validators that surface unresolved-token
+// errors at settle time before runtime.
+export { resolveExpression } from './engine/run-graph';
 
 // ─── M5 — Unified kind registry ──────────────────────────────────────
 // One registry for routes + workflows. `runner.kindRegistry.resolve(uri)`

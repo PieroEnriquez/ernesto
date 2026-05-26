@@ -38,37 +38,40 @@ describe('validateWorkflow', () => {
         expect(res.errors.some(e => e.code === 'workflow_name_mismatch')).toBe(false);
     });
 
-    it('emits workflow_step_unreachable for a step not pointed at', () => {
+    it('emits workflow_step_unreachable for a depends on an unknown step', () => {
         const decl = baseDecl({
             steps: {
-                first: { kind: 'route', uri: 'r://x', next: 'outputs' },
-                orphan: { kind: 'route', uri: 'r://y', next: 'outputs' },
+                first: { kind: 'route', uri: 'r://x' },
+                second: { kind: 'route', uri: 'r://y', depends: ['ghost'] },
             },
             outputs: { r: { from: 'first' } },
         });
         const res = validateWorkflow(decl);
-        expect(res.errors.some(e => e.code === 'workflow_step_unreachable' && e.stepId === 'orphan')).toBe(true);
+        expect(res.errors.some(e => e.code === 'workflow_step_unreachable' && e.stepId === 'second')).toBe(true);
     });
 
-    it('emits workflow_step_dead_end for a step with neither next nor on', () => {
+    it('emits workflow_step_dead_end for a depends cycle', () => {
         const decl = baseDecl({
             steps: {
-                main: { kind: 'route', uri: 'r://x' },
+                a: { kind: 'route', uri: 'r://x', depends: ['b'] },
+                b: { kind: 'route', uri: 'r://y', depends: ['a'] },
             },
-            outputs: { r: { from: 'main' } },
+            outputs: { r: { from: 'a' } },
         });
         const res = validateWorkflow(decl);
         expect(res.errors.some(e => e.code === 'workflow_step_dead_end')).toBe(true);
     });
 
-    it('does NOT emit dead_end when on: covers the default success event', () => {
+    it('accepts a plain multi-root DAG (independent sinks are valid)', () => {
         const decl = baseDecl({
             steps: {
-                main: { kind: 'route', uri: 'r://x', on: { success: 'outputs' } },
+                one: { kind: 'route', uri: 'r://x' },
+                two: { kind: 'route', uri: 'r://y' },
             },
-            outputs: { r: { from: 'main' } },
+            outputs: { r: { from: 'one' } },
         });
         const res = validateWorkflow(decl);
+        expect(res.errors.some(e => e.code === 'workflow_step_unreachable')).toBe(false);
         expect(res.errors.some(e => e.code === 'workflow_step_dead_end')).toBe(false);
     });
 
@@ -273,14 +276,15 @@ describe('validateWorkflow', () => {
             description: 'd',
             version: 1,
             steps: {
-                bad: { kind: 'route', uri: 'r://x' }, // dead-end
-                orphan: { kind: 'route', uri: 'r://y', next: 'outputs' }, // unreachable
+                ok: { kind: 'route', uri: 'r://x' },
+                broken: { kind: 'route', uri: 'r://y', depends: ['ghost'] }, // unknown dep
+                alsoBad: { kind: 'bogus' as 'route', uri: 'r://z' }, // unknown kind
             },
         };
         const res = validateWorkflow(decl);
         expect(res.ok).toBe(false);
         const codes = res.errors.map(e => e.code);
-        expect(codes).toContain('workflow_step_dead_end');
+        expect(codes).toContain('workflow_unknown_kind');
         expect(codes).toContain('workflow_step_unreachable');
     });
 

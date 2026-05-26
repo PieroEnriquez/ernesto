@@ -134,52 +134,37 @@ describe('tremendous E2E — unified runtime end-to-end', () => {
             inputs: { productId: { type: 'string' } },
             steps: {
                 main: {
-                    kind: 'orchestration',
-                    inputs: { productId: '${{ inputs.productId }}' } as any,
+                    kind: 'group',
                     steps: {
                         fetch: {
-                            step: {
-                                kind: 'route',
-                                uri: 'fetch-product',
-                                params: { productId: '${{ inputs.productId }}' },
-                            } as WorkflowStep,
+                            kind: 'route',
+                            uri: 'fetch-product',
+                            params: { productId: '${{ inputs.productId }}' },
                         },
-                        logo: {
-                            step: { kind: 'route', uri: 'find-logo' } as WorkflowStep,
-                            depends: ['fetch'],
-                        },
-                        tcSearch: {
-                            step: { kind: 'route', uri: 'tc-search' } as WorkflowStep,
-                            depends: ['fetch'],
-                        },
+                        logo: { kind: 'route', uri: 'find-logo', depends: ['fetch'] },
+                        tcSearch: { kind: 'route', uri: 'tc-search', depends: ['fetch'] },
                         meta: {
-                            step: {
-                                kind: 'route',
-                                uri: 'extract-meta',
-                                params: { tcLink: '${{ steps.tcSearch.outputs.link }}' },
-                            } as WorkflowStep,
+                            kind: 'route',
+                            uri: 'extract-meta',
+                            params: { tcLink: '${{ steps.tcSearch.outputs.link }}' },
                             depends: ['tcSearch'],
-                            // M2: skipIf — when fetch already provided termsLink,
+                            // skipIf — when fetch already provided termsLink,
                             // we'd skip tcSearch+meta. Here we DON'T skip (fetch
                             // returns null termsLink).
                             skipIf: '${{ steps.fetch.outputs.product.termsLink }}',
                         },
                         faq: {
-                            step: {
-                                kind: 'route',
-                                uri: 'gen-faq',
-                                params: { meta: '${{ steps.meta.outputs }}' },
-                            } as WorkflowStep,
+                            kind: 'route',
+                            uri: 'gen-faq',
+                            params: { meta: '${{ steps.meta.outputs }}' },
                             depends: ['meta'],
                         },
                         translateFr: {
-                            step: {
-                                kind: 'route',
-                                uri: 'translate-fr',
-                                params: { faq: '${{ steps.faq.outputs.faq }}' },
-                            } as WorkflowStep,
+                            kind: 'route',
+                            uri: 'translate-fr',
+                            params: { faq: '${{ steps.faq.outputs.faq }}' },
                             depends: ['faq'],
-                            // M2: fallback — if translation breaks, use source as fallback
+                            // fallback — if translation breaks, use source as fallback
                             fallback: '${{ steps.faq.outputs.faq }}',
                         },
                     },
@@ -189,7 +174,7 @@ describe('tremendous E2E — unified runtime end-to-end', () => {
                         faq: { from: '${{ steps.faq.outputs.faq }}' },
                         faqFr: { from: '${{ steps.translateFr.outputs.items }}' },
                     },
-                } as any,
+                },
             },
         };
         runner.registerWorkflowReader(readerOf([pipeline]));
@@ -317,21 +302,21 @@ describe('tremendous E2E — unified runtime end-to-end', () => {
             readerOf([
                 {
                     name: 'wf-hitl',
-                    description: 'pause in orchestration',
+                    description: 'pause in a group sub-DAG',
                     version: 1,
                     steps: {
                         main: {
-                            kind: 'orchestration',
+                            kind: 'group',
                             steps: {
-                                prep: {
-                                    step: { kind: 'route', uri: 'p' } as WorkflowStep,
-                                },
+                                prep: { kind: 'route', uri: 'p' },
                                 gate: {
-                                    step: { kind: 'input', schema: {} as any, prompt: 'pick' },
+                                    kind: 'input',
+                                    schema: {} as any,
+                                    prompt: 'pick',
                                     depends: ['prep'],
                                 },
                             },
-                        } as any,
+                        },
                     },
                 },
             ]),
@@ -405,23 +390,19 @@ describe('tremendous E2E — unified runtime end-to-end', () => {
                     inputs: { source: { type: 'string' } },
                     steps: {
                         main: {
-                            kind: 'orchestration',
+                            kind: 'group',
                             steps: {
-                                producer: {
-                                    step: { kind: 'route', uri: 'producer' } as WorkflowStep,
-                                },
+                                producer: { kind: 'route', uri: 'producer' },
                                 consumer: {
-                                    step: {
-                                        kind: 'route',
-                                        uri: 'consumer',
-                                        params: {
-                                            id: '${{ steps.producer.outputs.user.id }}',
-                                            displayName:
-                                                'Hello, ${{ steps.producer.outputs.user.profile.name }}!',
-                                            tags: '${{ steps.producer.outputs.user.profile.tags }}',
-                                            source: '${{ inputs.source }}',
-                                        },
-                                    } as WorkflowStep,
+                                    kind: 'route',
+                                    uri: 'consumer',
+                                    params: {
+                                        id: '${{ steps.producer.outputs.user.id }}',
+                                        displayName:
+                                            'Hello, ${{ steps.producer.outputs.user.profile.name }}!',
+                                        tags: '${{ steps.producer.outputs.user.profile.tags }}',
+                                        source: '${{ inputs.source }}',
+                                    },
                                     depends: ['producer'],
                                 },
                             },

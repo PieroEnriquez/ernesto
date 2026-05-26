@@ -38,8 +38,13 @@ export interface WorkflowDeclaration {
     owner?: string;
     /** Workflow-level inputs collected at run start. */
     inputs?: Record<string, WorkflowInput>;
-    /** Step graph. Keyed by stepId. */
+    /** Step graph — the workflow IS a DAG. Keyed by stepId. Steps
+     *  declare order via `depends:` (or `next:` sugar); the engine
+     *  runs independent steps in parallel up to `concurrency`. */
     steps: Record<string, WorkflowStep>;
+    /** Max parallel in-flight steps. Default: unbounded (limited only
+     *  by the DAG's topological width). */
+    concurrency?: number;
     /** What the workflow returns to its caller. */
     outputs?: Record<string, WorkflowOutput>;
     /**
@@ -78,22 +83,38 @@ export type WorkflowStep =
     | InputStep
     | AgentStep
     | SubworkflowStep
-    | ParallelStep
-    | OrchestrationStep;
+    | GroupStep;
 
 export type StepKind =
     | 'route'
     | 'input'
     | 'agent'
     | 'subworkflow'
-    | 'parallel'
-    | 'orchestration';
+    | 'group';
 
+/**
+ * DAG metadata every step may declare. The workflow engine reads
+ * these to schedule the step graph — there is no separate
+ * "orchestration" kind; the workflow itself IS a DAG.
+ */
 export interface BaseStep {
-    /** Default outgoing edge. `outputs` or `outputs.<name>` is the terminal sink. */
+    /** Ids of steps in the same graph whose terminal output must be
+     *  available before this step runs. Independent steps (no shared
+     *  `depends` chain) run in parallel up to the graph's
+     *  `concurrency`. */
+    depends?: string[];
+    /** Linear-chain sugar: `next: Y` makes step Y depend on this step.
+     *  Equivalent to adding this step's id to `Y.depends`. Reads well
+     *  for sequential pipelines; `depends:` is the general form. */
     next?: string;
-    /** Conditional edges keyed by event name. */
-    on?: Record<string, string>;
+    /** Skip predicate — a `${{ }}` expression over `inputs.*` +
+     *  `steps.*.outputs.*`. Truthy ⇒ the step is skipped without
+     *  dispatching; its output becomes `{ skipped: true, reason }`. */
+    skipIf?: string;
+    /** Error fallback — a `${{ }}` expression. When the step errors,
+     *  the engine uses this expression's value as the step's output
+     *  instead of failing the graph. */
+    fallback?: string;
 }
 
 export interface RouteStep extends BaseStep {
@@ -233,102 +254,40 @@ export interface SubworkflowStep extends BaseStep {
 }
 
 /**
- * Scatter-gather: dispatch every entry in `branches` concurrently
- * through the same step-kind registry. The step's output is a record
- * `{ [branchKey]: <branchOutput>, ... }` — readable downstream via
- * `{ from: <parallelStepId> }.<branchKey>`.
+ * A nested sub-DAG node. The workflow itself is a DAG; a `group` is a
+ * DAG *inside* a node — for sub-pipelines that want their own
+ * concurrency budget, output namespace, or a `skipIf:`/`depends:` that
+ * applies to the whole group at once.
  *
- * Branches may be any deterministic step kind (route, agent,
- * subworkflow, nested parallel). `input` steps are rejected at
- * dispatch time — HITL pauses belong at the workflow level so one
- * branch can't strand its siblings mid-flight.
+ * The same engine runs the top-level workflow and every nested group,
+ * recursively. A `group` whose children declare no `depends` between
+ * them is a pure scatter-gather (the old `parallel` kind); a `group`
+ * with `depends` edges is a sub-pipeline (the old `orchestration`
+ * kind). Both collapse into this one shape.
  *
- * First branch failure surfaces as the parallel step's error; sibling
- * branches finish on their own (no cross-cancellation in v1). Routes
- * are cheap so this is rarely material; if it becomes one, layer an
- * abort-on-error controller later without changing this contract.
+ *   validate:
+ *     kind: group
+ *     concurrency: 5          # fan out over blocks, 5 at a time
+ *     steps:
+ *       block-a: { kind: route, uri: ... }
+ *       block-b: { kind: route, uri: ... }
+ *     outputs:
+ *       report: { from: "${{ steps.block-a.outputs }}" }
+ *
+ * Inside a group, `${{ steps.<id>.outputs.<path> }}` references the
+ * group's own children; `${{ inputs.<name> }}` references the run's
+ * top-level inputs (threaded down unchanged).
  */
-export interface ParallelStep extends BaseStep {
-    kind: 'parallel';
-    branches: Record<string, WorkflowStep>;
-}
-
-/**
- * Declarative multi-step DAG composition — the substrate replacement
- * for hand-rolled `orchestrate.ts` style TypeScript pipelines.
- *
- * Each entry in `steps` is a `WorkflowStep` (any kind: route, agent,
- * subworkflow, parallel, expression, nested orchestration). Steps
- * declare dependencies via `depends:` — the runtime computes the
- * topological order, executes independent steps in parallel up to
- * `concurrency`, and threads each step's output into downstream steps
- * via `${{ steps.<id>.outputs.<field> }}` token expansion (resolved
- * by the orchestration handler before each step's inputs are passed
- * to its handler).
- *
- * Examples of the pattern this kind subsumes:
- *
- *   - Product autofill pipeline (logo + tcSearch in parallel → gate
- *     on tcLink → metadata + category + countries + faq in parallel
- *     → texts/howToRedeem in parallel → translation fanout).
- *   - Dashboard data assembly (per-block route call + render manifest).
- *   - Multi-step extraction (fetch → transform → write to brain://).
- *
- * Unlike `ParallelStep` (which dispatches every branch unconditionally
- * in lockstep), `OrchestrationStep` honors the dependency graph and
- * gates each child step on its dependencies producing terminal output.
- * A failure in one step terminates the whole orchestration with the
- * first error (siblings may still complete before the cancel
- * cascades — v1 acceptable).
- *
- * Steps may declare `skipIf:` — when its expression evaluates to a
- * truthy value (against `inputs.*` + `steps.*.outputs.*` references),
- * the step is skipped entirely and its output is `{ skipped: true,
- * reason }`. Downstream consumers that depend on skipped steps see
- * `undefined` interpolation slots; they must handle absence.
- */
-export interface OrchestrationStep extends BaseStep {
-    kind: 'orchestration';
-    /** Step graph; keys are step ids, values are step declarations
-     *  with optional `depends` + `skipIf` extensions. */
-    steps: Record<string, OrchestrationChild>;
-    /** Map of orchestration-level output ids → expressions referencing
-     *  child step outputs. Resolved after every step terminates. */
-    outputs?: Record<string, OrchestrationOutputBinding>;
-    /** Max parallel in-flight child steps (semaphore). Default
-     *  unbounded — limited only by the DAG's topological width. */
+export interface GroupStep extends BaseStep {
+    kind: 'group';
+    /** The sub-DAG. Same shape as a workflow's `steps`. */
+    steps: Record<string, WorkflowStep>;
+    /** Max parallel in-flight children. Default: unbounded. */
     concurrency?: number;
-}
-
-/** A step inside an OrchestrationStep — wraps a WorkflowStep with
- *  dependency + skip metadata. The discriminator on `step.kind`
- *  identifies which step kind the runtime dispatches. */
-export interface OrchestrationChild {
-    /** The wrapped step; dispatched through the same step-kind
-     *  registry the top-level walker uses. */
-    step: WorkflowStep;
-    /** Ids of steps in the same orchestration whose terminal output
-     *  must be available before this step runs. */
-    depends?: string[];
-    /** Skip-predicate expression. When the expression evaluates to a
-     *  truthy value (against the orchestration's `inputs.*` + prior
-     *  child outputs), this step is skipped without dispatching its
-     *  handler. The skip output is `{ skipped: true, reason: '<expr>' }`. */
-    skipIf?: string;
-    /** Optional fallback expression — when the step errors, the
-     *  orchestration tries this expression's value as the step's
-     *  output instead of failing the whole DAG. Used for the
-     *  "provider-supplied" carve-outs in autofill (e.g.
-     *  howToRedeem fallback to `product.instructions.en`). */
-    fallback?: string;
-}
-
-/** How an orchestration output is computed from child outputs. */
-export interface OrchestrationOutputBinding {
-    /** Expression referencing child outputs via `${{ steps.X.outputs.Y }}`. */
-    from: string;
-    /** Optional shape hint for the workflow-level output projection. */
-    shape?: 'value' | 'object' | 'array';
+    /** Output bindings for the group node — referenced by parent
+     *  siblings as `${{ steps.<groupId>.outputs.<key> }}`. Absent ⇒
+     *  the group's output is the raw child-output map. */
+    outputs?: Record<string, WorkflowOutput>;
 }
 
 // ─── Inputs & outputs ─────────────────────────────────────────────────────

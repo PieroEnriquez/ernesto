@@ -41,19 +41,8 @@ const KNOWN_STEP_KINDS = new Set([
     'input',
     'agent',
     'subworkflow',
-    'parallel',
+    'group',
 ]);
-
-/** Events that satisfy a step's "no dead-end" requirement when no `next:`. */
-const DEFAULT_TERMINAL_EVENTS: Record<string, string[]> = {
-    // For each kind, what *must* be routable. If `next:` is absent, `on:`
-    // must cover the default success event.
-    route: ['success'],
-    input: ['submitted'],
-    agent: ['success'],
-    subworkflow: ['success'],
-    parallel: ['success'],
-};
 
 export function validateWorkflow(
     decl: WorkflowDeclaration,
@@ -64,7 +53,7 @@ export function validateWorkflow(
     checkNameMatchesFilename(decl, ctx, errors);
     checkSchemaShape(decl, ctx, errors);
     checkStepKindsKnown(decl, errors);
-    checkReachabilityAndDeadEnds(decl, errors);
+    checkDag(decl, errors);
     checkRoutes(decl, ctx, errors);
     checkHarnesses(decl, ctx, errors);
     checkSubworkflows(decl, ctx, errors);
@@ -138,73 +127,86 @@ function checkStepKindsKnown(
     }
 }
 
-// ─── workflow_step_unreachable + workflow_step_dead_end ─────────────────
+// ─── DAG integrity: depends/next reference real steps; no cycles ────────
+//
+// The workflow IS a DAG. Settle-time lint catches the two structural
+// faults run-graph would otherwise hit at dispatch: an edge
+// (`depends:` or `next:`) pointing at a non-existent step, or a cycle.
+// There is no "unreachable" or "dead-end" concept — every declared
+// step runs (topologically), and a step with no dependents is a valid
+// sink.
 
-function checkReachabilityAndDeadEnds(
+function checkDag(
     decl: WorkflowDeclaration,
     errors: WorkflowValidationError[],
 ): void {
     const stepIds = Object.keys(decl.steps);
     if (stepIds.length === 0) return;
+    const ids = new Set(stepIds);
 
-    // Build the edge set. Edges go from sourceId → targetId; target may
-    // be a step id, "outputs", or "outputs.<name>".
-    const incoming = new Map<string, Set<string>>();
-    for (const id of stepIds) incoming.set(id, new Set());
-
-    for (const [srcId, step] of Object.entries(decl.steps)) {
-        const targets: string[] = [];
-        if (step.next !== undefined) targets.push(step.next);
-        if (step.on) {
-            for (const t of Object.values(step.on)) targets.push(t);
+    // Normalize `next:` → depends edges, validating targets exist.
+    const dependsOf = new Map<string, string[]>();
+    for (const id of stepIds) dependsOf.set(id, [...(decl.steps[id]!.depends ?? [])]);
+    for (const [id, step] of Object.entries(decl.steps)) {
+        for (const dep of step.depends ?? []) {
+            if (!ids.has(dep)) {
+                errors.push({
+                    code: 'workflow_step_unreachable',
+                    stepId: id,
+                    field: 'depends',
+                    message: `step "${id}" depends on unknown step "${dep}"`,
+                });
+            } else if (dep === id) {
+                errors.push({
+                    code: 'workflow_step_unreachable',
+                    stepId: id,
+                    field: 'depends',
+                    message: `step "${id}" depends on itself`,
+                });
+            }
         }
-        if (step.kind === 'input' && step.timeout) {
-            targets.push(step.timeout.then);
-        }
-        for (const t of targets) {
-            const targetStepId = resolveEdgeTarget(t);
-            if (targetStepId && incoming.has(targetStepId)) {
-                incoming.get(targetStepId)!.add(srcId);
+        if (step.next !== undefined) {
+            if (!ids.has(step.next)) {
+                errors.push({
+                    code: 'workflow_step_unreachable',
+                    stepId: id,
+                    field: 'next',
+                    message: `step "${id}" has next: "${step.next}" which is not a declared step`,
+                });
+            } else {
+                dependsOf.get(step.next)!.push(id);
             }
         }
     }
 
-    // The first declared step is implicitly reachable (the entry point).
-    // Any subsequent step with no incoming edge is unreachable.
-    const firstStepId = stepIds[0];
-    for (const id of stepIds) {
-        if (id === firstStepId) continue;
-        if ((incoming.get(id)?.size ?? 0) === 0) {
-            errors.push({
-                code: 'workflow_step_unreachable',
-                stepId: id,
-                message: `step "${id}" has no incoming edge and is not the entry step`,
-            });
+    // Cycle detection (Kahn). Only run if all edges resolve.
+    if (errors.some((e) => e.code === 'workflow_step_unreachable')) return;
+    const inDegree = new Map<string, number>();
+    for (const id of ids) inDegree.set(id, (dependsOf.get(id) ?? []).length);
+    const adj = new Map<string, string[]>();
+    for (const id of ids) adj.set(id, []);
+    for (const [id, deps] of dependsOf) {
+        for (const dep of deps) adj.get(dep)!.push(id);
+    }
+    const queue: string[] = [];
+    for (const [id, d] of inDegree) if (d === 0) queue.push(id);
+    let visited = 0;
+    while (queue.length) {
+        const id = queue.shift()!;
+        visited++;
+        for (const down of adj.get(id) ?? []) {
+            const d = (inDegree.get(down) ?? 0) - 1;
+            inDegree.set(down, d);
+            if (d === 0) queue.push(down);
         }
     }
-
-    // Dead-end: no `next:` AND `on:` doesn't cover the kind's default
-    // success event. Acceptable: a step with `next: outputs` or
-    // `next: outputs.<name>` IS a terminal — not a dead-end.
-    for (const [id, step] of Object.entries(decl.steps)) {
-        if (step.next !== undefined) continue;
-        if (!KNOWN_STEP_KINDS.has(step.kind)) continue;
-        const required = DEFAULT_TERMINAL_EVENTS[step.kind] ?? [];
-        const covered = step.on ?? {};
-        const missing = required.filter(ev => !(ev in covered));
-        if (missing.length > 0) {
-            errors.push({
-                code: 'workflow_step_dead_end',
-                stepId: id,
-                message: `step "${id}" has no "next:" and "on:" does not cover required event(s): ${missing.join(', ')}`,
-            });
-        }
+    if (visited !== ids.size) {
+        errors.push({
+            code: 'workflow_step_dead_end',
+            stepId: stepIds[0]!,
+            message: 'step graph has a cycle (depends/next form a loop)',
+        });
     }
-}
-
-function resolveEdgeTarget(target: string): string | undefined {
-    if (target === 'outputs' || target.startsWith('outputs.')) return undefined;
-    return target;
 }
 
 // ─── workflow_unknown_route ─────────────────────────────────────────────
