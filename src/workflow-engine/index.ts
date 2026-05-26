@@ -70,7 +70,6 @@ export type {
     FactEventType,
     TypedFactEvent,
     StoredEvent,
-    FraguaFactEvent,
 } from './types/event';
 
 export type {

@@ -1,7 +1,6 @@
 /**
- * Fact-event taxonomy emitted by the runner. Mirrors fragua's
- * `fact.*` taxonomy so the existing `wire-fragua.ts` translator
- * (`translateFactEvent`) keeps working without modification.
+ * Fact-event taxonomy emitted by the runner. The `fact.*` namespace
+ * is the canonical event channel for run lifecycle + step deltas.
  *
  * The canonical `fact.*` types live in {@link FactEventType}; the
  * narrow {@link TypedFactEvent} union encodes payload shapes per
@@ -11,13 +10,11 @@
  * runners.
  */
 
-/** Bus event delivered to subscribers; identical to fragua's
- *  `RawFraguaFactEvent` so the backend's existing event-bridge
- *  translator works unchanged. */
+/** Bus event delivered to subscribers. */
 export interface FactEvent {
     runId: string;
     seq: number;
-    /** Fact event types per fragua's taxonomy (`fact.run_started`,
+    /** Canonical `fact.*` event tag (`fact.run_started`,
      *  `fact.run_paused_human`, `fact.node_completed`, …). */
     type: string;
     payload: Record<string, unknown>;
@@ -149,6 +146,3 @@ export interface StoredEvent {
     routing?: Readonly<Record<string, unknown>>;
 }
 
-/** Legacy alias for the backend shim — the fragua-flavored name maps
- *  1:1 to `FactEvent`. */
-export type FraguaFactEvent = FactEvent;
