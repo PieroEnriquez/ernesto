@@ -177,3 +177,8 @@ export type { ModelRouterOpts } from './middleware/model-router';
 export { timeoutMiddleware } from './middleware/timeout';
 export { loggingMiddleware } from './middleware/logging';
 export type { LoggingMiddlewareOpts } from './middleware/logging';
+export {
+    idempotencyDedupMiddleware,
+    IdempotencyConflictError,
+} from './middleware/idempotency-dedup';
+export type { IdempotencyDedupOpts } from './middleware/idempotency-dedup';
