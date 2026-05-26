@@ -129,6 +129,17 @@ export interface HandlerContext {
     /** Working tree pinned for this run (route + agent handlers thread
      *  it into ernesto's route ctx). */
     workdirRoot?: string;
+    /**
+     * Per-dispatch annotations set by middleware. The agent step
+     * handler reads `annotations.mcpServers` (set by
+     * `toolSurfaceComposeMiddleware`), `annotations.sandboxHooks`
+     * (set by `sandboxBindMiddleware`), `annotations.providerEnv`
+     * (set by `modelRouterMiddleware`), etc. — keys are the
+     * `annotationKey` of the middleware that wrote them.
+     *
+     * Frozen-ish at handler entry; middleware ran before the walk.
+     */
+    annotations: Readonly<Record<string, unknown>>;
     /** Publish a step-scoped fact event onto the run's event stream.
      *  Pre-bound to the current step by the walker — handlers that
      *  ignore this just lose mid-step granularity (lifecycle events

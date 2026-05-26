@@ -64,6 +64,11 @@ export interface WalkInput {
      *  into every step's HandlerContext.workdirRoot so step handlers
      *  can pin route/agent dispatches to the allocated workdir. */
     workdirRoot?: string;
+    /** Middleware-written per-dispatch annotations. Plumbed into every
+     *  step's HandlerContext.annotations so handlers can read
+     *  middleware-provided MCP server maps, sandbox hooks, provider
+     *  env vars, etc. */
+    annotations?: Readonly<Record<string, unknown>>;
 }
 
 export async function walk(
@@ -134,6 +139,7 @@ export async function walk(
                 principal: input.principal,
                 routing,
                 runInputs: input.inputs,
+                annotations: input.annotations ?? {},
                 signal,
                 log: deps.log,
                 emit: stepEmit,

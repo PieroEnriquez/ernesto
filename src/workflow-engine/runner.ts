@@ -225,29 +225,65 @@ class Runner implements WorkflowRunner {
         }
         this.inflightAborts.set(runId, ac);
 
+        // M6 retry: read kind.policy.retry; wrap walk() in a retry
+        // loop. Each attempt walks fresh with the same runId so
+        // consumers see one run; the bus subscriber sees N attempts
+        // as N fact.run_started / fact.run_terminated cycles. The
+        // last attempt's result is returned to the caller.
+        const retry = postPreCtx.decl?.policy?.retry;
+        const maxAttempts = Math.max(1, retry?.max ?? 1);
+        const backoffMs = Math.max(0, retry?.backoffMs ?? 0);
+
         let walkResult: WalkResult;
+        let attempt = 0;
         try {
-            walkResult = await walk(
-                runId,
-                workflowDecl.declaration,
-                {
+            while (true) {
+                attempt++;
+                walkResult = await walk(
+                    runId,
+                    workflowDecl.declaration,
+                    {
+                        kind,
+                        inputs: postPreCtx.inputs,
+                        principal: postPreCtx.principal,
+                        opts: { ...postPreCtx.opts, abortSignal: ac.signal },
+                        ...(postPreCtx.workdirRoot !== undefined
+                            ? { workdirRoot: postPreCtx.workdirRoot }
+                            : {}),
+                        ...(Object.keys(postPreCtx.annotations).length > 0
+                            ? { annotations: postPreCtx.annotations }
+                            : {}),
+                    },
+                    {
+                        bus: this.bus,
+                        dispatcher: this.dispatcher,
+                        store: this.store,
+                        hitl: this.hitl,
+                        log: this.log,
+                        nextSeq: (id) => this.nextSeq(id),
+                    },
+                );
+                // Only retry on `errored` — completed, paused, canceled
+                // are terminal-as-is. The on:'transient' filter is a
+                // future refinement; today every error is retryable
+                // up to max.
+                if (walkResult.status !== 'errored') break;
+                if (attempt >= maxAttempts) break;
+                if (ac.signal.aborted) break;
+                if (backoffMs > 0) {
+                    await sleepWithSignal(backoffMs, ac.signal);
+                    if (ac.signal.aborted) break;
+                }
+                // Reset seq counter for the next attempt — each attempt
+                // starts fresh from seq 0.
+                this.seqByRun.set(runId, 0);
+                this.log.info('retrying dispatch', {
                     kind,
-                    inputs: postPreCtx.inputs,
-                    principal: postPreCtx.principal,
-                    opts: { ...postPreCtx.opts, abortSignal: ac.signal },
-                    ...(postPreCtx.workdirRoot !== undefined
-                        ? { workdirRoot: postPreCtx.workdirRoot }
-                        : {}),
-                },
-                {
-                    bus: this.bus,
-                    dispatcher: this.dispatcher,
-                    store: this.store,
-                    hitl: this.hitl,
-                    log: this.log,
-                    nextSeq: (id) => this.nextSeq(id),
-                },
-            );
+                    runId,
+                    attempt: attempt + 1,
+                    maxAttempts,
+                });
+            }
         } finally {
             this.inflightAborts.delete(runId);
         }
@@ -387,6 +423,23 @@ function projectRunHandle<TOut>(
         },
     };
     return handle;
+}
+
+/** Sleep with abort cooperation — resolves on either timer firing
+ *  or the signal aborting. Used by retry between attempts. */
+function sleepWithSignal(ms: number, signal: AbortSignal): Promise<void> {
+    return new Promise<void>((resolve) => {
+        if (signal.aborted) return resolve();
+        const t = setTimeout(resolve, ms);
+        signal.addEventListener(
+            'abort',
+            () => {
+                clearTimeout(t);
+                resolve();
+            },
+            { once: true },
+        );
+    });
 }
 
 function mapWalkStatus(s: WalkResult['status']): RunHandleStatus {
