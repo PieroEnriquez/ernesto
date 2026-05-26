@@ -48,10 +48,15 @@ export interface ResultCacheMiddlewareOpts {
 }
 
 export interface ResultCacheStore {
-    get(key: string): CachedEntry | undefined;
-    set(key: string, value: CachedEntry): void;
+    /** Read a cached entry. `ctx` is forwarded so backends can scope
+     *  themselves by request properties (workdirRoot, principal, kind).
+     *  Memory backends ignore it; the workspace-backed store reads
+     *  `ctx.workdirRoot`. Returns `undefined` on miss or expired. */
+    get(key: string, ctx: DispatchPreContext): Promise<CachedEntry | undefined>;
+    /** Persist a cached entry. Same ctx convention as `get`. */
+    set(key: string, value: CachedEntry, ctx: DispatchPreContext): Promise<void>;
     /** Optional — used by tests to inspect store contents. */
-    has?(key: string): boolean;
+    has?(key: string, ctx: DispatchPreContext): Promise<boolean>;
 }
 
 export interface CachedEntry {
@@ -60,11 +65,14 @@ export interface CachedEntry {
 }
 
 /** In-memory cache store with lazy eviction (expired entries are
- *  cleaned on read, not on a sweep). Single-process. */
+ *  cleaned on read, not on a sweep). Single-process. The async surface
+ *  matches the `ResultCacheStore` contract — the operations themselves
+ *  are synchronous against the in-memory Map; promises resolve
+ *  immediately. */
 export class InMemoryResultCache implements ResultCacheStore {
     private readonly map = new Map<string, CachedEntry>();
     constructor(private readonly nowFn: () => number = Date.now) {}
-    get(key: string): CachedEntry | undefined {
+    async get(key: string): Promise<CachedEntry | undefined> {
         const entry = this.map.get(key);
         if (!entry) return undefined;
         if (entry.expiresAt < this.nowFn()) {
@@ -73,11 +81,11 @@ export class InMemoryResultCache implements ResultCacheStore {
         }
         return entry;
     }
-    set(key: string, value: CachedEntry): void {
+    async set(key: string, value: CachedEntry): Promise<void> {
         this.map.set(key, value);
     }
-    has(key: string): boolean {
-        return this.get(key) !== undefined;
+    async has(key: string): Promise<boolean> {
+        return (await this.get(key)) !== undefined;
     }
 }
 
@@ -92,11 +100,11 @@ export function resultCacheMiddleware(
 
     return {
         name: 'result-cache',
-        before(ctx: DispatchPreContext): DispatchPreContext {
+        async before(ctx: DispatchPreContext): Promise<DispatchPreContext> {
             const ttlMs = ctx.decl?.policy?.cacheable?.ttlMs;
             if (!ttlMs || ttlMs <= 0) return ctx;
             const key = keyFor(ctx);
-            const cached = store.get(key);
+            const cached = await store.get(key, ctx);
             if (cached) {
                 ctx.annotations[annotationKey] = cached.output;
                 return ctx;
@@ -104,7 +112,7 @@ export function resultCacheMiddleware(
             ctx.annotations[annotationCacheKey] = key;
             return ctx;
         },
-        after(ctx: DispatchPreContext, run: Run): void {
+        async after(ctx: DispatchPreContext, run: Run): Promise<void> {
             const ttlMs = ctx.decl?.policy?.cacheable?.ttlMs;
             if (!ttlMs || ttlMs <= 0) return;
             // Hit — don't re-cache (already had it, used it).
@@ -115,10 +123,14 @@ export function resultCacheMiddleware(
             if (run.status !== 'completed') return;
             const key = ctx.annotations[annotationCacheKey] as string | undefined;
             if (!key) return;
-            store.set(key, {
-                output: run.output,
-                expiresAt: now() + ttlMs,
-            });
+            await store.set(
+                key,
+                {
+                    output: run.output,
+                    expiresAt: now() + ttlMs,
+                },
+                ctx,
+            );
         },
     };
 }

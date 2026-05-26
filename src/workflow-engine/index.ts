@@ -209,6 +209,8 @@ export type {
     ResultCacheStore,
     CachedEntry,
 } from './middleware/result-cache';
+export { WorkspaceResultCache } from './middleware/workspace-result-cache';
+export type { WorkspaceResultCacheOpts } from './middleware/workspace-result-cache';
 export { eventLogInitMiddleware } from './middleware/event-log-init';
 export type {
     EventLogInitMiddlewareOpts,
