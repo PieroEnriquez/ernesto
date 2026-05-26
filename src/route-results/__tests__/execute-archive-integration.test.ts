@@ -3,9 +3,10 @@ import { z } from 'zod';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { defineRoute, RouteRegistry } from '../../route';
+import { defineRoute, RouteRegistry, dispatchRoute } from '../../route';
 import type { Workdir } from '../../workdir';
 import { handleExecute } from '../../agent-verbs/execute';
+import type { ExecuteVerbContext } from '../../agent-verbs/execute';
 
 let WORKDIR_ROOT = '';
 
@@ -32,11 +33,21 @@ function makeWorkdir(): Workdir {
     } as Workdir;
 }
 
-function makeCtx() {
+function makeCtx(reg: RouteRegistry, workdir: Workdir): ExecuteVerbContext {
+    const user = { id: 'u1', email: 'u1@bitrefill.com' };
+    const scopes = new Set(['test:read']);
+    const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     return {
-        user: { id: 'u1', email: 'u1@bitrefill.com' },
-        scopes: new Set(['test:read']),
-        log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        user,
+        scopes,
+        log,
+        dispatchByUri: async (uri, inputs) =>
+            dispatchRoute(reg, uri, inputs, {
+                user,
+                scopes,
+                workdirRoot: workdir.workingTreeRoot,
+                log,
+            } as Parameters<typeof dispatchRoute>[3]),
     };
 }
 
@@ -61,11 +72,12 @@ describe('execute → archive + preview', () => {
     it('attaches preview (compactified) and file (workdir-relative) to the result', async () => {
         const reg = new RouteRegistry();
         reg.register(tabularRoute);
+        const wd = makeWorkdir();
         const result = await handleExecute(
-            makeWorkdir(),
+            wd,
             reg,
             { uri: 'redshift://mock-rows', params: {} },
-            makeCtx(),
+            makeCtx(reg, wd),
         );
         expect(result.ok).toBe(true);
         if (!result.ok) return;
@@ -89,11 +101,12 @@ describe('execute → archive + preview', () => {
     it('respects previewLimit override', async () => {
         const reg = new RouteRegistry();
         reg.register(tabularRoute);
+        const wd = makeWorkdir();
         const result = await handleExecute(
-            makeWorkdir(),
+            wd,
             reg,
             { uri: 'redshift://mock-rows', params: {}, previewLimit: 2 },
-            makeCtx(),
+            makeCtx(reg, wd),
         );
         expect(result.ok).toBe(true);
         if (!result.ok) return;
@@ -105,11 +118,12 @@ describe('execute → archive + preview', () => {
     it('previewLimit: 0 suppresses the preview field but still archives', async () => {
         const reg = new RouteRegistry();
         reg.register(tabularRoute);
+        const wd = makeWorkdir();
         const result = await handleExecute(
-            makeWorkdir(),
+            wd,
             reg,
             { uri: 'redshift://mock-rows', params: {}, previewLimit: 0 },
-            makeCtx(),
+            makeCtx(reg, wd),
         );
         expect(result.ok).toBe(true);
         if (!result.ok) return;
@@ -120,11 +134,12 @@ describe('execute → archive + preview', () => {
     it('previewLimit: "all" inlines the full data unchanged', async () => {
         const reg = new RouteRegistry();
         reg.register(tabularRoute);
+        const wd = makeWorkdir();
         const result = await handleExecute(
-            makeWorkdir(),
+            wd,
             reg,
             { uri: 'redshift://mock-rows', params: {}, previewLimit: 'all' },
-            makeCtx(),
+            makeCtx(reg, wd),
         );
         expect(result.ok).toBe(true);
         if (!result.ok) return;
@@ -140,11 +155,12 @@ describe('execute → archive + preview', () => {
             customLimit: limit,
             firstMethod: (data as any).rows[0]?.method,
         }));
+        const wd = makeWorkdir();
         const result = await handleExecute(
-            makeWorkdir(),
+            wd,
             reg,
             { uri: 'redshift://mock-rows', params: {} },
-            makeCtx(),
+            makeCtx(reg, wd),
         );
         expect(result.ok).toBe(true);
         if (!result.ok) return;

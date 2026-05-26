@@ -67,6 +67,11 @@
       "types": "./dist/ui-tools/index.d.ts",
       "import": "./dist/ui-tools/index.js",
       "require": "./dist/ui-tools/index.cjs"
+    },
+    "./route": {
+      "types": "./dist/route/index.d.ts",
+      "import": "./dist/route/index.js",
+      "require": "./dist/route/index.cjs"
     }
   },
   "contributors": [

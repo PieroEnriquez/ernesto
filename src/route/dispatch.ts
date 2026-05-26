@@ -15,6 +15,7 @@
  */
 
 import type { RouteRegistry } from './route-registry';
+import type { Route } from './define-route';
 import type { RouteContext, RouteScope } from './define-route';
 import { resolveRouteScope } from './define-route';
 import { archiveRouteResult } from '../route-results/archive';
@@ -54,7 +55,26 @@ export async function dispatchRoute(
     if (!route) {
         return { ok: false, error: 'route_not_found', details: { uri } };
     }
+    return dispatchResolvedRoute(route, params, ctx, registry);
+}
 
+/**
+ * Registry-free dispatch: validate inputs + scope, run the handler,
+ * validate outputs, apply the render manifest. Used by the workflow
+ * runner's `route` step handler (which already resolved the route via
+ * the kind registry) and as the body of `dispatchRoute` after its
+ * lookup.
+ *
+ * The optional `registry` argument is read only for per-route preview
+ * compactors during the archive+preview projection (`ctx.archiveResults`).
+ * Callers that don't set `archiveResults` may omit it.
+ */
+export async function dispatchResolvedRoute(
+    route: Route,
+    params: unknown,
+    ctx: RouteContext,
+    registry?: RouteRegistry,
+): Promise<DispatchResult> {
     // Validate input BEFORE resolving scope. Dynamic-scope routes
     // (e.g. `_platform://list-dashboards`, scope =
     // `${input.workspace}:read`) need typed input to compute their
@@ -195,7 +215,7 @@ export async function dispatchRoute(
             // Caller asked for full inline data — no compactor.
             preview = parsedOutput.data;
         } else if (previewLimit > 0) {
-            const custom = registry.getCompactor?.(route.uri);
+            const custom = registry?.getCompactor?.(route.uri);
             preview = custom
                 ? custom(parsedOutput.data, previewLimit)
                 : compactify(parsedOutput.data, previewLimit);

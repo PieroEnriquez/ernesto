@@ -62,6 +62,20 @@ export interface KindPolicy {
         scope: 'per-key' | 'per-key-and-principal';
         rerunAfter?: string;
     };
+    /** Result caching — short-circuits dispatch when a cached output
+     *  exists within `ttlMs`. Cache is keyed by `(kind, inputs,
+     *  principal)` by default; `keyExpr` (future) lets callers override.
+     *  Cache only stores successful completions; errored / canceled /
+     *  paused runs are never cached. */
+    cacheable?: {
+        /** Time-to-live in milliseconds. Required; 0 or absent → no
+         *  caching. */
+        ttlMs: number;
+        /** Expression used to derive the cache key (e.g. `${{ inputs.id }}`).
+         *  Default: `(kind, stableStringify(inputs), principalId)`.
+         *  Not yet implemented — present for forward compat. */
+        keyExpr?: string;
+    };
     /** Dispatch timeout cap. */
     timeoutMs?: number;
     /** Retry on failure — middleware re-dispatches up to `max` times. */

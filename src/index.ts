@@ -67,9 +67,16 @@ export type {
 } from './workflows';
 
 // ─── Routes ──────────────────────────────────────────────────────────────
+//
+// `dispatchRoute` and `dispatchResolvedRoute` intentionally do NOT
+// appear on the top-level package surface. The unified runtime's
+// `runner.dispatch(uri, params, principal)` is the supported entry
+// point for routes (it goes through the kind registry + middleware
+// chain + event store); the sync route primitive lives at
+// `ernesto/route` for tests + advanced internal use.
 export {
     defineRoute, resolveRouteScope, isDynamicScope,
-    RouteRegistry, dispatchRoute,
+    RouteRegistry,
     applyRenderManifest,
     sketchComponents,
 } from './route';

@@ -201,3 +201,20 @@ export type {
     ToolSurfaceComposition,
     ToolSurfaceComposeMiddlewareOpts,
 } from './middleware/tool-surface-compose';
+export {
+    resultCacheMiddleware,
+    InMemoryResultCache,
+} from './middleware/result-cache';
+export type {
+    ResultCacheMiddlewareOpts,
+    ResultCacheStore,
+    CachedEntry,
+} from './middleware/result-cache';
+
+// ─── Built-in step-kind handlers ──────────────────────────────────
+// Lib-shipped handlers for step kinds whose dispatch logic is
+// portable across tiers. Backend boot registers them on the runner;
+// other tiers (Tier B / C MCP, future workers) can register the same
+// handlers without copying glue code.
+export { makeRouteStepHandler } from './handlers/route-step';
+export type { RouteStepHandlerDeps } from './handlers/route-step';

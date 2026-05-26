@@ -3,7 +3,7 @@ import { z } from 'zod';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { defineRoute, RouteRegistry } from '../../route';
+import { defineRoute, RouteRegistry, dispatchRoute } from '../../route';
 import type { Workdir } from '../../workdir';
 import {
     handleExecute,
@@ -11,8 +11,33 @@ import {
     executeInputSchema,
 } from '../execute';
 import type { ExecuteVerbContext } from '../execute';
+import type { DispatchResult } from '../../route';
 import { extractAndEmitBundledUi } from '../../ui-tools/bundled-ui';
 import type { UiComponent } from '../../components/types';
+
+/** Build a `dispatchByUri` backed by a route registry — the minimal
+ *  stand-in for the runner-backed dispatcher the backend's tool-surface
+ *  composer wires in production. Lets these verb-layer tests exercise
+ *  handleExecute against in-memory routes without bringing up the
+ *  workflow runner. */
+function makeRegistryDispatch(
+    reg: RouteRegistry,
+    workdir: Workdir,
+    scopes: ReadonlySet<string>,
+    user: { id: string; email?: string },
+    log: ExecuteVerbContext['log'],
+    emitComponent?: ExecuteVerbContext['emitComponent'],
+): (uri: string, inputs: Record<string, unknown>) => Promise<DispatchResult> {
+    return async (uri, inputs) => {
+        return dispatchRoute(reg, uri, inputs, {
+            user,
+            scopes,
+            workdirRoot: workdir.workingTreeRoot,
+            log,
+            ...(emitComponent ? { emitComponent } : {}),
+        } as Parameters<typeof dispatchRoute>[3]);
+    };
+}
 
 // Per-suite tmp workdir — execute now archives full results under
 // `<workdir>/workspaces/<ws>/_results/...json`, so the suite needs a
@@ -42,12 +67,34 @@ function makeFakeWorkdir(root?: string): Workdir {
     } as Workdir;
 }
 
-function makeCtx(scopes: Iterable<string>): ExecuteVerbContext {
-    return {
-        user: { id: 'u1', email: 'u1@bitrefill.com' },
-        scopes: new Set(scopes),
-        log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+function makeCtx(
+    scopes: Iterable<string>,
+    opts: {
+        reg?: RouteRegistry;
+        workdir?: Workdir;
+        emitComponent?: ExecuteVerbContext['emitComponent'];
+    } = {},
+): ExecuteVerbContext {
+    const user = { id: 'u1', email: 'u1@bitrefill.com' };
+    const scopeSet: ReadonlySet<string> = new Set(scopes);
+    const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const ctx: ExecuteVerbContext = {
+        user,
+        scopes: scopeSet,
+        log,
     };
+    if (opts.reg && opts.workdir) {
+        ctx.dispatchByUri = makeRegistryDispatch(
+            opts.reg,
+            opts.workdir,
+            scopeSet,
+            user,
+            log,
+            opts.emitComponent,
+        );
+    }
+    if (opts.emitComponent) ctx.emitComponent = opts.emitComponent;
+    return ctx;
 }
 
 const echoRoute = defineRoute({
@@ -67,7 +114,7 @@ describe('handleExecute', () => {
         const reg = new RouteRegistry();
         reg.register(echoRoute);
         const workdir = makeFakeWorkdir();
-        const ctx = makeCtx(['test:read']);
+        const ctx = makeCtx(['test:read'], { reg, workdir });
 
         const result = await handleExecute(
             workdir,
@@ -101,11 +148,12 @@ describe('handleExecute', () => {
 
         const probeRoot = path.join(SHARED_TMP_ROOT, 'probe-root');
         await fs.mkdir(probeRoot, { recursive: true });
+        const probeWorkdir = makeFakeWorkdir(probeRoot);
         await handleExecute(
-            makeFakeWorkdir(probeRoot),
+            probeWorkdir,
             reg,
             { uri: 'test://probe', params: {}, ui: [] },
-            makeCtx(['test:read']),
+            makeCtx(['test:read'], { reg, workdir: probeWorkdir }),
         );
 
         expect(seenRoot).toHaveBeenCalledWith(probeRoot);
@@ -140,12 +188,13 @@ describe('handleExecute', () => {
     it('returns route_not_found for an unknown URI', async () => {
         const reg = new RouteRegistry();
         reg.register(echoRoute);
+        const workdir = makeFakeWorkdir();
 
         const result = await handleExecute(
-            makeFakeWorkdir(),
+            workdir,
             reg,
             { uri: 'test://nope', params: {}, ui: [] },
-            makeCtx(['test:read']),
+            makeCtx(['test:read'], { reg, workdir }),
         );
         expect(result.ok).toBe(false);
         if (result.ok) return;
@@ -155,12 +204,13 @@ describe('handleExecute', () => {
     it('returns scope_denied when the principal is missing the required scope', async () => {
         const reg = new RouteRegistry();
         reg.register(echoRoute);
+        const workdir = makeFakeWorkdir();
 
         const result = await handleExecute(
-            makeFakeWorkdir(),
+            workdir,
             reg,
             { uri: 'test://echo', params: { msg: 'x' }, ui: [] },
-            makeCtx([]),
+            makeCtx([], { reg, workdir }),
         );
         expect(result.ok).toBe(false);
         if (result.ok) return;
@@ -170,12 +220,13 @@ describe('handleExecute', () => {
     it('honours the ernesto:agent-ops scope bypass', async () => {
         const reg = new RouteRegistry();
         reg.register(echoRoute);
+        const workdir = makeFakeWorkdir();
 
         const result = await handleExecute(
-            makeFakeWorkdir(),
+            workdir,
             reg,
             { uri: 'test://echo', params: { msg: 'admin' }, ui: [] },
-            makeCtx(['ernesto:agent-ops']),
+            makeCtx(['ernesto:agent-ops'], { reg, workdir }),
         );
         expect(result).toMatchObject({ ok: true, data: { msg: 'admin' } });
     });
@@ -191,12 +242,13 @@ describe('handleExecute', () => {
                 handler: async () => ({ ok: true as const }),
             }),
         );
+        const workdir = makeFakeWorkdir();
 
         const result = await handleExecute(
-            makeFakeWorkdir(),
+            workdir,
             reg,
             { uri: 'test://nullary', ui: [] } as any,
-            makeCtx(['test:read']),
+            makeCtx(['test:read'], { reg, workdir }),
         );
         expect(result.ok).toBe(true);
     });
@@ -204,10 +256,11 @@ describe('handleExecute', () => {
     it('logs only the URI and user id (no PII beyond id)', async () => {
         const reg = new RouteRegistry();
         reg.register(echoRoute);
-        const ctx = makeCtx(['test:read']);
+        const workdir = makeFakeWorkdir();
+        const ctx = makeCtx(['test:read'], { reg, workdir });
 
         await handleExecute(
-            makeFakeWorkdir(),
+            workdir,
             reg,
             { uri: 'test://echo', params: { msg: 'hi' }, ui: [] },
             ctx,
@@ -226,10 +279,11 @@ describe('handleExecute', () => {
         // Zod schema sees a parsed object.
         const reg = new RouteRegistry();
         reg.register(echoRoute);
-        const ctx = makeCtx(['test:read']);
+        const workdir = makeFakeWorkdir();
+        const ctx = makeCtx(['test:read'], { reg, workdir });
 
         const result = await handleExecute(
-            makeFakeWorkdir(),
+            workdir,
             reg,
             { uri: 'test://echo', params: '{"msg":"hi from a string"}', ui: [] },
             ctx,
@@ -288,7 +342,7 @@ describe('handleExecute', () => {
         const reg = new RouteRegistry();
         reg.register(echoRoute);
         const workdir = makeFakeWorkdir();
-        const verbCtx = makeCtx(['test:read']);
+        const verbCtx = makeCtx(['test:read'], { reg, workdir });
 
         const emitted: { type: 'fact.component'; component: UiComponent }[] =
             [];
@@ -343,10 +397,11 @@ describe('handleExecute', () => {
         // strings, the route returns invalid_input cleanly.
         const reg = new RouteRegistry();
         reg.register(echoRoute);
-        const ctx = makeCtx(['test:read']);
+        const workdir = makeFakeWorkdir();
+        const ctx = makeCtx(['test:read'], { reg, workdir });
 
         const result = await handleExecute(
-            makeFakeWorkdir(),
+            workdir,
             reg,
             { uri: 'test://echo', params: 'not json — just words', ui: [] },
             ctx,

@@ -1,19 +1,28 @@
 /**
  * `execute` agent verb.
  *
- * The agent-facing wrapper around `dispatchRoute`. Spec §9 / §30.
+ * The agent-facing wrapper around the unified dispatch surface. Spec §9 / §30.
  *
  * Schema + description live here (not in the backend) so every tier-frontend
  * uses the same wire shape. The lib stays free of transport (Anthropic SDK,
  * MCP server, Express); transport-binding happens in the per-tier frontends.
+ *
+ * Dispatch path: every call goes through `ctx.dispatchByUri` (wired by the
+ * backend's tool-surface composer to `runner.dispatch`). Routes and workflows
+ * resolve through the same kind-registry; the middleware chain fires per
+ * dispatch (scope check, timeout, logging, idempotency, retry). The verb
+ * layer here adds archive + preview projection on top so the agent gets
+ * `{ data, preview, file }` regardless of which URI shape was dispatched.
  */
 
 import { z } from 'zod';
 import type { Workdir } from '../workdir';
 import type { RouteRegistry } from '../route';
-import { dispatchRoute } from '../route';
 import type { DispatchResult } from '../route';
+import { archiveRouteResult } from '../route-results/archive';
+import { compactify } from '../route-results/compactify';
 import { bundledUiFieldSchema } from '../ui-tools/bundled-ui';
+import { randomUUID } from 'crypto';
 import type { VerbLogger, VerbUser } from './types';
 
 /**
@@ -125,36 +134,43 @@ export interface ExecuteVerbContext {
      *  `parentRunId`. See `RouteContext.inheritedRouting`. */
     inheritedRouting?: Readonly<Record<string, unknown>>;
     /**
-     * Workflow-by-name dispatcher.
+     * Unified dispatcher for routes + workflows.
      *
-     * **The unification.** Every callable thing is a workflow. Routes
-     * happen to be single-step workflows (one `kind: 'route'` step
-     * around a URI). Agents are single-step workflows (one
-     * `kind: 'agent'` step). Dashboards are multi-step workflows.
-     * From the agent's tool surface, all dispatches should look like
-     * `execute(name, inputs)` — one verb, one shape.
+     * **The unification.** Every callable URI lives in one kind
+     * registry — routes are single-step workflows (one `kind: 'route'`
+     * step), agents are single-step workflows (one `kind: 'agent'`
+     * step), dashboards are multi-step workflows. From the agent's
+     * tool surface, all dispatches look like `execute(uri, inputs)`
+     * — one verb, one shape.
      *
-     * If this hook is wired AND the call's `uri` resolves to a known
-     * workflow slug, `handleExecute` dispatches through it (returning
-     * the workflow's outputs wrapped in the standard `DispatchResult`
-     * envelope). Else it falls through to the route registry — the
-     * existing route dispatch path is preserved for back-compat and
-     * for routes that aren't yet auto-wrapped as workflows.
+     * The callback wraps the runner's `dispatch(...)` primitive and
+     * normalizes the resulting `Run<T>` back into the `DispatchResult`
+     * envelope the verb returns:
+     *   - completed → `{ ok: true, data }`
+     *   - errored / canceled → `{ ok: false, error, details }`
+     *   - unknown URI → `{ ok: false, error: 'route_not_found' }`
      *
-     * Returns `null` when the name doesn't resolve to a workflow
-     * (caller falls through to route dispatch). Returns a non-null
-     * `DispatchResult` either way on dispatch.
+     * For single-step route kinds the implementation unwraps the
+     * `{ main: routeData }` outputs envelope; multi-step workflows
+     * return their full outputs map as `data`.
      */
-    dispatchWorkflowByName?: (
-        name: string,
+    dispatchByUri?: (
+        uri: string,
         inputs: Record<string, unknown>,
-    ) => Promise<DispatchResult | null>;
+    ) => Promise<DispatchResult>;
 }
 
 /**
  * Handle one `execute` call. Re-validates input at the lib boundary
- * (transport may already have done it, but the lib refuses to trust it) and
- * forwards to `dispatchRoute`, threading the workdir's root through.
+ * (transport may already have done it, but the lib refuses to trust it),
+ * dispatches through `ctx.dispatchByUri` (which the backend wires to
+ * `runner.dispatch`), then projects the result into the agent-facing
+ * `{ data, preview, file }` envelope.
+ *
+ * The `registry` parameter is still threaded in so the verb can
+ * consult per-route preview compactors via `registry.getCompactor(uri)`
+ * — a route-specific preview shape only the route author knows. The
+ * registry isn't used for dispatch itself (that's `ctx.dispatchByUri`).
  */
 export async function handleExecute(
     workdir: Workdir,
@@ -187,45 +203,69 @@ export async function handleExecute(
         } catch {
             // Leave as-is. If the route's input schema actually accepts a
             // string at the top level (rare), the call still succeeds.
-            // Otherwise dispatchRoute will return a clean invalid_input.
+            // Otherwise dispatch will return a clean invalid_input.
         }
     }
 
     ctx.log.info('execute verb', { uri: parsed.data.uri, userId: ctx.user.id });
 
-    // The unification: try the workflow registry first. If the name
-    // resolves to a known workflow slug (single-step or multi-step,
-    // doesn't matter), dispatch via fragua with full parent-surface
-    // inheritance. Else fall through to route dispatch.
-    //
-    // From the agent's view, `execute('whales')`, `execute('redshift://run-query')`,
-    // and `execute('whale-investigation')` are all the same shape —
-    // run the named workflow with these inputs and tell me the result.
-    // Single-step routes, single-step agents, multi-step dashboards
-    // share one verb and one shape.
-    if (ctx.dispatchWorkflowByName) {
-        const wfResult = await ctx.dispatchWorkflowByName(
-            parsed.data.uri,
-            (params as Record<string, unknown>) ?? {},
-        );
-        if (wfResult !== null) return wfResult;
+    if (!ctx.dispatchByUri) {
+        return {
+            ok: false,
+            error: 'handler_failed',
+            details: {
+                message:
+                    'execute verb: ctx.dispatchByUri not wired — backend tool-surface composer must supply it',
+            },
+        };
     }
-    return dispatchRoute(registry, parsed.data.uri, params, {
-        user: ctx.user,
-        scopes: ctx.scopes,
-        workdirRoot: workdir.workingTreeRoot,
-        log: ctx.log,
-        agentSlug: ctx.agentSlug,
-        subagentDepth: ctx.subagentDepth,
-        onActivity: ctx.onActivity,
-        onSubagentStep: ctx.onSubagentStep,
-        onSubagentCost: ctx.onSubagentCost,
-        ...(ctx.emitComponent ? { emitComponent: ctx.emitComponent } : {}),
-        ...(ctx.runId !== undefined ? { runId: ctx.runId } : {}),
-        ...(ctx.inheritedRouting ? { inheritedRouting: ctx.inheritedRouting } : {}),
-        ...(parsed.data.previewLimit !== undefined
-            ? { previewLimit: parsed.data.previewLimit }
-            : {}),
-        archiveResults: true,
-    });
+    const dispatched = await ctx.dispatchByUri(
+        parsed.data.uri,
+        (params as Record<string, unknown>) ?? {},
+    );
+    if (!dispatched.ok) return dispatched;
+
+    // Archive + preview projection. Previously buried inside
+    // dispatchRoute's archiveResults branch; lifted here so the
+    // dispatch primitive stays focused on routing and the verb owns
+    // the agent-facing envelope shape.
+    const workdirRoot = workdir.workingTreeRoot;
+    const previewLimitRaw = parsed.data.previewLimit ?? 5;
+    const inlineAll = previewLimitRaw === 'all';
+    const previewLimit = inlineAll ? 0 : Math.max(0, Number(previewLimitRaw) || 0);
+    const runId = ctx.runId ?? randomUUID();
+
+    let file: string | undefined;
+    try {
+        file = await archiveRouteResult({
+            workdir: workdirRoot,
+            uri: parsed.data.uri,
+            params: (params as Record<string, unknown>) ?? {},
+            runId,
+            data: dispatched.data,
+            log: ctx.log,
+        });
+    } catch (err) {
+        ctx.log.warn('archiveRouteResult failed — proceeding without file', {
+            uri: parsed.data.uri,
+            errorMessage: (err as Error).message,
+        });
+    }
+
+    let preview: unknown;
+    if (inlineAll) {
+        preview = dispatched.data;
+    } else if (previewLimit > 0) {
+        const custom = registry.getCompactor?.(parsed.data.uri);
+        preview = custom
+            ? custom(dispatched.data, previewLimit)
+            : compactify(dispatched.data, previewLimit);
+    }
+
+    return {
+        ok: true,
+        data: dispatched.data,
+        ...(preview !== undefined ? { preview } : {}),
+        ...(file !== undefined ? { file } : {}),
+    };
 }

@@ -15,7 +15,7 @@ export type {
 
 export { RouteRegistry } from './route-registry';
 
-export { dispatchRoute } from './dispatch';
+export { dispatchRoute, dispatchResolvedRoute } from './dispatch';
 export type { DispatchResult, DispatchErrorCode } from './dispatch';
 
 export { applyRenderManifest } from './render';
