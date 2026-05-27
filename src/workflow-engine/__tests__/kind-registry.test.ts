@@ -109,6 +109,61 @@ describe('KindRegistry', () => {
         expect(wf?.policy?.cwd).toBe('workspace-workdir');
     });
 
+    it('defaults policy.cwd to workspace-workdir for multi-step DAG workflows with any agent step', () => {
+        // Composed-turns YAML workflows (e.g. marketing-dashboard-author,
+        // recruiting-author) declare named steps — `research`, `draft`,
+        // `understand`, etc. — none named `main`. The default still
+        // needs to fire so SDK Read/Write/Edit/Glob/Grep stay sandboxed
+        // on those agent turns.
+        const r = new KindRegistry();
+        const dagWf: WorkflowDeclaration = {
+            name: 'workflows://composed-author',
+            description: 'a composed-turns workflow',
+            version: 1,
+            steps: {
+                research: {
+                    kind: 'agent',
+                    model: 'claude-opus-4-7',
+                    systemPrompt: 'sys',
+                    prompt: 'gather',
+                } as WorkflowDeclaration['steps'][string],
+                draft: {
+                    kind: 'agent',
+                    depends: ['research'],
+                    model: 'claude-opus-4-7',
+                    systemPrompt: 'sys',
+                    prompt: 'compose',
+                } as WorkflowDeclaration['steps'][string],
+            },
+        };
+        r.registerWorkflow(dagWf);
+        const wf = r.resolve('workflows://composed-author');
+        expect(wf?.policy?.cwd).toBe('workspace-workdir');
+    });
+
+    it('does NOT apply the workspace-workdir default to pure-route DAG workflows', () => {
+        // A workflow that chains only `route` steps doesn't need a
+        // workdir — routes execute server-tier with their own ctx, no
+        // SDK file tools in play. Default should NOT fire.
+        const r = new KindRegistry();
+        const routeWf: WorkflowDeclaration = {
+            name: 'workflows://route-only',
+            description: 'pure routes',
+            version: 1,
+            steps: {
+                fetch: { kind: 'route', uri: 'x://a' } as WorkflowDeclaration['steps'][string],
+                process: {
+                    kind: 'route',
+                    uri: 'x://b',
+                    depends: ['fetch'],
+                } as WorkflowDeclaration['steps'][string],
+            },
+        };
+        r.registerWorkflow(routeWf);
+        const wf = r.resolve('workflows://route-only');
+        expect(wf?.policy?.cwd).toBeUndefined();
+    });
+
     it('does NOT override an explicitly-pinned policy.cwd on an agent workflow', () => {
         const r = new KindRegistry();
         const agentWf: WorkflowDeclaration = {

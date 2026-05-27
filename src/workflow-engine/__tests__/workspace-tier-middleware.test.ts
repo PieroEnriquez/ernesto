@@ -128,6 +128,53 @@ describe('workspaceAllocatorMiddleware', () => {
         const run = await runner.dispatch('wf', {}, userPrincipal('u', []), {});
         expect(run.status).toBe('completed');
     });
+
+    it('applies workspace-workdir default to reader-loaded agent-main workflows (no registerWorkflow call)', async () => {
+        // Regression: managed-agent .md files load via the reader path
+        // and bypass `kindRegistry.registerWorkflow`, which is where
+        // `mergeWorkflowPolicyDefaults` used to be the only injection
+        // point. The runner now synthesizes the same default for
+        // reader-loaded workflows so workspace-tier middleware sees
+        // `cwd: 'workspace-workdir'` for agent-main steps.
+        const AGENT_DECL: WorkflowDeclaration = {
+            name: 'reader-agent-wf',
+            description: 'd',
+            version: 1,
+            steps: {
+                main: {
+                    kind: 'agent',
+                    model: 'm',
+                    systemPrompt: 's',
+                    maxTurns: 1,
+                    mcpServers: [],
+                    prompt: '${{ inputs.prompt }}',
+                } as WorkflowStep,
+            },
+        };
+        const runner = createRunner();
+        let observedWorkdirRoot: string | undefined;
+        runner.registerStepKind('agent', async (_step, ctx) => {
+            observedWorkdirRoot = ctx.workdirRoot;
+            return { kind: 'completed', output: { result: 'ok' } };
+        });
+        runner.registerWorkflowReader(readerOf(AGENT_DECL));
+        // Deliberately NOT calling kindRegistry.registerWorkflow — the
+        // reader path must inject the default on its own.
+        const allocate = vi.fn(async () => ({
+            workdirRoot: '/tmp/reader-default-workdir',
+        }));
+        runner.use(workspaceAllocatorMiddleware({ allocate }));
+
+        const run = await runner.dispatch(
+            'reader-agent-wf',
+            { prompt: 'go' },
+            userPrincipal('u', []),
+            {},
+        );
+        expect(run.status).toBe('completed');
+        expect(allocate).toHaveBeenCalledTimes(1);
+        expect(observedWorkdirRoot).toBe('/tmp/reader-default-workdir');
+    });
 });
 
 describe('sandboxBindMiddleware', () => {

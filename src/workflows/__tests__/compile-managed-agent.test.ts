@@ -64,8 +64,10 @@ describe('compileManagedAgentMdToWorkflow', () => {
             expect(main.mcpServers).toEqual(['redshift', 'ernesto']);
             expect(main.disallowedTools).toEqual(['WebFetch', 'Task']);
             expect(main.outputFormat?.name).toBe('payments_report');
-            expect(main.prompt).toBe('{{ inputs.prompt }}');
-            expect(main.next).toBe('outputs.result');
+            expect(main.prompt).toBe('${{ inputs.prompt }}');
+            // Terminal step — no `next:`; the workflow binds its output
+            // via `outputs.result.from: 'main'` instead (DAG model).
+            expect(main.next).toBeUndefined();
             expect(typeof main.systemPrompt).toBe('string');
             expect(main.systemPrompt as string).toMatch(/Payments Analyst/);
         }
@@ -132,8 +134,8 @@ Be helpful.
             expect(main.providerOverride).toBe('openrouter');
             expect(main.model).toBe('anthropic/claude-3.5-sonnet');
             expect(main.maxTurns).toBe(4);
-            expect(main.prompt).toBe('{{ inputs.prompt }}');
-            expect(main.next).toBe('outputs.result');
+            expect(main.prompt).toBe('${{ inputs.prompt }}');
+            expect(main.next).toBeUndefined();
         }
     });
 

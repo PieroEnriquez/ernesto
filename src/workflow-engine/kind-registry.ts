@@ -208,17 +208,28 @@ function extractWorkspaceFromUri(uri: string): string | undefined {
 }
 
 /** Apply safe defaults to a workflow's policy. The only default
- *  applied today is `cwd: 'workspace-workdir'` when the main step is
- *  an agent kind and the caller didn't pin `cwd` — see the comment on
- *  `registerWorkflow` for why this is a safety invariant, not just an
- *  ergonomic shortcut. */
-function mergeWorkflowPolicyDefaults(
+ *  applied today is `cwd: 'workspace-workdir'` when ANY step in the
+ *  workflow is an agent kind and the caller didn't pin `cwd` — see
+ *  the comment on `registerWorkflow` for why this is a safety
+ *  invariant, not just an ergonomic shortcut.
+ *
+ *  Predicate is "any step is agent," not "main is agent," so it
+ *  applies to both managed-agent `.md` files (single step named
+ *  `main`) and multi-step DAG workflows (composed-turns YAML where
+ *  the steps have author-chosen names — `research`, `draft`, etc.).
+ *
+ *  Exported so the runner can apply the same defaults to workflows
+ *  loaded via the reader path (which bypass `registerWorkflow`). */
+export function mergeWorkflowPolicyDefaults(
     declaration: WorkflowDeclaration,
     policy: KindPolicy | undefined,
 ): KindPolicy | undefined {
-    const main = declaration.steps?.main;
-    const mainIsAgent = !!main && (main as { kind?: string }).kind === 'agent';
-    if (!mainIsAgent) return policy;
+    const steps = declaration.steps;
+    if (!steps) return policy;
+    const anyAgent = Object.values(steps).some(
+        (s) => (s as { kind?: string }).kind === 'agent',
+    );
+    if (!anyAgent) return policy;
     if (policy?.cwd !== undefined) return policy;
     return { ...(policy ?? {}), cwd: 'workspace-workdir' };
 }

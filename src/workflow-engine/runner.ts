@@ -36,7 +36,7 @@ import { HandlerDispatcher } from './dispatch';
 import { InMemoryStore } from './store/in-memory-store';
 import { HitlController, type HitlPauseInput } from './hitl';
 import { walk, type WalkResult } from './engine/walker';
-import { KindRegistry } from './kind-registry';
+import { KindRegistry, mergeWorkflowPolicyDefaults } from './kind-registry';
 import {
     type DispatchMiddleware,
     type DispatchPreContext,
@@ -201,7 +201,25 @@ class Runner implements WorkflowRunner {
         // scope-check throws ScopeEscalationError) abort the dispatch
         // — the caller sees the rejection directly.
         const preCtx: DispatchPreContext = buildPreContext(kind, inputs, principal, opts, runId);
-        if (declFromRegistry) preCtx.decl = declFromRegistry;
+        if (declFromRegistry) {
+            preCtx.decl = declFromRegistry;
+        } else if (workflowDecl.declaration) {
+            // Reader-loaded workflow: synthesize a KindDecl with the same
+            // safety defaults `registerWorkflow` applies, so workspace-tier
+            // middleware (notably `workspaceAllocatorMiddleware`) sees the
+            // `cwd: 'workspace-workdir'` invariant for agent-main workflows
+            // that arrive via the reader without going through the registry.
+            const synthesizedPolicy = mergeWorkflowPolicyDefaults(
+                workflowDecl.declaration,
+                undefined,
+            );
+            preCtx.decl = {
+                kind: 'workflow',
+                uri: workflowDecl.name,
+                declaration: workflowDecl.declaration,
+                ...(synthesizedPolicy !== undefined ? { policy: synthesizedPolicy } : {}),
+            };
+        }
         const postPreCtx = await runBefore(this.middlewares, preCtx);
 
         // Cache short-circuit: `resultCacheMiddleware` (or any
