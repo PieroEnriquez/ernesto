@@ -220,6 +220,12 @@ function checkRoutes(
     for (const [id, step] of Object.entries(decl.steps)) {
         if (step.kind !== 'route') continue;
         const uri = (step as RouteStep).uri;
+        // Template-form URIs (`${{ inputs.X }}` / `runner-${{ inputs.platform }}`)
+        // resolve at dispatch time from the run's inputs; the validator
+        // has no way to statically know which target they'll hit. Skip
+        // the existence check for those — the runtime emits
+        // `uri_not_found` if the resolved URI isn't registered.
+        if (uri.includes('{{')) continue;
         if (!ctx.knownRoutes.has(uri)) {
             errors.push({
                 code: 'workflow_unknown_route',
