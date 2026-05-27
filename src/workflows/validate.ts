@@ -167,11 +167,26 @@ function checkDag(
         }
         if (step.next !== undefined) {
             if (!ids.has(step.next)) {
+                // The legacy `next: outputs[.<name>]` form (a terminal-
+                // step marker from before the DAG collapse) is a common
+                // false-positive here. Catch the pattern explicitly and
+                // suggest the fix — bind `outputs.<name>.from` to the
+                // step's id directly; terminal steps have no `next:`.
+                const isLegacyOutputsForm =
+                    step.next === 'outputs' ||
+                    step.next.startsWith('outputs.');
+                const hint = isLegacyOutputsForm
+                    ? ' — terminal steps have no `next:`. Bind `outputs.<name>.from: ' +
+                      JSON.stringify(id) +
+                      '` directly and drop the `next:` line.'
+                    : '';
                 errors.push({
                     code: 'workflow_step_unreachable',
                     stepId: id,
                     field: 'next',
-                    message: `step "${id}" has next: "${step.next}" which is not a declared step`,
+                    message:
+                        `step "${id}" has next: "${step.next}" which is not a declared step` +
+                        hint,
                 });
             } else {
                 dependsOf.get(step.next)!.push(id);
