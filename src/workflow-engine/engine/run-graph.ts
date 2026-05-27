@@ -407,10 +407,14 @@ function substituteString(
     const full = /^\$\{\{\s*([^}]+?)\s*\}\}$/.exec(trimmed);
     if (full) {
         // Whole string is one token → return the typed value (object,
-        // boolean, array, …) so `skipIf` truthiness + structured
-        // handoff work.
-        const v = resolveExpression(full[1]!, inputs, stepOutputs);
-        return v ?? '';
+        // boolean, array, undefined, …) so:
+        //   - `skipIf` truthiness works
+        //   - structured handoff preserves type
+        //   - downstream zod schemas with `.default(...)` fire when the
+        //     resolved value is undefined (legacy coercion to '' here
+        //     replaced an unresolved reference with an empty string,
+        //     which then failed type checks instead of taking the default).
+        return resolveExpression(full[1]!, inputs, stepOutputs);
     }
     return s.replace(TOKEN_RE, (_m, expr: string) => {
         const v = resolveExpression(expr, inputs, stepOutputs);

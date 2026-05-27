@@ -47,8 +47,12 @@ export function compileManagedAgentMdToWorkflow(
         systemPrompt: decl.systemPrompt as SystemPromptConfig,
         maxTurns: decl.maxTurns,
         mcpServers: decl.mcpServers,
-        prompt: '{{ inputs.prompt }}',
-        next: 'outputs.result',
+        prompt: '${{ inputs.prompt }}',
+        // No `next:` — terminal step. `outputs.result.from: 'main'`
+        // below binds the workflow's terminal output directly to this
+        // step. The legacy `next: 'outputs.result'` was the pre-DAG
+        // marker that the new lint rule rejects (the hint string in
+        // `validate.ts` calls out this exact case).
         ...(harness === 'fragua-pi' && decl.provider === 'OPEN_ROUTER'
             ? { providerOverride: 'openrouter' as const }
             : {}),
