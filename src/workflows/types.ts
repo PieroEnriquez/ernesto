@@ -30,8 +30,6 @@ export interface WorkflowDeclaration {
     callableAs?: string[];
     /** Declared scope set; narrowed by §7.4 at dispatch. */
     scope?: string[];
-    /** Tier restriction; default 'any'. */
-    tier?: 'A' | 'B' | 'C' | 'any';
     /** Discovery tags (`dashboard`, `managed-agent`, etc.). */
     tags?: string[];
     /** Owner identity (email, team handle). */

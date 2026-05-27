@@ -55,7 +55,8 @@ export function parseWorkflowYaml(
 
 const ALLOWED_TOP_KEYS = new Set([
     'name', 'description', 'version', 'callableAs', 'scope',
-    'tier', 'tags', 'owner', 'inputs', 'steps', 'outputs',
+    'tags', 'owner', 'inputs', 'steps', 'outputs',
+    'trigger', 'concurrency',
 ]);
 
 function projectWorkflow(
@@ -80,7 +81,6 @@ function projectWorkflow(
         );
     }
 
-    const tier = projectTier(raw.tier, filename);
     const steps = projectSteps(raw.steps, filename);
 
     const decl: WorkflowDeclaration = {
@@ -94,7 +94,6 @@ function projectWorkflow(
     if (callableAs) decl.callableAs = callableAs;
     const scope = projectStringArray(raw.scope, 'scope', filename);
     if (scope) decl.scope = scope;
-    if (tier) decl.tier = tier;
     const tags = projectStringArray(raw.tags, 'tags', filename);
     if (tags) decl.tags = tags;
     if (raw.owner !== undefined) {
@@ -107,14 +106,35 @@ function projectWorkflow(
     if (inputs) decl.inputs = inputs;
     const outputs = projectOutputs(raw.outputs, filename);
     if (outputs) decl.outputs = outputs;
+    if (raw.concurrency !== undefined) {
+        decl.concurrency = asInt(raw.concurrency, 'concurrency', filename);
+    }
+    const trigger = projectTrigger(raw.trigger, filename);
+    if (trigger) decl.trigger = trigger;
 
     return decl;
 }
 
-function projectTier(v: unknown, filename: string): WorkflowDeclaration['tier'] {
-    if (v === undefined) return undefined;
-    if (v === 'A' || v === 'B' || v === 'C' || v === 'any') return v;
-    throw new Error(`${filename}: "tier" must be one of A | B | C | any`);
+function projectTrigger(
+    v: unknown,
+    filename: string,
+): WorkflowDeclaration['trigger'] {
+    if (v === undefined || v === null) return undefined;
+    if (typeof v !== 'object' || Array.isArray(v)) {
+        throw new Error(`${filename}: "trigger" must be a mapping`);
+    }
+    const raw = v as Record<string, unknown>;
+    const out: NonNullable<WorkflowDeclaration['trigger']> = {};
+    if (raw.cron !== undefined) {
+        if (typeof raw.cron !== 'string') {
+            throw new Error(`${filename}: "trigger.cron" must be a string`);
+        }
+        out.cron = raw.cron;
+    }
+    if (raw.inputs !== undefined) {
+        out.inputs = asRecord(raw.inputs, 'trigger.inputs', filename);
+    }
+    return out;
 }
 
 function projectSteps(
