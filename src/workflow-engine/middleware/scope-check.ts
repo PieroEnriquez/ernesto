@@ -16,6 +16,15 @@
  * non-interactive and authorized by virtue of which worker is calling
  * (validated at the queue / scheduler layer, not here).
  *
+ * PREVIEW admin bypass: a user principal holding any scope in the
+ * `adminBypassScopes` option (the backend passes `ernesto:agent-ops`)
+ * skips the strict check entirely — admins dispatch any registered
+ * kind without per-scope onboarding. Because the runner forwards the
+ * caller's scope set unchanged to subagents, the bypass scope rides
+ * along and the exemption is sticky for the whole subagent tree.
+ * Revert before GA: the strict intersection is what keeps a dispatch
+ * from escalating above the caller's own scopes.
+ *
  * Throws `ScopeEscalationError` on missing scopes — the runner
  * catches and surfaces as `{ status: 'errored', error: {...} }`.
  */
@@ -45,8 +54,12 @@ export function scopeCheckMiddleware(opts: {
      *  "all service principals bypass" because today the queue +
      *  scheduler layer is the trusted boundary. */
     serviceAllowlist?: 'all' | ReadonlySet<string>;
+    /** User principals holding any of these scopes skip the strict
+     *  check (PREVIEW admin bypass). Empty by default — no bypass. */
+    adminBypassScopes?: ReadonlyArray<string>;
 } = {}): DispatchMiddleware {
     const allowlist = opts.serviceAllowlist ?? 'all';
+    const adminBypassScopes = new Set(opts.adminBypassScopes ?? []);
 
     return {
         name: 'scope-check',
@@ -76,6 +89,13 @@ export function scopeCheckMiddleware(opts: {
             const callerScopes = isServicePrincipal(principal)
                 ? new Set<string>()
                 : principal.scopes;
+
+            // PREVIEW admin bypass — agent-ops admins dispatch any kind.
+            if (adminBypassScopes.size > 0) {
+                for (const s of adminBypassScopes) {
+                    if (callerScopes.has(s)) return ctx;
+                }
+            }
 
             const missing: string[] = [];
             for (const s of declared) {

@@ -230,6 +230,18 @@ export function mergeWorkflowPolicyDefaults(
         (s) => (s as { kind?: string }).kind === 'agent',
     );
     if (!anyAgent) return policy;
-    if (policy?.cwd !== undefined) return policy;
-    return { ...(policy ?? {}), cwd: 'workspace-workdir' };
+    // Agent workflows MUST run sandboxed inside a workspace workdir.
+    // Default BOTH `cwd` (so the workspace-allocator allocates the
+    // workdir) AND `tools.native` (so sandbox-bind installs the
+    // PreToolUse file-guard). Defaulting only `cwd` left the agent's
+    // native Read/Write/Edit unguarded: `tools.native === undefined`
+    // makes sandbox-bind a no-op, a silent sandbox escape. Explicit
+    // author values win (e.g. `native: 'allowed'` / `'disallowed'`).
+    const cwd = policy?.cwd ?? 'workspace-workdir';
+    const native = policy?.tools?.native ?? 'sandboxed';
+    return {
+        ...(policy ?? {}),
+        cwd,
+        tools: { ...(policy?.tools ?? {}), native },
+    };
 }

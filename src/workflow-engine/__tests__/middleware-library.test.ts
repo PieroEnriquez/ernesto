@@ -356,6 +356,61 @@ describe('loggingMiddleware', () => {
     });
 });
 
+describe('scopeCheckMiddleware admin bypass', () => {
+    const SCOPED_DECL: WorkflowDeclaration = {
+        name: 'wf-scoped',
+        description: 'd',
+        version: 1,
+        scope: ['recruiting:write'],
+        steps: { s1: { kind: 'route', uri: 'x' } as WorkflowStep },
+    };
+
+    async function runWith(
+        callerScopes: string[],
+        adminBypassScopes?: string[],
+    ) {
+        const runner = createRunner();
+        runner.registerStepKind('route', async () => ({
+            kind: 'completed',
+            output: { ok: true },
+        }));
+        runner.registerWorkflowReader(readerOf(SCOPED_DECL));
+        runner.kindRegistry.registerWorkflow(SCOPED_DECL, {
+            provider: 'ANTHROPIC',
+            model: 'claude-sonnet-4-6',
+        });
+        const { scopeCheckMiddleware } = await import('../middleware/scope-check');
+        runner.use(
+            scopeCheckMiddleware(
+                adminBypassScopes ? { adminBypassScopes } : {},
+            ),
+        );
+        return runner.dispatch(
+            'wf-scoped',
+            {},
+            userPrincipal('alice', callerScopes),
+            {},
+        );
+    }
+
+    it('rejects a caller lacking the declared scope (no bypass configured)', async () => {
+        await expect(runWith(['ernesto:agent-ops'])).rejects.toMatchObject({
+            code: 'scope_escalation',
+        });
+    });
+
+    it('admits a caller holding an admin bypass scope', async () => {
+        const run = await runWith(['ernesto:agent-ops'], ['ernesto:agent-ops']);
+        expect(run.status).toBe('completed');
+    });
+
+    it('still rejects a caller without the bypass scope even when bypass is configured', async () => {
+        await expect(
+            runWith(['marketing:read'], ['ernesto:agent-ops']),
+        ).rejects.toMatchObject({ code: 'scope_escalation' });
+    });
+});
+
 describe('M6 middleware composition — three together', () => {
     it('scope-check + model-router + logging + timeout cooperate end-to-end', async () => {
         const runner = createRunner();
