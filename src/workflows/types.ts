@@ -134,7 +134,7 @@ export interface RouteStep extends BaseStep {
      * own heuristics; the walker treats it as a no-op.
      */
     render?:
-        | 'chart' | 'table' | 'value' | 'markdown' | 'json' | 'none'
+        | 'chart' | 'table' | 'value' | 'markdown' | 'json' | 'none' | 'narrative'
         | ReadonlyArray<RenderEntry>;
     timeoutMs?: number;
     retries?: number;

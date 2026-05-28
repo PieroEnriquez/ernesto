@@ -19,7 +19,7 @@
 
 import type { DashboardSpec, Block } from '../dashboards/schema';
 import { dataflowOrder } from '../dashboards/dataflow';
-import { isJsBlock, isSqlBlock } from '../dashboards/schema';
+import { isJsBlock, isNarrativeBlock, isSqlBlock } from '../dashboards/schema';
 import type {
     WorkflowDeclaration,
     RouteStep,
@@ -38,7 +38,7 @@ export function compileDashboardSpecToWorkflow(
     // produce no consumable output.
     const dataBlockIds = new Set<string>();
     for (const b of spec.blocks) {
-        if (b.kind !== 'markdown') dataBlockIds.add(b.id);
+        if (b.kind !== 'markdown' && b.kind !== 'narrative') dataBlockIds.add(b.id);
     }
 
     const steps: Record<string, RouteStep> = {};
@@ -170,6 +170,26 @@ function compileBlock(
                 inputs: block.inputs.slice(),
             },
             render: renderForJsBlock(block.as),
+            next,
+        };
+    }
+    if (isNarrativeBlock(block)) {
+        // The dashboard runtime renders a Play CTA for narrative blocks
+        // and fires `_platform://narrative` on click. The compiled route
+        // is the same handler — `params` carry the agent spec; the
+        // upstream block results arrive inline at dispatch time via the
+        // `inputs` field on the request. `render: 'narrative'` is the
+        // signal the SPA picks up to swap auto-run for click-to-run.
+        return {
+            kind: 'route',
+            uri: '_platform://narrative',
+            params: {
+                model: block.model ?? 'claude-sonnet-4-6',
+                systemPrompt: block.systemPrompt,
+                prompt: rewriteCrossBlockRefs(block.prompt, dataBlockIds),
+                inputs: block.inputs.slice(),
+            },
+            render: 'narrative',
             next,
         };
     }

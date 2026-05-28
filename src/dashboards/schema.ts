@@ -151,6 +151,27 @@ const markdownBlock = blockBase.extend({
     body: z.string().min(1),
 });
 
+// `narrative` — agent-generated markdown. Renders as a Play CTA until
+// the user fires the agent; the agent reads the listed `inputs[]` block
+// results, runs once, and produces markdown for the surface. Treated
+// like a JS block for dataflow purposes (declared `inputs[]`) but never
+// auto-runs — the dashboard runtime defers execution to a user gesture.
+const narrativeBlock = blockBase.extend({
+    kind: z.literal('narrative'),
+    /** Block ids whose results the agent reads. Same shape as JS-block
+     *  inputs; surfaced to the agent as `{{ <blockId> }}` substitutions
+     *  in `prompt`. */
+    inputs: z.array(z.string().regex(BLOCK_ID_RE)).default([]),
+    /** Model identifier (Anthropic). Defaults to sonnet — narratives
+     *  are mechanical analysis, not authoring. */
+    model: z.string().optional(),
+    /** Persona / output discipline. */
+    systemPrompt: z.string().min(1),
+    /** User-message template. `{{ <blockId> }}` is rewritten at compile
+     *  time to the upstream block's result. */
+    prompt: z.string().min(1),
+});
+
 // ─── JS-derived block variants ─────────────────────────────────────────────
 // A JS block computes its result in a sandboxed Web Worker from upstream
 // block results + current filter values. Authors declare `inputs:` so the
@@ -195,11 +216,14 @@ export const blockSchema = z.union([
     timeseriesBlock,
     tableBlock,
     markdownBlock,
+    narrativeBlock,
     jsMetricRowBlock,
     jsTimeseriesBlock,
     jsTableBlock,
 ]);
 export type Block = z.infer<typeof blockSchema>;
+
+export type NarrativeBlock = z.infer<typeof narrativeBlock>;
 
 export type SqlBlock =
     | z.infer<typeof metricRowBlock>
@@ -222,8 +246,12 @@ export function isJsBlock(b: Block): b is JsBlock {
     return b.kind === 'js';
 }
 
+export function isNarrativeBlock(b: Block): b is NarrativeBlock {
+    return b.kind === 'narrative';
+}
+
 export function isDataBlock(b: Block): b is DataBlock {
-    return b.kind !== 'markdown';
+    return b.kind !== 'markdown' && b.kind !== 'narrative';
 }
 
 // ─── Top level ──────────────────────────────────────────────────────────────

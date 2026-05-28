@@ -12,7 +12,7 @@
  * all of its inputs have resolved.
  */
 
-import { isJsBlock, type DashboardSpec } from './schema';
+import { isJsBlock, isNarrativeBlock, type DashboardSpec } from './schema';
 
 export function dataflowOrder(spec: DashboardSpec): string[] {
     const visited = new Set<string>();
@@ -24,7 +24,7 @@ export function dataflowOrder(spec: DashboardSpec): string[] {
         visited.add(id);
         const block = byId.get(id);
         if (!block) return;
-        if (isJsBlock(block)) {
+        if (isJsBlock(block) || isNarrativeBlock(block)) {
             for (const upstream of block.inputs) visit(upstream);
         }
         result.push(id);

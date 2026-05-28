@@ -22,6 +22,7 @@ import {
     type ParsedDashboard,
     isSqlBlock,
     isJsBlock,
+    isNarrativeBlock,
 } from './schema';
 
 export class DashboardSpecError extends Error {
@@ -110,9 +111,9 @@ function crossCheck(spec: DashboardSpec): void {
         }
     }
 
-    // Check JS block inputs reference known blocks (and aren't markdown).
+    // Check JS / narrative block inputs reference known data blocks.
     for (const block of spec.blocks) {
-        if (!isJsBlock(block)) continue;
+        if (!isJsBlock(block) && !isNarrativeBlock(block)) continue;
         for (const inputId of block.inputs) {
             if (inputId === block.id) {
                 errors.push(`Block "${block.id}" lists itself as an input`);
@@ -121,9 +122,9 @@ function crossCheck(spec: DashboardSpec): void {
             const ref = spec.blocks.find(b => b.id === inputId);
             if (!ref) {
                 errors.push(`Block "${block.id}" inputs reference unknown block "${inputId}"`);
-            } else if (ref.kind === 'markdown') {
+            } else if (ref.kind === 'markdown' || ref.kind === 'narrative') {
                 errors.push(
-                    `Block "${block.id}" inputs reference markdown block "${inputId}" (markdown blocks produce no data)`,
+                    `Block "${block.id}" inputs reference ${ref.kind} block "${inputId}" (only data blocks produce results)`,
                 );
             }
         }
