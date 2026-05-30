@@ -8,7 +8,6 @@
 
 export {
     createUiMcpServer,
-    createUiWorkspaceServer,
     UI_TOOL_COUNT,
     UI_TOOL_NAMES,
 } from './server';
@@ -17,8 +16,6 @@ export type {
     UiMcpServerHandle,
     UiToolContextResolver,
     CreateUiMcpServerOpts,
-    UiWorkspaceServer,
-    BundledToolRegistration,
 } from './server';
 export type {
     UiToolContext,

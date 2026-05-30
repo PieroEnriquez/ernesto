@@ -16,7 +16,6 @@
  * one server per (run, step) when wiring an `agent-*` step.
  */
 
-import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import { createServer, type Server as HttpServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -25,7 +24,6 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { z } from 'zod';
 import type { UiToolContext } from './types';
 import { handleUi } from './tool-handlers/ui';
-import { extractAndEmitBundledUi, withBundledUiField } from './bundled-ui';
 
 /** McpServerConfig shape — same as `harness/cursor/mcp-bridge.ts`'s
  *  `SynthMcpServerConfig`. Re-declared structurally so this module
@@ -117,104 +115,10 @@ const UI_TOOL_DESCRIPTION = [
  *  variant is the seam if a future host wants a multi-step server. */
 export type UiToolContextResolver = () => UiToolContext;
 
-/** Default no-op-ish logger used when the dispatch wrapper has no
- *  better signal to thread through. Bundled-UI middleware warnings
- *  go to stderr so they're visible during ad-hoc debugging without
- *  forcing every caller to wire a logger. */
-const defaultBundledUiLog = {
-    warn: (msg: string, meta?: unknown): void => {
-        // eslint-disable-next-line no-console
-        console.warn(`[bundled-ui] ${msg}`, meta ?? '');
-    },
-};
-
-/**
- * Build the dispatch shim for an opt-in tool — runs the bundled-UI
- * middleware first (if opted in), strips `ui` from args, then invokes
- * the handler.
- */
-function makeBundledToolCallback(
-    tool: BundledToolRegistration,
-    resolveCtx: UiToolContextResolver,
-): (args: Record<string, unknown>) => Promise<{
-    content: Array<{ type: 'text'; text: string }>;
-    isError?: boolean;
-}> {
-    return async (args: Record<string, unknown>) => {
-        try {
-            const ctx = resolveCtx();
-            let handlerArgs: Record<string, unknown> = args ?? {};
-            if (tool.acceptsBundledUi) {
-                const { cleanedArgs } = await extractAndEmitBundledUi(
-                    handlerArgs,
-                    {
-                        emit: ctx.emit,
-                        log: defaultBundledUiLog,
-                        hitl: ctx.hitl,
-                        runId: ctx.runId,
-                        stepId: ctx.stepId,
-                    },
-                );
-                handlerArgs = cleanedArgs;
-            }
-            const output = await tool.handler(handlerArgs, ctx);
-            return {
-                content: [
-                    {
-                        type: 'text',
-                        text:
-                            typeof output === 'string'
-                                ? output
-                                : JSON.stringify(output ?? { ok: true }),
-                    },
-                ],
-            };
-        } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            return {
-                content: [{ type: 'text', text: message }],
-                isError: true,
-            };
-        }
-    };
-}
-
-/**
- * Per-tool registration accepted by {@link createUiMcpServer}. The
- * dispatch wrapper around the handler honours `acceptsBundledUi`: when
- * true, `extractAndEmitBundledUi` runs FIRST and the `ui` field is
- * stripped from `args` before the handler sees them. When false (or
- * undefined), args pass through unchanged.
- */
-export interface BundledToolRegistration {
-    name: string;
-    description: string;
-    /** Zod raw shape. If `acceptsBundledUi: true`, the optional
-     *  `ui?: UiComponent[]` field is auto-attached so the wire schema
-     *  reflects the side-channel. */
-    inputSchema: z.ZodRawShape;
-    /** If true, the middleware pre-processes `args.ui` before handler.
-     *  Use `withBundledUiField(schema)` on `inputSchema` (or let the
-     *  server attach it automatically). */
-    acceptsBundledUi?: boolean;
-    /** Handler — receives args with `ui` stripped (if bundling opt-in)
-     *  plus the resolved `UiToolContext`. Returns any JSON-serializable
-     *  value. */
-    handler: (
-        args: Record<string, unknown>,
-        ctx: UiToolContext,
-    ) => Promise<unknown>;
-}
-
 export interface CreateUiMcpServerOpts {
     /** Either a static context (per-step server) or a resolver that
      *  yields one at tool-call time. */
     context: UiToolContext | UiToolContextResolver;
-    /** Additional tools registered alongside the unified `ui` tool.
-     *  Each goes through the same dispatch wrapper, so opting in via
-     *  `acceptsBundledUi: true` is enough to get the side-channel for
-     *  free. */
-    additionalTools?: BundledToolRegistration[];
 }
 
 /**
@@ -287,29 +191,6 @@ export async function createUiMcpServer(
         },
         callback,
     );
-
-    // Additional tools — each wrapped in a dispatch shim that, if the
-    // tool opted into `acceptsBundledUi`, runs `extractAndEmitBundledUi`
-    // BEFORE the handler. Components emit on the same `ctx.emit` path
-    // the standalone `ui` tool uses; the handler sees args minus `ui`.
-    for (const tool of opts.additionalTools ?? []) {
-        const toolCallback = makeBundledToolCallback(tool, resolveCtx);
-        const inputSchema = tool.acceptsBundledUi
-            ? withBundledUiField(tool.inputSchema)
-            : tool.inputSchema;
-        (mcp.registerTool as unknown as (
-            name: string,
-            config: Record<string, unknown>,
-            cb: typeof toolCallback,
-        ) => void)(
-            tool.name,
-            {
-                description: tool.description,
-                inputSchema,
-            },
-            toolCallback,
-        );
-    }
 
     // Stateful transport — one session covers the agent's lifetime.
     const transport = new StreamableHTTPServerTransport({
@@ -387,44 +268,6 @@ export async function createUiMcpServer(
         name: 'ui',
         url,
         close,
-    };
-}
-
-/**
- * Workspace-level alternative to {@link createUiMcpServer}: one
- * long-lived MCP server with a per-step context bound via
- * AsyncLocalStorage. The agent step handler enters the ALS scope
- * before sending the prompt to the harness, so any tool calls the
- * agent makes resolve their `UiToolContext` from the ambient scope.
- */
-export interface UiWorkspaceServer {
-    /** The McpServerConfig + lifecycle handle. */
-    handle: UiMcpServerHandle;
-    /** Run `fn()` with `ctx` bound — every `ui` tool call inside
-     *  this async scope resolves to `ctx`. Nested scopes shadow. */
-    withContext<T>(ctx: UiToolContext, fn: () => Promise<T>): Promise<T>;
-}
-
-export async function createUiWorkspaceServer(): Promise<UiWorkspaceServer> {
-    const als = new AsyncLocalStorage<UiToolContext>();
-    const handle = await createUiMcpServer({
-        context: () => {
-            const ctx = als.getStore();
-            if (!ctx) {
-                throw new Error(
-                    'ui tool invoked outside of a per-step context — ' +
-                        'wire the agent step handler to enter ' +
-                        'UiWorkspaceServer.withContext before sending the prompt.',
-                );
-            }
-            return ctx;
-        },
-    });
-    return {
-        handle,
-        withContext<T>(ctx: UiToolContext, fn: () => Promise<T>): Promise<T> {
-            return als.run(ctx, fn);
-        },
     };
 }
 

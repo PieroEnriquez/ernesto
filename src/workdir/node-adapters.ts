@@ -114,7 +114,7 @@ export function makeNodeFsAdapter(workingTreeRoot: string): FsAdapter {
 
 /**
  * Backend volume-side master FS. Returns the host-FS source path; the caller
- * (`bootWorkdir`/`materializeFile`) hard-links it into the working tree via
+ * (`bootWorkdir`) hard-links it into the working tree via
  * `fs.link()`. Directory symlinks were v1 — ripgrep skipped them during
  * traversal, making fs_glob/fs_grep blind to the master-fs subtree. Hard
  * links are real directory entries pointing at the same inode, so the agent's

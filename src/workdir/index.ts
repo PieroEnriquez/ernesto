@@ -14,12 +14,10 @@ export { makeInMemoryWorkdirLock, makeRedisWorkdirLock, WorkdirLockAcquireTimeou
 export type { RedisLockClient } from './lock';
 export { makeInMemoryFsAdapter, makeInMemoryMasterFs } from './in-memory-adapters';
 export { makeNodeFsAdapter, makeVolumeMasterFs } from './node-adapters';
-export { makeHttpsMasterFs } from './https-master-fs';
-export type { HttpsMasterFsOptions } from './https-master-fs';
 export { bootWorkdir, rehydrateWorkdir } from './boot';
 export { commitTurn } from './commit-turn';
 export type { CommitTurnInput, CommitTurnResult } from './commit-turn';
-export { materializeFile, remirrorFile } from './materialize';
+export { remirrorFile } from './materialize';
 export type { MaterializeResult } from './materialize';
 export { settleFromWorktree } from './settle';
 export type {

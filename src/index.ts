@@ -16,9 +16,8 @@ export {
     makeRedisWorkdirLock, WorkdirLockAcquireTimeout,
     makeInMemoryFsAdapter, makeInMemoryMasterFs,
     makeNodeFsAdapter, makeVolumeMasterFs,
-    makeHttpsMasterFs,
     bootWorkdir, rehydrateWorkdir,
-    commitTurn, materializeFile, remirrorFile, settleFromWorktree,
+    commitTurn, remirrorFile, settleFromWorktree,
     settleFromPatch,
     RipgrepNotInstalledError,
 } from './workdir';
@@ -33,7 +32,6 @@ export type {
     SettleFromPatchInput, SettleFromPatchResult,
     LintFn, LintInput, LintError, PushToMainFn,
     RedisLockClient,
-    HttpsMasterFsOptions,
     WorkdirHealth, BootstrapWorkdirInput,
 } from './workdir';
 
@@ -41,7 +39,6 @@ export type {
 export {
     lintWorkspace,
     makeLintWorkspace,
-    makeScopelessLintWorkspace,
     lintWorkflowFile,
     isWorkflowPath,
     UNREGISTERED_EXTRACTION_SOURCE,

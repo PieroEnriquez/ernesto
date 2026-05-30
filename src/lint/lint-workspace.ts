@@ -701,16 +701,6 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
  */
 export const lintWorkspace: LintFn = build({});
 
-/** Same as `lintWorkspace` but with the extraction registry threaded in.
- *  Suitable for non-authoritative previews that still want the extraction-
- *  source check (e.g. CI lint that has no principal but does have a
- *  registry). */
-export function makeScopelessLintWorkspace(
-    options: { getRegisteredSources?: () => ReadonlySet<string> } = {},
-): LintFn {
-    return build({ getRegisteredSources: options.getRegisteredSources });
-}
-
 export interface MakeLintWorkspaceOptions {
     /** Rule codes the caller is privileged to skip. Wire only from
      *  privileged callers that legitimately emit diffs the rule would
