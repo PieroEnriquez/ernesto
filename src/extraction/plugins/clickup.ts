@@ -52,6 +52,13 @@ import {
     type ExtractionRequest,
     type ExtractionResult,
 } from '../define-extraction';
+import {
+    DEFAULT_BACKOFF_BASE_MS,
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_TIMEOUT_MS,
+    fetchWithRetry as httpFetchWithRetry,
+    stringifyJson,
+} from './_http';
 
 export interface ClickUpPluginOptions {
     token: string;
@@ -83,9 +90,6 @@ type TargetKind = 'task' | 'list' | 'doc' | 'list-table' | 'folder' | 'space';
 
 const DEFAULT_BASE_URL = 'https://api.clickup.com/api/v2';
 const DEFAULT_BASE_URL_V3 = 'https://api.clickup.com/api/v3';
-const DEFAULT_TIMEOUT_MS = 30_000;
-const DEFAULT_MAX_RETRIES = 3;
-const DEFAULT_BACKOFF_BASE_MS = 500;
 const DEFAULT_CLOSED_TASK_CUTOFF_MONTHS = 3;
 
 const CLOSED_STATUS_NAMES = new Set([
@@ -292,61 +296,26 @@ interface FetchWithRetryOpts {
     id: string;
 }
 
-async function fetchWithRetry(
+function fetchWithRetry(
     url: string,
     token: string,
     opts: FetchWithRetryOpts,
 ): Promise<Response | 'not_found'> {
-    let attempt = 0;
-    // attempts: 1 initial + maxRetries retries
-    while (true) {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), opts.timeoutMs);
-        let res: Response;
-        try {
-            res = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    Authorization: token,
-                    Accept: 'application/json',
-                },
-                signal: controller.signal,
-            });
-        } catch (err) {
-            clearTimeout(timer);
-            const message = err instanceof Error ? err.message : String(err);
-            throw new Error(`clickup: network error fetching ${opts.kind}: ${message}`);
-        }
-        clearTimeout(timer);
-
-        if (res.status === 404) {
-            return 'not_found';
-        }
-
-        if (res.status === 429 && attempt < opts.maxRetries) {
-            const delay = opts.backoffBaseMs * Math.pow(2, attempt);
-            opts.log.warn('ClickUp rate limited, backing off', {
-                kind: opts.kind,
-                attempt: attempt + 1,
-                delayMs: delay,
-            });
-            attempt += 1;
-            await sleep(delay);
-            continue;
-        }
-
-        if (res.status === 401 || res.status === 403) {
-            throw new Error(
-                `clickup: auth rejected (status ${res.status}) for ${opts.kind} — check token and scopes`,
-            );
-        }
-
-        if (!res.ok) {
-            throw new Error(`clickup: ${opts.kind} fetch failed with status ${res.status}`);
-        }
-
-        return res;
-    }
+    return httpFetchWithRetry(url, {
+        timeoutMs: opts.timeoutMs,
+        maxRetries: opts.maxRetries,
+        backoffBaseMs: opts.backoffBaseMs,
+        log: opts.log,
+        source: 'clickup',
+        kind: opts.kind,
+        // ClickUp uses the raw token in Authorization (NOT a Bearer prefix).
+        headers: {
+            Authorization: token,
+            Accept: 'application/json',
+        },
+        authHint: 'token and scopes',
+        rateLimitLabel: 'ClickUp',
+    });
 }
 
 async function buildEntry(
@@ -507,14 +476,6 @@ function formatTimestamp(ts: string | null | undefined): string {
     } catch {
         return '';
     }
-}
-
-function stringifyJson(payload: unknown): string {
-    return JSON.stringify(payload, null, 2);
-}
-
-function sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 interface ClickUpPageListing {

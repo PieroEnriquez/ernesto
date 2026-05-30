@@ -47,6 +47,13 @@ import {
     type ExtractionRequest,
     type ExtractionResult,
 } from '../define-extraction';
+import {
+    clampPageSize as httpClampPageSize,
+    DEFAULT_BACKOFF_BASE_MS,
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_TIMEOUT_MS,
+    fetchWithRetry as httpFetchWithRetry,
+} from './_http';
 
 export interface CrowdinPluginOptions {
     apiKey: string;
@@ -59,9 +66,6 @@ export interface CrowdinPluginOptions {
 }
 
 const DEFAULT_BASE_URL = 'https://api.crowdin.com/api/v2';
-const DEFAULT_TIMEOUT_MS = 30_000;
-const DEFAULT_MAX_RETRIES = 3;
-const DEFAULT_BACKOFF_BASE_MS = 500;
 const DEFAULT_PAGE_SIZE = 500;
 
 const GLOSSARY_CONTENT_TYPE = 'application/json';
@@ -300,59 +304,29 @@ async function listAll<T>(path: string, http: HttpCtx): Promise<T[]> {
     return collected;
 }
 
-async function fetchWithRetry(
+function fetchWithRetry(
     url: string,
     http: HttpCtx,
     meta: { kind: string; id: string },
 ): Promise<Response | 'not_found'> {
-    let attempt = 0;
-    while (true) {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), http.timeoutMs);
-        let res: Response;
-        try {
-            res = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    Authorization: `Bearer ${http.apiKey}`,
-                    Accept: 'application/json',
-                },
-                signal: controller.signal,
-            });
-        } catch (err) {
-            clearTimeout(timer);
-            const message = err instanceof Error ? err.message : String(err);
-            throw new Error(`crowdin: network error fetching ${meta.kind}: ${message}`);
-        }
-        clearTimeout(timer);
-
-        if (res.status === 404) return 'not_found';
-        if (res.status === 429 && attempt < http.maxRetries) {
-            const delay = http.backoffBaseMs * Math.pow(2, attempt);
-            http.log.warn('Crowdin rate limited, backing off', {
-                kind: meta.kind,
-                attempt: attempt + 1,
-                delayMs: delay,
-            });
-            attempt += 1;
-            await sleep(delay);
-            continue;
-        }
-        if (res.status === 401 || res.status === 403) {
-            throw new Error(
-                `crowdin: auth rejected (status ${res.status}) for ${meta.kind} — check apiKey and scopes`,
-            );
-        }
-        if (!res.ok) {
-            throw new Error(`crowdin: ${meta.kind} fetch failed with status ${res.status}`);
-        }
-        return res;
-    }
+    return httpFetchWithRetry(url, {
+        timeoutMs: http.timeoutMs,
+        maxRetries: http.maxRetries,
+        backoffBaseMs: http.backoffBaseMs,
+        log: http.log,
+        source: 'crowdin',
+        kind: meta.kind,
+        headers: {
+            Authorization: `Bearer ${http.apiKey}`,
+            Accept: 'application/json',
+        },
+        authHint: 'apiKey and scopes',
+        rateLimitLabel: 'Crowdin',
+    });
 }
 
 function clampPageSize(n: number): number {
-    if (!Number.isFinite(n)) return DEFAULT_PAGE_SIZE;
-    return Math.min(Math.max(Math.floor(n), 1), 500);
+    return httpClampPageSize(n, { max: 500, fallback: DEFAULT_PAGE_SIZE });
 }
 
 function slugify(name: string | number | undefined): string {
@@ -366,8 +340,4 @@ function slugify(name: string | number | undefined): string {
         .replace(/\s+/g, '-')
         .replace(/-+/g, '-')
         .replace(/^-|-$/g, '');
-}
-
-function sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
 }

@@ -28,6 +28,12 @@ import {
     type ExtractionRequest,
     type ExtractionResult,
 } from '../define-extraction';
+import {
+    DEFAULT_BACKOFF_BASE_MS,
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_TIMEOUT_MS,
+    fetchWithRetry as httpFetchWithRetry,
+} from './_http';
 
 export interface GitHubPluginOptions {
     token: string;
@@ -50,9 +56,6 @@ interface ParsedTarget {
 }
 
 const DEFAULT_BASE_URL = 'https://api.github.com';
-const DEFAULT_TIMEOUT_MS = 30_000;
-const DEFAULT_MAX_RETRIES = 3;
-const DEFAULT_BACKOFF_BASE_MS = 500;
 const DEFAULT_LIST_LIMIT = 30;
 const GITHUB_ACCEPT = 'application/vnd.github+json';
 
@@ -188,62 +191,26 @@ interface FetchWithRetryOpts {
     kind: TargetKind;
 }
 
-async function fetchWithRetry(
+function fetchWithRetry(
     url: string,
     token: string,
     opts: FetchWithRetryOpts,
 ): Promise<Response | 'not_found'> {
-    let attempt = 0;
-    // attempts: 1 initial + maxRetries retries
-    while (true) {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), opts.timeoutMs);
-        let res: Response;
-        try {
-            res = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    Accept: GITHUB_ACCEPT,
-                    'X-GitHub-Api-Version': '2022-11-28',
-                },
-                signal: controller.signal,
-            });
-        } catch (err) {
-            clearTimeout(timer);
-            const message = err instanceof Error ? err.message : String(err);
-            throw new Error(`github: network error fetching ${opts.kind}: ${message}`);
-        }
-        clearTimeout(timer);
-
-        if (res.status === 404) {
-            return 'not_found';
-        }
-
-        if (res.status === 429 && attempt < opts.maxRetries) {
-            const delay = opts.backoffBaseMs * Math.pow(2, attempt);
-            opts.log.warn('GitHub rate limited, backing off', {
-                kind: opts.kind,
-                attempt: attempt + 1,
-                delayMs: delay,
-            });
-            attempt += 1;
-            await sleep(delay);
-            continue;
-        }
-
-        if (res.status === 401 || res.status === 403) {
-            throw new Error(
-                `github: auth rejected (status ${res.status}) for ${opts.kind} — check token and scopes`,
-            );
-        }
-
-        if (!res.ok) {
-            throw new Error(`github: ${opts.kind} fetch failed with status ${res.status}`);
-        }
-
-        return res;
-    }
+    return httpFetchWithRetry(url, {
+        timeoutMs: opts.timeoutMs,
+        maxRetries: opts.maxRetries,
+        backoffBaseMs: opts.backoffBaseMs,
+        log: opts.log,
+        source: 'github',
+        kind: opts.kind,
+        headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: GITHUB_ACCEPT,
+            'X-GitHub-Api-Version': '2022-11-28',
+        },
+        authHint: 'token and scopes',
+        rateLimitLabel: 'GitHub',
+    });
 }
 
 // ─── Rendering ───────────────────────────────────────────────────────────────
@@ -397,8 +364,4 @@ ${filesSummary}
         content,
         contentType: 'text/markdown',
     };
-}
-
-function sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
 }

@@ -44,6 +44,12 @@ import {
     type ExtractionRequest,
     type ExtractionResult,
 } from '../define-extraction';
+import {
+    DEFAULT_BACKOFF_BASE_MS,
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_TIMEOUT_MS,
+    sleep,
+} from './_http';
 
 export interface SlackPluginOptions {
     token: string;
@@ -83,9 +89,6 @@ interface SlackApiErr {
 type SlackApiOutcome<T> = SlackApiOk<T> | SlackApiErr;
 
 const DEFAULT_BASE_URL = 'https://slack.com/api';
-const DEFAULT_TIMEOUT_MS = 30_000;
-const DEFAULT_MAX_RETRIES = 3;
-const DEFAULT_BACKOFF_BASE_MS = 500;
 const DEFAULT_HISTORY_LIMIT = 200;
 const DEFAULT_REPLIES_LIMIT = 200;
 /** Default cutoff window for `channel-threads:{id}` with no `:N` suffix. */
@@ -587,8 +590,4 @@ function formatTimestamp(ts: string): string {
     const seconds = parseFloat(ts);
     if (!Number.isFinite(seconds)) return ts;
     return new Date(seconds * 1000).toISOString();
-}
-
-function sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
 }

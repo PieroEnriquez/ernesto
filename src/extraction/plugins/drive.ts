@@ -37,13 +37,22 @@ import {
     type ExtractionRequest,
     type ExtractionResult,
 } from '../define-extraction';
+import {
+    DEFAULT_BACKOFF_BASE_MS,
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_TIMEOUT_MS,
+    sleep,
+} from './_http';
 
 const DRIVE_FILES_API = 'https://www.googleapis.com/drive/v3/files';
 const OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 
-const REQUEST_TIMEOUT_MS = 30_000;
-const RATE_LIMIT_RETRIES = 3;
-const RATE_LIMIT_BASE_DELAY_MS = 500;
+// drive keeps its bespoke request pipeline (401 token-refresh loop, body-text
+// error shaping, FetchOutcome return type) but shares the default constants and
+// the sleep helper with the rest of the HTTP plugins.
+const REQUEST_TIMEOUT_MS = DEFAULT_TIMEOUT_MS;
+const RATE_LIMIT_RETRIES = DEFAULT_MAX_RETRIES;
+const RATE_LIMIT_BASE_DELAY_MS = DEFAULT_BACKOFF_BASE_MS;
 
 const MIME_FOLDER = 'application/vnd.google-apps.folder';
 const MIME_DOC = 'application/vnd.google-apps.document';
@@ -501,8 +510,4 @@ function slugify(name: string): string {
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '');
     return base.length > 0 ? base : 'untitled';
-}
-
-function sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
 }

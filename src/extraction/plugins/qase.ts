@@ -37,6 +37,14 @@ import {
     type ExtractionRequest,
     type ExtractionResult,
 } from '../define-extraction';
+import {
+    clampPageSize as httpClampPageSize,
+    DEFAULT_BACKOFF_BASE_MS,
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_TIMEOUT_MS,
+    fetchWithRetry as httpFetchWithRetry,
+    stringifyJson,
+} from './_http';
 
 export interface QasePluginOptions {
     token: string;
@@ -58,9 +66,6 @@ interface ParsedTarget {
 }
 
 const DEFAULT_BASE_URL = 'https://api.qase.io/v1';
-const DEFAULT_TIMEOUT_MS = 30_000;
-const DEFAULT_MAX_RETRIES = 3;
-const DEFAULT_BACKOFF_BASE_MS = 500;
 const DEFAULT_PAGE_SIZE = 100;
 
 export function qasePlugin(opts: QasePluginOptions): ExtractionPlugin {
@@ -212,57 +217,25 @@ async function qaseRequest(
     opts: HttpOpts,
     meta: CallMeta,
 ): Promise<unknown | 'not_found'> {
-    let attempt = 0;
-    // attempts: 1 initial + maxRetries retries
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), opts.timeoutMs);
-        let res: Response;
-        try {
-            res = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    Token: opts.token,
-                    Accept: 'application/json',
-                },
-                signal: controller.signal,
-            });
-        } catch (err) {
-            clearTimeout(timer);
-            const message = err instanceof Error ? err.message : String(err);
-            throw new Error(`qase: network error fetching ${meta.kind}: ${message}`);
-        }
-        clearTimeout(timer);
-
-        if (res.status === 404) {
-            return 'not_found';
-        }
-
-        if (res.status === 429 && attempt < opts.maxRetries) {
-            const delay = opts.backoffBaseMs * Math.pow(2, attempt);
-            opts.ctx.log.warn('Qase rate limited, backing off', {
-                kind: meta.kind,
-                attempt: attempt + 1,
-                delayMs: delay,
-            });
-            attempt += 1;
-            await sleep(delay);
-            continue;
-        }
-
-        if (res.status === 401 || res.status === 403) {
-            throw new Error(
-                `qase: auth rejected (status ${res.status}) for ${meta.kind} — check token and scopes`,
-            );
-        }
-
-        if (!res.ok) {
-            throw new Error(`qase: ${meta.kind} fetch failed with status ${res.status}`);
-        }
-
-        return (await res.json()) as unknown;
+    const res = await httpFetchWithRetry(url, {
+        timeoutMs: opts.timeoutMs,
+        maxRetries: opts.maxRetries,
+        backoffBaseMs: opts.backoffBaseMs,
+        log: opts.ctx.log,
+        source: 'qase',
+        kind: meta.kind,
+        // Qase uses a custom `Token: <token>` header, NOT `Authorization: Bearer`.
+        headers: {
+            Token: opts.token,
+            Accept: 'application/json',
+        },
+        authHint: 'token and scopes',
+        rateLimitLabel: 'Qase',
+    });
+    if (res === 'not_found') {
+        return 'not_found';
     }
+    return (await res.json()) as unknown;
 }
 
 async function fetchAllCasesInSuite(
@@ -338,14 +311,5 @@ function getCaseId(testCase: unknown): string {
 }
 
 function clampPageSize(n: number): number {
-    if (!Number.isFinite(n) || n <= 0) return DEFAULT_PAGE_SIZE;
-    return Math.min(Math.max(1, Math.floor(n)), 100);
-}
-
-function stringifyJson(payload: unknown): string {
-    return JSON.stringify(payload, null, 2);
-}
-
-function sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    return httpClampPageSize(n, { max: 100, fallback: DEFAULT_PAGE_SIZE, rejectNonPositive: true });
 }
