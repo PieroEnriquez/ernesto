@@ -273,12 +273,12 @@ function providerField(
 function harnessField(
     fm: Record<string, unknown>,
     slug: string,
-): 'cas' | 'cursor' | 'fragua-pi' | undefined {
+): 'cas' | 'cursor' | 'fragua-pi' | 'remote-vm' | undefined {
     const v = fm.harness;
     if (v === undefined) return undefined;
-    if (v === 'cas' || v === 'cursor' || v === 'fragua-pi') return v;
+    if (v === 'cas' || v === 'cursor' || v === 'fragua-pi' || v === 'remote-vm') return v;
     throw new Error(
-        `managed-agents/${slug}.md: harness must be "cas" | "cursor" | "fragua-pi"`,
+        `managed-agents/${slug}.md: harness must be "cas" | "cursor" | "fragua-pi" | "remote-vm"`,
     );
 }
 
