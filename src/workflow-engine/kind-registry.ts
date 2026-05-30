@@ -226,10 +226,17 @@ export function mergeWorkflowPolicyDefaults(
 ): KindPolicy | undefined {
     const steps = declaration.steps;
     if (!steps) return policy;
-    const anyAgent = Object.values(steps).some(
-        (s) => (s as { kind?: string }).kind === 'agent',
-    );
-    if (!anyAgent) return policy;
+    // Agent steps and dynamic-workflow steps both need the workspace
+    // workdir + sandboxed native tools. The dynamic-workflow handler
+    // materializes its `.claude/workflows/<name>.js` into the worktree
+    // and reads the in-process ernesto MCP from `annotations.mcpServers`
+    // — both depend on the workspace-allocator + tool-surface-composer
+    // middleware chain, which only fires when `cwd === 'workspace-workdir'`.
+    const needsWorkspaceWorkdir = Object.values(steps).some((s) => {
+        const k = (s as { kind?: string }).kind;
+        return k === 'agent' || k === 'dynamic-workflow';
+    });
+    if (!needsWorkspaceWorkdir) return policy;
     // Agent workflows MUST run sandboxed inside a workspace workdir.
     // Default BOTH `cwd` (so the workspace-allocator allocates the
     // workdir) AND `tools.native` (so sandbox-bind installs the

@@ -56,11 +56,15 @@ export {
     compileDashboardSpecToWorkflow,
     validateWorkflow,
     isAgentStep,
+    isDynamicWorkflowStep,
+    parseDynamicWorkflowJs,
+    DynamicWorkflowParseError,
 } from './workflows';
 export type {
     WorkflowDeclaration, WorkflowStep, RouteStep, InputStep,
     AgentStep, AgentHarness,
     GroupStep,
+    DynamicWorkflowStep, DynamicWorkflowMeta,
     WorkflowInput, WorkflowOutput, StepKind,
     WorkflowValidationResult, WorkflowValidationError, WorkflowLintCode,
     WorkflowValidateContext,

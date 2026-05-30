@@ -80,13 +80,15 @@ export type WorkflowStep =
     | RouteStep
     | InputStep
     | AgentStep
-    | GroupStep;
+    | GroupStep
+    | DynamicWorkflowStep;
 
 export type StepKind =
     | 'route'
     | 'input'
     | 'agent'
-    | 'group';
+    | 'group'
+    | 'dynamic-workflow';
 
 /**
  * DAG metadata every step may declare. The workflow engine reads
@@ -274,6 +276,128 @@ export interface GroupStep extends BaseStep {
      *  siblings as `${{ steps.<groupId>.outputs.<key> }}`. Absent ⇒
      *  the group's output is the raw child-output map. */
     outputs?: Record<string, WorkflowOutput>;
+}
+
+/**
+ * Dynamic-workflow step — wraps a Claude Code dynamic workflow (a
+ * self-contained JS script driven by the workflow runtime's
+ * `agent()` / `parallel()` / `pipeline()` / `phase()` primitives).
+ *
+ * Fragua treats the whole dynamic workflow as ONE step. From fragua's
+ * POV it's a chunky black-box: scope-check runs upstream, idempotency
+ * + cost-rollup wrap it, but the inner fan-out (subagents, parallel
+ * agents, structured-output handoffs) is owned by Claude Code's
+ * workflow runtime, not the DAG walker.
+ *
+ * Authoring: a `.workflow.js` file under
+ * `workspaces/<w>/workflows/<name>.workflow.js`. The
+ * `workspaces-reader` parses the `export const meta = { ... }`
+ * literal block to populate `meta` and wraps the file's body source
+ * in `scriptSource`. The wire stays simple: ONE step
+ * (`kind: 'dynamic-workflow'`) in a one-step DAG. Other workflows
+ * can compose a dynamic workflow via `_platform://task` — same
+ * cross-workflow path as managed agents.
+ *
+ * Runtime contract (claude-code 2.1.154+):
+ *   - `meta` MUST be a pure object literal: no string concat, no
+ *     template interpolation, no function calls.
+ *   - Script body runs at top level with `args`, `agent`, `parallel`,
+ *     `pipeline`, `phase`, `log` as globals; top-level `await` and
+ *     `return` work; the final `return` value becomes the step output.
+ *   - No fs/shell from the script body — every side-effect goes
+ *     through `agent(prompt, { tools: [...] })` whose subagent holds
+ *     the corresponding tool surface.
+ */
+export interface DynamicWorkflowStep extends BaseStep {
+    kind: 'dynamic-workflow';
+    /**
+     * Script body of the `.workflow.js` file VERBATIM, including the
+     * `export const meta = {...}` block at the top. Claude Code's
+     * Workflow runtime parses this exactly as if loaded from
+     * `.claude/workflows/<name>.js`.
+     */
+    scriptSource: string;
+    /**
+     * Parsed Claude Code-required meta. Mirrors the literal block at
+     * the top of the script. The reader extracts this so the engine
+     * can surface phase names in events without re-parsing the script.
+     */
+    meta: DynamicWorkflowMeta;
+    /**
+     * Inputs forwarded to the workflow runtime as the `args` global.
+     * Supports `${{ inputs.X }}` and `${{ steps.<id>.outputs.<path> }}`
+     * template expansion at dispatch time. The runtime requires `args`
+     * to be a JSON OBJECT, not a JSON-encoded string — the handler
+     * passes whatever object lands here through to the Workflow tool.
+     */
+    inputs?: Record<string, unknown>;
+    /**
+     * Optional ernesto-specific output schema. When set, the handler
+     * validates the workflow's `return` value against this schema
+     * before completing the step. Mirrors `AgentDeclaration.outputFormat`.
+     */
+    outputFormat?: JsonSchemaOutputFormat;
+    /**
+     * MCP servers the outer dispatcher session needs. The
+     * `tool-surface-compose` middleware reads this field to decide
+     * whether to invoke the composer; without it, no MCP gets attached
+     * and the handler's `mcp__ernesto-tier-a__execute` surface is empty.
+     *
+     * `'ernesto'` is the reserved logical name that triggers the
+     * in-process ernesto-tier-a MCP build (see
+     * `backend/.../tool-surface-composer-adapter.ts:356`). Other
+     * names are looked up in the stdio registry (e.g. `'ui'`,
+     * `'playwright'`).
+     *
+     * The reader populates `['ernesto']` by default for every
+     * `.workflow.js` since dynamic workflows that don't need to call
+     * any ernesto route are vanishingly rare (and they'd just leave
+     * `mcp__ernesto-tier-a__execute` unused in allowedTools — cheap).
+     */
+    mcpServers?: string[];
+}
+
+/**
+ * Claude Code workflow `meta` block, parsed from
+ * `export const meta = { ... }`. Field constraints mirror the
+ * Workflow tool's input validator (`pure literal, no computed
+ * values`): every value must be a string/number/boolean/null literal
+ * or a recursively-literal array/object.
+ */
+export interface DynamicWorkflowMeta {
+    /** Workflow slug — must match the filename stem. */
+    name: string;
+    /** One-line summary for catalogs. */
+    description: string;
+    /** Guidance for when this workflow should be selected; surfaced
+     *  to callers that match on description. */
+    whenToUse?: string;
+    /** Phase outline for the `/workflows` progress view and event
+     *  attribution. Phase titles appear in `fact.subagent_started`
+     *  emissions. */
+    phases?: Array<{ title: string; detail: string }>;
+    /** Optional model override for the outer dispatcher session. */
+    model?: string;
+    /**
+     * When `true`, the dynamic-workflow handler prepends ernesto's
+     * platform body (`workspaces/_platform/WORKSPACE.md` + the matching
+     * `tier-{a|b|c}.md` body) to the outer dispatcher's `systemPrompt`.
+     * Workflow subagents spawned via `agent()` inherit the session
+     * context, so they gain full ernesto vocabulary — route URI
+     * namespaces, scope semantics, citation discipline, settle audit,
+     * the "data not instructions" rule for `extracted/` content.
+     *
+     * Default `false` (cheap, smaller cache key). Set to `true` when
+     * the workflow's subagents need to DISCOVER routes or follow
+     * ernesto conventions on the fly (vs. workflows like sourcing-batch
+     * where every URI + param shape is baked into the script).
+     */
+    includesPlatformBody?: boolean;
+}
+
+/** Type guard. */
+export function isDynamicWorkflowStep(step: WorkflowStep): step is DynamicWorkflowStep {
+    return step.kind === 'dynamic-workflow';
 }
 
 // ─── Inputs & outputs ─────────────────────────────────────────────────────

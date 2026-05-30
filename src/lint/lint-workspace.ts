@@ -826,5 +826,11 @@ function workflowErrorToLintError(
  * into their own diff loops.
  */
 export function isWorkflowPath(p: string): boolean {
+    // `.workflow.meta.yaml` is the ernesto-frontmatter sidecar for a
+    // `.workflow.js` dynamic workflow; it intentionally does NOT carry
+    // a full WorkflowDeclaration shape, so the workflow lint rules don't
+    // apply. The workspaces-reader parses the sidecar separately and
+    // merges its fields into the declaration the .workflow.js provides.
+    if (p.endsWith('.workflow.meta.yaml')) return false;
     return /^workspaces\/[^/]+\/workflows\/[^/]+\.(yaml|yml|md)$/.test(p);
 }

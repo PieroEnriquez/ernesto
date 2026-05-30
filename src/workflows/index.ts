@@ -16,7 +16,7 @@ export { compileDashboardSpecToWorkflow } from './compile-dashboard';
 export { validateWorkflow } from './validate';
 export type { WorkflowValidateContext } from './validate';
 
-export { isAgentStep } from './types';
+export { isAgentStep, isDynamicWorkflowStep } from './types';
 export type {
     WorkflowDeclaration,
     WorkflowStep,
@@ -26,6 +26,8 @@ export type {
     AgentStep,
     AgentHarness,
     GroupStep,
+    DynamicWorkflowStep,
+    DynamicWorkflowMeta,
     WorkflowInput,
     WorkflowOutput,
     StepKind,
@@ -35,3 +37,9 @@ export type {
     SystemPromptConfig,
     JsonSchemaOutputFormat,
 } from './types';
+
+export {
+    parseDynamicWorkflowJs,
+    DynamicWorkflowParseError,
+} from './parse-dynamic-js';
+export type { ParsedDynamicWorkflow } from './parse-dynamic-js';
