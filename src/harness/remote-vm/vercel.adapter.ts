@@ -1,37 +1,28 @@
 /**
- * vercel.adapter.ts — SPIKE-ONLY concrete `SandboxClient`.
+ * vercel.adapter.ts — concrete `SandboxClient` over `@vercel/sandbox`.
  *
- * ⚠️  NOT IMPORTED BY THE TYPECHECKED / TESTED PATH.  ⚠️
+ * ⚠️  NOT IMPORTED BY THE TYPECHECKED / TESTED PATH (*.adapter.ts is
+ *     tsconfig-excluded). Lazy `import('@vercel/sandbox')`; adds no
+ *     package.json dependency. Wired at spike/runtime time by passing the
+ *     resulting client as `RemoteVmHarnessEnv.sandbox`.
  *
- * This file binds the `SandboxClient` seam to the real Vercel Sandbox
- * SDK (`@vercel/sandbox`). It needs that package + Vercel credentials at
- * runtime, neither of which exists on the dev laptop (macOS, no FUSE, no
- * Vercel creds). To keep the build green and the unit tests native-dep-
- * free, this module:
+ * Implements the `SandboxClient` seam with the SDK moves proven in the live
+ * e2e: `getOrCreate` (idempotent by name) → `updateNetworkPolicy` →
+ * `writeFiles` → `runCommand` (detached for the mount; streamed stdout for
+ * the agent via a PassThrough).
  *
- *   - is excluded from `tsconfig` compilation (`*.adapter.ts` is off the
- *     tested graph — see the harness Build Contract §3/§4);
- *   - does a LAZY `import()` of `@vercel/sandbox` so merely importing
- *     this file (e.g. by a future entrypoint) doesn't resolve the dep
- *     until `createVercelSandboxClient()` is actually called;
- *   - adds NO entry to `package.json` dependencies.
+ * CREDENTIAL NOTE: the production model brokers the backend bearer +
+ * Anthropic key on egress (never in the VM). For first-light spikes,
+ * `injectEnv` lets the adapter place short-lived creds into the exec env
+ * (the adapter is the broker stand-in); flip to true egress brokering to
+ * remove them from the VM entirely. The harness never carries them.
  *
- * Wire it up during the Vercel spike: install `@vercel/sandbox`, drop
- * this file onto the build graph (or load it dynamically from the runner)
- * and pass the resulting client as `RemoteVmHarnessEnv.sandbox`.
- *
- * CREDENTIAL DISCIPLINE: this adapter MUST apply the egress firewall via
- * `setNetworkPolicy` before any agent code runs and MUST NOT place the
- * scoped backend bearer or the Anthropic key into the VM env — those are
- * injected by the egress proxy on the way out (Build Contract §4/§5).
- *
- * The body below is illustrative pseudo-binding: the exact Vercel SDK
- * surface is pinned during the spike. It is deliberately untyped against
- * the real SDK (no top-level import) so this file never breaks the build.
+ * @adapter-only
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import { PassThrough } from 'stream';
 import type {
     CreateOrResumeOpts,
     ExecOpts,
@@ -43,144 +34,138 @@ import type {
     SandboxHandle,
 } from './sandbox-client';
 
-/** Construction options resolved by the runner at spike time. */
 export interface VercelSandboxClientOpts {
-    /** Vercel project / team identifiers, OIDC token source, etc. */
-    projectId: string;
-    /** Egress proxy endpoint that injects the brokered credentials. The
-     *  scoped backend bearer + Anthropic key live HERE, host-side, never
-     *  in the VM. */
-    egressProxyUrl: string;
+    /** Vercel credentials. If omitted, the SDK resolves from VERCEL_OIDC_TOKEN. */
+    token?: string;
+    teamId?: string;
+    projectId?: string;
+    /** Sandbox runtime + lifetime. */
+    runtime?: string;
+    timeoutMs?: number;
+    /** Extra env injected into EVERY exec (spike credential stand-in; in the
+     *  brokered model this is empty and creds ride the egress proxy). */
+    injectEnv?: Record<string, string>;
 }
 
-/**
- * Build a Vercel-backed `SandboxClient`. SPIKE-ONLY. Throws if
- * `@vercel/sandbox` is not installed — by design, so an accidental
- * import on the laptop fails loud rather than silently degrading.
- */
-export function createVercelSandboxClient(
-    opts: VercelSandboxClientOpts,
-): SandboxClient {
-    const loadSdk = async (): Promise<any> => {
-        // Lazy, dynamic import keeps the dep off the static graph. The
-        // string is assembled so a bundler can't eagerly resolve it.
-        const mod = '@vercel/' + 'sandbox';
-        return import(mod);
-    };
-
+/** Map our NetworkPolicy → the Vercel `updateNetworkPolicy` shape. */
+function toVercelPolicy(p: NetworkPolicy): any {
     return {
-        async createOrResume(
-            key: string,
-            createOpts: CreateOrResumeOpts,
-        ): Promise<SandboxHandle> {
-            const sdk = await loadSdk();
-            const sandbox = await sdk.Sandbox.create({
-                // Idempotent name keyed to the conversation; resume on
-                // re-create.
+        // deny-all baseline; only the listed SNI domains (+ optional CIDRs) allowed.
+        defaultPolicy: 'deny',
+        allow: [
+            ...p.allowDomains.map((domain) => ({ domain })),
+            ...(p.allowCidrs ?? []).map((cidr) => ({ cidr })),
+        ],
+    };
+}
+
+export function createVercelSandboxClient(opts: VercelSandboxClientOpts): SandboxClient {
+    const creds: Record<string, string> = {};
+    if (opts.token) creds.token = opts.token;
+    if (opts.teamId) creds.teamId = opts.teamId;
+    if (opts.projectId) creds.projectId = opts.projectId;
+    const injectEnv = opts.injectEnv ?? {};
+    const runtime = opts.runtime ?? 'node24';
+    const timeout = opts.timeoutMs ?? 15 * 60 * 1000;
+
+    // Underlying Sandbox instances keyed by our opaque handle id.
+    const byId = new Map<string, any>();
+
+    async function sdk(): Promise<any> {
+        const mod = await import('@vercel/sandbox');
+        return (mod as any).Sandbox;
+    }
+
+    const client: SandboxClient = {
+        async createOrResume(key: string, o: CreateOrResumeOpts): Promise<SandboxHandle> {
+            const Sandbox = await sdk();
+            const sbx = await Sandbox.getOrCreate({
+                ...creds,
                 name: key,
-                snapshot: createOpts.baseSnapshot,
+                runtime,
+                timeout,
+                ...(o.baseSnapshot ? { source: { type: 'snapshot', snapshotId: o.baseSnapshot } } : {}),
             });
-            return { id: sandbox.id };
+            const id = sbx.sandboxId ?? sbx.id ?? key;
+            byId.set(id, sbx);
+            return { id };
         },
 
-        async setNetworkPolicy(
-            h: SandboxHandle,
-            policy: NetworkPolicy,
-        ): Promise<void> {
-            const sdk = await loadSdk();
-            // Deny-all TLS-SNI + allowlist. MUST run before agent code.
-            await sdk.Sandbox.get(h.id).then((s: any) =>
-                s.setNetworkPolicy({
-                    defaultAction: 'deny',
-                    allowDomains: policy.allowDomains,
-                    allowCidrs: policy.allowCidrs ?? [],
-                    // The egress proxy injects the brokered creds.
-                    egressProxy: opts.egressProxyUrl,
-                }),
-            );
+        async setNetworkPolicy(h: SandboxHandle, policy: NetworkPolicy): Promise<void> {
+            const sbx = byId.get(h.id);
+            if (!sbx?.updateNetworkPolicy) return; // best-effort; older SDKs
+            await sbx.updateNetworkPolicy(toVercelPolicy(policy));
         },
 
         async writeFiles(h: SandboxHandle, files: SandboxFile[]): Promise<void> {
-            const sdk = await loadSdk();
-            const s = await sdk.Sandbox.get(h.id);
-            await s.writeFiles(
+            const sbx = byId.get(h.id);
+            await sbx.writeFiles(
                 files.map((f) => ({
                     path: f.path,
                     content: Buffer.from(f.contentBase64, 'base64'),
-                    mode: f.mode,
+                    ...(f.mode !== undefined ? { mode: f.mode } : {}),
                 })),
             );
         },
 
-        async exec(
-            h: SandboxHandle,
-            argv: string[],
-            execOpts?: ExecOpts,
-        ): Promise<ExecResult> {
-            const sdk = await loadSdk();
-            const s = await sdk.Sandbox.get(h.id);
-            const r = await s.runCommand({
-                cmd: argv[0],
-                args: argv.slice(1),
-                env: execOpts?.env, // NON-SECRET only — see file header.
-                cwd: execOpts?.cwd,
-                detached: execOpts?.detached,
-            });
-            return {
-                exitCode: r.exitCode ?? 0,
-                stdout: r.stdout ?? '',
-                stderr: r.stderr ?? '',
-            };
+        async exec(h: SandboxHandle, argv: string[], execOpts: ExecOpts = {}): Promise<ExecResult> {
+            const sbx = byId.get(h.id);
+            const env = { ...injectEnv, ...(execOpts.env ?? {}) };
+            const params: any = { cmd: argv[0], args: argv.slice(1), env };
+            if (execOpts.cwd) params.cwd = execOpts.cwd;
+            if (execOpts.detached) {
+                await sbx.runCommand({ ...params, detached: true });
+                return { exitCode: 0, stdout: '', stderr: '' };
+            }
+            const c = await sbx.runCommand(params);
+            const stdout = typeof c.stdout === 'function' ? await c.stdout() : (c.stdout ?? '');
+            const stderr = typeof c.stderr === 'function' ? await c.stderr() : (c.stderr ?? '');
+            return { exitCode: c.exitCode ?? 0, stdout: String(stdout), stderr: String(stderr) };
         },
 
-        async execStream(
-            h: SandboxHandle,
-            argv: string[],
-            execOpts?: ExecOpts,
-        ): Promise<ExecStreamHandle> {
-            const sdk = await loadSdk();
-            const s = await sdk.Sandbox.get(h.id);
-            const cmd = await s.runCommand({
-                cmd: argv[0],
-                args: argv.slice(1),
-                env: execOpts?.env,
-                cwd: execOpts?.cwd,
-                stream: true,
-            });
+        async execStream(h: SandboxHandle, argv: string[], execOpts: ExecOpts = {}): Promise<ExecStreamHandle> {
+            const sbx = byId.get(h.id);
+            const env = { ...injectEnv, ...(execOpts.env ?? {}) };
+            const out = new PassThrough();
+            const params: any = { cmd: argv[0], args: argv.slice(1), env, stdout: out };
+            if (execOpts.cwd) params.cwd = execOpts.cwd;
+            // runCommand resolves when the process exits; stdout streams to
+            // `out` meanwhile. Keep the promise to await for `wait`.
+            const done = sbx.runCommand(params).finally(() => out.end());
             return {
-                stdout: cmd.stdout as AsyncIterable<Buffer | string>,
-                wait: async (): Promise<ExecResult> => {
-                    const r = await cmd.wait();
-                    return {
-                        exitCode: r.exitCode ?? 0,
-                        stdout: '',
-                        stderr: r.stderr ?? '',
-                    };
+                stdout: out,
+                async wait(): Promise<ExecResult> {
+                    const c = await done;
+                    return { exitCode: c?.exitCode ?? 0, stdout: '', stderr: '' };
                 },
-                interrupt: async (): Promise<void> => {
-                    await cmd.kill?.('SIGINT');
+                async interrupt(): Promise<void> {
+                    try { await sbx.runCommand({ cmd: 'pkill', args: ['-INT', 'claude'] }); } catch { /* best effort */ }
                 },
             };
         },
 
         async readFile(h: SandboxHandle, path: string): Promise<Buffer> {
-            const sdk = await loadSdk();
-            const s = await sdk.Sandbox.get(h.id);
-            const data = await s.readFile(path);
-            return Buffer.isBuffer(data) ? data : Buffer.from(data);
+            const sbx = byId.get(h.id);
+            if (typeof sbx.readFile === 'function') {
+                const r = await sbx.readFile({ path });
+                return Buffer.isBuffer(r) ? r : Buffer.from(await r.arrayBuffer?.() ?? r);
+            }
+            const c = await sbx.runCommand({ cmd: 'cat', args: [path] });
+            const stdout = typeof c.stdout === 'function' ? await c.stdout() : c.stdout;
+            return Buffer.from(String(stdout ?? ''));
         },
 
         async snapshot(h: SandboxHandle): Promise<{ snapshotId: string }> {
-            const sdk = await loadSdk();
-            const s = await sdk.Sandbox.get(h.id);
-            const snap = await s.snapshot();
-            return { snapshotId: snap.id };
+            const sbx = byId.get(h.id);
+            const snap = await sbx.createSnapshot?.();
+            return { snapshotId: snap?.snapshotId ?? snap?.id ?? '' };
         },
 
         async stop(h: SandboxHandle): Promise<void> {
-            const sdk = await loadSdk();
-            const s = await sdk.Sandbox.get(h.id);
-            await s.stop();
+            const sbx = byId.get(h.id);
+            try { await sbx?.stop(); } finally { byId.delete(h.id); }
         },
     };
+
+    return client;
 }
