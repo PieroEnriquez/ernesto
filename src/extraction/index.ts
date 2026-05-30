@@ -3,8 +3,6 @@ export type {
     ExtractionPlugin,
     ExtractionPluginConfig,
     ExtractionContext,
-    ExtractionLogger,
-    ExtractionUser,
     ExtractionRequest,
     ExtractionResult,
     ExtractionEntry,

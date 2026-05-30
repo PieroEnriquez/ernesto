@@ -7,9 +7,7 @@ export type {
     Route,
     RouteConfig,
     RouteContext,
-    RouteLogger,
     RouteScope,
-    RouteUser,
     DynamicScope,
 } from './define-route';
 

@@ -1,24 +1,9 @@
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
-import { promises as fs } from 'node:fs';
-import * as os from 'node:os';
-import * as path from 'node:path';
+import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
 import { defineRoute } from '../define-route';
 import type { RouteContext } from '../define-route';
 import { RouteRegistry } from '../route-registry';
 import { dispatchRoute } from '../dispatch';
-
-let TMP_WORKDIR = '';
-beforeAll(async () => {
-    TMP_WORKDIR = await fs.mkdtemp(
-        path.join(os.tmpdir(), 'ernesto-dispatch-test-'),
-    );
-});
-afterAll(async () => {
-    if (TMP_WORKDIR) {
-        await fs.rm(TMP_WORKDIR, { recursive: true, force: true });
-    }
-});
 
 const makeCtx = (scopes: Iterable<string>): RouteContext => ({
     user: { id: 'u1' },
@@ -314,9 +299,6 @@ describe('dispatchRoute', () => {
             {
                 ...makeCtx(['test:read']),
                 emitComponent: (c) => emitted.push(c as { kind: string }),
-                archiveResults: true,
-                workdirRoot: TMP_WORKDIR,
-                runId: 'rid-1',
             },
         );
 
@@ -325,14 +307,10 @@ describe('dispatchRoute', () => {
 
         // Only the table — no synthetic attachment from dispatch. Each
         // surface's renderer decides whether/how to attach (Slack writes
-        // a CSV; CLI may show a path breadcrumb; web shows inline).
+        // a CSV; CLI may show a path breadcrumb; web shows inline). The
+        // archive + `file` projection lives in the `execute` verb, not in
+        // this sync dispatch primitive.
         expect(emitted.map((c) => c.kind)).toEqual(['table']);
-        // The archive `file` is still in the envelope so the agent can
-        // `Read` it on follow-up turns and renderers can derive their
-        // own attachment policy from it.
-        if (!result.ok) return;
-        expect(typeof result.file).toBe('string');
-        expect(result.file).toMatch(/_results\/.+--renderer-owns-attach\.json$/);
     });
 
     it('omits staged when the render manifest is absent', async () => {

@@ -18,22 +18,12 @@
 
 import type { z } from 'zod';
 import type { RenderEntry } from './render';
+import type { Logger, Principal } from '../shared/types';
 
 export type RouteScope = string;
 
-export interface RouteLogger {
-    info: (msg: string, meta?: unknown) => void;
-    warn: (msg: string, meta?: unknown) => void;
-    error: (msg: string, meta?: unknown) => void;
-}
-
-export interface RouteUser {
-    id: string;
-    email?: string;
-}
-
 export interface RouteContext {
-    user: RouteUser;
+    user: Principal;
     scopes: ReadonlySet<RouteScope>;
     /** Path to the on-disk working tree when invoked inside a workdir. Absent
      *  for direct HTTP/dispatch paths that do not yet have a workdir bound
@@ -41,7 +31,7 @@ export interface RouteContext {
      *  tests). Handlers that require it must assert and surface a clear
      *  error — there is no implicit fallback. */
     workdirRoot?: string;
-    log: RouteLogger;
+    log: Logger;
     /**
      * Slug of the agent currently running this dispatch — populated by
      * the backend MCP server adapter at session creation time. Absent
@@ -115,22 +105,6 @@ export interface RouteContext {
      * from outside a workflow run (top-level HTTP, tests).
      */
     inheritedRouting?: Readonly<Record<string, unknown>>;
-    /**
-     * Override for the inline preview row cap. Default is 5 rows. `0`
-     * suppresses the inline preview entirely (agent gets only the
-     * `file` pointer). The string sentinel `'all'` bypasses the
-     * compactor and inlines the full data verbatim (caller-acknowledged
-     * token cost). Plumbed through by `handleExecute`.
-     */
-    previewLimit?: number | 'all';
-    /**
-     * Opt-in: when `true`, dispatch archives the full route response
-     * to `<workdir>/workspaces/<ws>/_results/...json` and attaches
-     * `preview` + `file` fields to the data the caller receives. The
-     * `execute` verb sets this; internal / test dispatchers leave it
-     * unset to preserve the legacy `{ data: <route-output> }` shape.
-     */
-    archiveResults?: boolean;
 }
 
 /**

@@ -6,26 +6,10 @@
  */
 
 import type { ExtractionPlugin } from './define-extraction';
+import { KeyedRegistry } from '../shared/keyed-registry';
 
-export class ExtractionRegistry {
-    private readonly bySource = new Map<string, ExtractionPlugin>();
-
-    register(plugin: ExtractionPlugin): void {
-        if (this.bySource.has(plugin.source)) {
-            throw new Error(`ExtractionRegistry: duplicate source: ${plugin.source}`);
-        }
-        this.bySource.set(plugin.source, plugin);
-    }
-
-    get(source: string): ExtractionPlugin | undefined {
-        return this.bySource.get(source);
-    }
-
-    has(source: string): boolean {
-        return this.bySource.has(source);
-    }
-
-    list(): ExtractionPlugin[] {
-        return Array.from(this.bySource.values());
+export class ExtractionRegistry extends KeyedRegistry<ExtractionPlugin> {
+    constructor() {
+        super((plugin) => plugin.source, 'ExtractionRegistry', 'source');
     }
 }

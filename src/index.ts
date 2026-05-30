@@ -79,7 +79,7 @@ export {
     RouteRegistry,
 } from './route';
 export type {
-    Route, RouteConfig, RouteContext, RouteLogger, RouteScope, RouteUser,
+    Route, RouteConfig, RouteContext, RouteScope,
     DynamicScope,
     DispatchResult, DispatchErrorCode,
     RenderEntry, WhenClause, ManifestComponent,
@@ -119,7 +119,6 @@ export type {
     ExecuteInput, ExecuteVerbContext, ExecuteVerbLogger,
     SettleInput as SettleVerbInput,
     SettleVerbContext, SettleVerbLogger, SettleVerbHooks, SettleVerbResult,
-    VerbLogger, VerbUser,
 } from './agent-verbs';
 
 // ─── Dashboards spec ─────────────────────────────────────────────────────
@@ -207,8 +206,8 @@ export {
     crowdinPlugin, devinPlugin, redshiftSchemaPlugin,
 } from './extraction';
 export type {
-    ExtractionPlugin, ExtractionPluginConfig, ExtractionContext, ExtractionLogger,
-    ExtractionUser, ExtractionRequest, ExtractionResult, ExtractionEntry,
+    ExtractionPlugin, ExtractionPluginConfig, ExtractionContext,
+    ExtractionRequest, ExtractionResult, ExtractionEntry,
     ExtractionScope,
     DispatchExtractionResult, DispatchExtractionErrorCode,
     ClickUpPluginOptions,

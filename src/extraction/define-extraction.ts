@@ -15,23 +15,14 @@
  * `{ id, email? }`.
  */
 
+import type { Logger, Principal } from '../shared/types';
+
 export type ExtractionScope = string;
 
-export interface ExtractionLogger {
-    info: (msg: string, meta?: unknown) => void;
-    warn: (msg: string, meta?: unknown) => void;
-    error: (msg: string, meta?: unknown) => void;
-}
-
-export interface ExtractionUser {
-    id: string;
-    email?: string;
-}
-
 export interface ExtractionContext {
-    user: ExtractionUser;
+    user: Principal;
     scopes: ReadonlySet<ExtractionScope>;
-    log: ExtractionLogger;
+    log: Logger;
 }
 
 export interface ExtractionRequest {

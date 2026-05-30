@@ -7,13 +7,10 @@
  * HTTPS endpoint) and inject side-effect implementations via `hooks`.
  */
 
-export interface VerbLogger {
-    info: (msg: string, meta?: unknown) => void;
-    warn: (msg: string, meta?: unknown) => void;
-    error: (msg: string, meta?: unknown) => void;
-}
+import type { Logger, Principal } from '../shared/types';
 
-export interface VerbUser {
-    id: string;
-    email?: string;
-}
+/** @deprecated alias for the unified {@link Logger}. */
+export type VerbLogger = Logger;
+
+/** @deprecated alias for the unified {@link Principal}. */
+export type VerbUser = Principal;

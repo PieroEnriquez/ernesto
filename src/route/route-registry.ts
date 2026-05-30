@@ -6,6 +6,7 @@
  */
 
 import type { Route } from './define-route';
+import { KeyedRegistry } from '../shared/keyed-registry';
 
 /**
  * Per-route custom compactor — overrides the generic `compactify`
@@ -17,27 +18,11 @@ import type { Route } from './define-route';
  */
 export type RouteCompactor = (data: unknown, limit: number) => unknown;
 
-export class RouteRegistry {
-    private readonly byUri = new Map<string, Route>();
+export class RouteRegistry extends KeyedRegistry<Route> {
     private readonly compactors = new Map<string, RouteCompactor>();
 
-    register(route: Route): void {
-        if (this.byUri.has(route.uri)) {
-            throw new Error(`RouteRegistry: duplicate URI: ${route.uri}`);
-        }
-        this.byUri.set(route.uri, route);
-    }
-
-    get(uri: string): Route | undefined {
-        return this.byUri.get(uri);
-    }
-
-    has(uri: string): boolean {
-        return this.byUri.has(uri);
-    }
-
-    list(): Route[] {
-        return Array.from(this.byUri.values());
+    constructor() {
+        super((route) => route.uri, 'RouteRegistry', 'URI');
     }
 
     /** Register a per-route compactor. Caller responsible for routes

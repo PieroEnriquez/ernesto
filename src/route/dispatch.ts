@@ -18,8 +18,6 @@ import type { RouteRegistry } from './route-registry';
 import type { Route } from './define-route';
 import type { RouteContext, RouteScope } from './define-route';
 import { resolveRouteScope } from './define-route';
-import { archiveRouteResult } from '../route-results/archive';
-import { compactify } from '../route-results/compactify';
 import { sketchComponents } from './stage-sketch';
 import { applyRenderManifest } from './render';
 
@@ -36,11 +34,13 @@ export type DispatchResult =
     | {
           ok: true;
           data: unknown;
-          /** Compact preview of the full route response — set only when
-           *  `ctx.archiveResults` is on AND `ctx.previewLimit !== 0`. */
+          /** Compact preview of the full route response. Populated by the
+           *  `execute` verb's archive+preview projection (`handleExecute`);
+           *  the sync dispatch primitive itself never sets it. */
           preview?: unknown;
           /** Workdir-relative path to the archived full route response.
-           *  Set only when `ctx.archiveResults` is on (and archive succeeded). */
+           *  Populated by the `execute` verb's archive+preview projection
+           *  (`handleExecute`); the sync dispatch primitive never sets it. */
           file?: string;
       }
     | { ok: false; error: DispatchErrorCode; details?: unknown };
@@ -55,7 +55,7 @@ export async function dispatchRoute(
     if (!route) {
         return { ok: false, error: 'route_not_found', details: { uri } };
     }
-    return dispatchResolvedRoute(route, params, ctx, registry);
+    return dispatchResolvedRoute(route, params, ctx);
 }
 
 /**
@@ -65,15 +65,14 @@ export async function dispatchRoute(
  * the kind registry) and as the body of `dispatchRoute` after its
  * lookup.
  *
- * The optional `registry` argument is read only for per-route preview
- * compactors during the archive+preview projection (`ctx.archiveResults`).
- * Callers that don't set `archiveResults` may omit it.
+ * Archive + preview projection (the agent-facing `preview` + `file`
+ * fields) lives in the `execute` verb's `handleExecute`, not here — this
+ * primitive stays focused on routing.
  */
 export async function dispatchResolvedRoute(
     route: Route,
     params: unknown,
     ctx: RouteContext,
-    registry?: RouteRegistry,
 ): Promise<DispatchResult> {
     // Validate input BEFORE resolving scope. Dynamic-scope routes
     // (e.g. `_platform://list-dashboards`, scope =
@@ -186,65 +185,10 @@ export async function dispatchResolvedRoute(
         }
     }
 
-    // Archive + preview — only when the caller opts in (agent context).
-    // Internal / test dispatchers leave `archiveResults` unset and keep
-    // the legacy `{ data: <route-output> }` shape.
-    if (ctx.archiveResults && ctx.workdirRoot) {
-        const previewLimitRaw = ctx.previewLimit ?? 5;
-        const inlineAll = previewLimitRaw === 'all';
-        const previewLimit = inlineAll ? 0 : Math.max(0, Number(previewLimitRaw) || 0);
-        const runId = ctx.runId ?? generateRunId();
-        let file: string | undefined;
-        try {
-            file = await archiveRouteResult({
-                workdir: ctx.workdirRoot,
-                uri: route.uri,
-                params: (parsedInput.data as Record<string, unknown>) ?? {},
-                runId,
-                data: parsedOutput.data,
-                log: ctx.log,
-            });
-        } catch (err) {
-            ctx.log.warn('archiveRouteResult failed — proceeding without file', {
-                uri: route.uri,
-                errorMessage: (err as Error).message,
-            });
-        }
-        let preview: unknown;
-        if (inlineAll) {
-            // Caller asked for full inline data — no compactor.
-            preview = parsedOutput.data;
-        } else if (previewLimit > 0) {
-            const custom = registry?.getCompactor?.(route.uri);
-            preview = custom
-                ? custom(parsedOutput.data, previewLimit)
-                : compactify(parsedOutput.data, previewLimit);
-        }
-        // The `data` slot keeps the unmodified route output (or the
-        // strip envelope when the render manifest fired). `preview` +
-        // `file` ride as sibling top-level fields on the dispatch
-        // result, leaving the existing `{ ok, data }` contract intact
-        // for legacy consumers that ignore the new fields.
-        const result: DispatchResult = {
-            ok: true,
-            data: strippedShape ?? parsedOutput.data,
-            ...(preview !== undefined ? { preview } : {}),
-            ...(file !== undefined ? { file } : {}),
-        };
-        return result;
-    }
-
     if (strippedShape) {
         return { ok: true, data: strippedShape };
     }
     return { ok: true, data: parsedOutput.data };
-}
-
-/** Synthetic run id when the caller didn't supply one. Short, sortable. */
-function generateRunId(): string {
-    const ts = Date.now().toString(36);
-    const rand = Math.random().toString(36).slice(2, 8);
-    return `r-${ts}-${rand}`;
 }
 
 
