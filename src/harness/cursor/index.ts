@@ -30,37 +30,9 @@ import type {
 } from '../types';
 import { cursorCreateAgent } from './create';
 
-export { compileAgentToCursorOptions } from './compile';
-export type { CursorCompileContext } from './compile';
-export {
-    mapCursorStream,
-    mapCursorMessage,
-    mapCursorDelta,
-    mapCursorRunStatus,
-    createTranslatorState,
-} from './events';
-export type { TranslatorState } from './events';
-export { cursorSend, cursorRunToRunHandle } from './send';
-export type {
-    CursorSendInput,
-    CursorSendOptionsExt,
-    CursorRunToHandleOptions,
-} from './send';
-export { cursorCreateAgent } from './create';
-export type {
-    CursorCreateOptions,
-    CursorAgentSendOptions,
-    CursorAgentHandle,
-} from './create';
-export {
-    wrapFnAsMcpServer,
-    wrapFnToolsAsMcpServers,
-} from './mcp-bridge';
-export type {
-    SynthMcpServerConfig,
-    SynthMcpServerHandle,
-    FnToolSpec,
-} from './mcp-bridge';
+// Adapter internals (compile/events/send/create/mcp-bridge) are not
+// re-exported: consumers use `createCursorHarness`; internal wiring +
+// tests reach them via relative paths.
 
 /** SDK re-exports — let Cursor-aware backend code import these without
  *  naming `@cursor/sdk` directly. Production code shouldn't reach

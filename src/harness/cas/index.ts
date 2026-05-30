@@ -20,19 +20,10 @@ import type {
 } from '../types';
 import { casCreateAgent } from './create';
 
-export { compileAgentToSdkOptions } from './compile';
-export type { CompileContext, SdkHooks } from './compile';
-export { mapSdkStream, mapSdkMessage, createTranslatorState } from './events';
-export type { TranslatorState } from './events';
-export { casSend, casSendWithOptions, casQueryToRunHandle, mapResult } from './send';
-export type {
-    CasSendOptions,
-    CasSendWithOptionsInput,
-    CasQueryToRunHandleOptions,
-    MapResultInput,
-} from './send';
-export { casCreateAgent } from './create';
-export type { CasCreateOptions, CasAgentSendOptions, CasAgentHandle } from './create';
+// Adapter internals (compile/events/send/create) are not re-exported:
+// consumers use `createCasHarness`; the lib's own modules + tests reach
+// them via relative paths. `SdkHooks` is the one type backend needs.
+export type { SdkHooks } from './compile';
 
 /**
  * SDK re-exports — let CAS-aware backend code import these without
