@@ -87,7 +87,6 @@ export type {
     WorkflowSummary,
     WorkflowDetail,
 } from './workflow-reader';
-export { createMultiSourceWorkflowReader } from './workflow-reader';
 
 export {
     HitlController,
@@ -102,7 +101,6 @@ export {
     loadConversationState,
     saveConversationState,
     updateConversationState,
-    appendUiTrail,
     appendHitlToTrail,
     decideRendererAction,
     composeStrategy,
@@ -128,18 +126,6 @@ export type {
 
 export { HandlerDispatcher } from './dispatch';
 export { EventBus } from './event-bus';
-
-// ─── M3 — Cost rollup reducer ────────────────────────────────────────
-// Aggregates fact.usage events into a `RunUsage` projection per run,
-// rolled up over a `surfaceRunId` subtree.
-export { aggregateUsage, rollupBySurface } from './cost-rollup';
-
-// ─── M4 — TierPort contract ──────────────────────────────────────────
-// One shape for Slack / claude.ai MCP / Tier-C CLI / ernesto-MCP.
-// Concrete subscribers extend `TierPort`, implementing `render()` +
-// `resolveHitl()` in their tier-native UX vocabulary.
-export { TierPort } from './tier-port';
-export type { HitlPauseRequest, TierEventFilter } from './tier-port';
 
 // ─── DAG engine expression helper ────────────────────────────────────
 // Resolves `${{ inputs.X }}` / `${{ steps.X.outputs.Y }}` tokens.
@@ -200,17 +186,6 @@ export type {
     ToolSurfaceComposition,
     ToolSurfaceComposeMiddlewareOpts,
 } from './middleware/tool-surface-compose';
-export {
-    resultCacheMiddleware,
-    InMemoryResultCache,
-} from './middleware/result-cache';
-export type {
-    ResultCacheMiddlewareOpts,
-    ResultCacheStore,
-    CachedEntry,
-} from './middleware/result-cache';
-export { WorkspaceResultCache } from './middleware/workspace-result-cache';
-export type { WorkspaceResultCacheOpts } from './middleware/workspace-result-cache';
 export { eventLogInitMiddleware } from './middleware/event-log-init';
 export type {
     EventLogInitMiddlewareOpts,

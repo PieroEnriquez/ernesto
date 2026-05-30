@@ -15,7 +15,6 @@ import {
     CONVERSATION_STATE_VERSION,
     UI_TRAIL_CAP,
     appendHitlToTrail,
-    appendUiTrail,
     composeStrategy,
     decideRendererAction,
     defaultRendererStrategy,
@@ -385,53 +384,6 @@ describe('appendHitlToTrail', () => {
         expect(loaded?.sessionId).toBe('sid-1');
         expect(loaded?.uiTrail).toHaveLength(1);
         expect(loaded?.uiTrail?.[0]?.hitl).toEqual(hitl(7));
-    });
-});
-
-describe('appendUiTrail (deprecated)', () => {
-    let workdir: string;
-
-    beforeEach(async () => {
-        workdir = await fs.mkdtemp(path.join(os.tmpdir(), 'uitrail-dep-'));
-    });
-
-    afterEach(async () => {
-        await fs.rm(workdir, { recursive: true, force: true });
-    });
-
-    it('routes a hitl component through to the trail', async () => {
-        const h: HitlComponent = {
-            kind: 'hitl',
-            props: {
-                render: [{ kind: 'markdown', props: { body: 'Q?' } }],
-                expect: { kind: 'message' },
-                resumePrompt: '',
-            },
-        };
-        await appendUiTrail(workdir, {
-            ts: 1,
-            runId: 'run-1',
-            component: h,
-        } as any);
-        const loaded = await loadConversationState(workdir);
-        expect(loaded?.uiTrail).toHaveLength(1);
-        expect(loaded?.uiTrail?.[0]?.hitl).toEqual(h);
-    });
-
-    it('no-ops for non-hitl components', async () => {
-        await appendUiTrail(workdir, {
-            ts: 1,
-            runId: 'run-1',
-            component: { kind: 'status', props: { text: 'x' } },
-        } as any);
-        await appendUiTrail(workdir, {
-            ts: 2,
-            runId: 'run-1',
-            component: { kind: 'markdown', props: { body: 'plain' } },
-        } as any);
-        const loaded = await loadConversationState(workdir);
-        // No-ops never created a state file.
-        expect(loaded).toBeUndefined();
     });
 });
 

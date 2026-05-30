@@ -9,17 +9,12 @@
  *   M2 — orchestration step kind: DAG, ${{ steps.X.outputs.Y }}
  *        interpolation, ${{ inputs.X }} resolution, skipIf, fallback,
  *        concurrency cap, parallel fanout
- *   M3 — cost rollup reducer: aggregateUsage + rollupBySurface across
- *        fact.usage events from multiple steps
- *   M4 — TierPort base class: tail loop with surfaceRunId filter,
- *        render() per event, HITL routing
  *
  * The scenario mirrors the autofill-pipeline shape from
  * workspaces/agent-ops/unified-runtime/e2e.md but compressed: one
  * orchestration kind dispatched by both a service caller (autofill
  * worker) and a user caller (interactive Slack thread). Same kind,
- * different principal × tier, identical typed output, all events
- * surfaced via tier port.
+ * different principal × tier, identical typed output.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -31,11 +26,8 @@ import {
     isUserPrincipal,
     isServicePrincipal,
 } from '../principal';
-import { TierPort, type HitlPauseRequest } from '../tier-port';
-import { aggregateUsage, rollupBySurface } from '../cost-rollup';
-import type { FactEvent } from '../types/event';
 import type { WorkflowReader, WorkflowDetail } from '../workflow-reader';
-import type { WorkflowDeclaration, WorkflowStep } from '../../workflows/types';
+import type { WorkflowDeclaration } from '../../workflows/types';
 import type { Run } from '../types/runner';
 
 function readerOf(decls: WorkflowDeclaration[]): WorkflowReader {
@@ -63,23 +55,8 @@ function readerOf(decls: WorkflowDeclaration[]): WorkflowReader {
     };
 }
 
-/** Recording tier port — captures render() events + drives HITL. */
-class RecordingTierPort extends TierPort {
-    readonly rendered: FactEvent[] = [];
-    readonly hitlPauses: HitlPauseRequest[] = [];
-    hitlAnswer: unknown = { proceed: true };
-
-    render(event: FactEvent): void {
-        this.rendered.push(event);
-    }
-    async resolveHitl(pause: HitlPauseRequest): Promise<unknown> {
-        this.hitlPauses.push(pause);
-        return this.hitlAnswer;
-    }
-}
-
 describe('tremendous E2E — unified runtime end-to-end', () => {
-    it('M1+M2+M3+M4: autofill pipeline dispatched by service AND user, same kind, full substrate exercise', async () => {
+    it('M1+M2: autofill pipeline dispatched by service AND user, same kind, full substrate exercise', async () => {
         const runner = createRunner();
 
         // ── Register step handlers ────────────────────────────────────
@@ -179,167 +156,42 @@ describe('tremendous E2E — unified runtime end-to-end', () => {
         };
         runner.registerWorkflowReader(readerOf([pipeline]));
 
-        // ── M4: Two tier ports — service tier (Tier-A simulated) + user tier (Slack) ──
-        const slackPort = new RecordingTierPort(runner, {
-            tier: 'A',
-            predicate: (ev) => {
-                const r = ev.routing as { principalKind?: string } | undefined;
-                return r?.principalKind === 'user';
-            },
-        });
-        const opsPort = new RecordingTierPort(runner, {
-            tier: 'A',
-            predicate: (ev) => {
-                const r = ev.routing as { principalKind?: string } | undefined;
-                return r?.principalKind === 'service';
-            },
-        });
-        const stopSlack = await slackPort.start();
-        const stopOps = await opsPort.start();
-
-        const allEvents: FactEvent[] = [];
-        await runner.subscribeEvents({ onEvent: (e) => allEvents.push(e) });
-
-        try {
-            // ── M1: Service-tier dispatch (BullMQ worker style) ─────
-            const serviceRun: Run<{ logo: string; faq: string[]; faqFr: string[] }> =
-                await runner.dispatch(
-                    'product-enablement://pipeline',
-                    { productId: 'P-12345' },
-                    servicePrincipal('autofill-worker', 'req-1'),
-                    { tier: 'A' },
-                );
-
-            expect(serviceRun.status).toBe('completed');
-            expect(serviceRun.runId).toBeDefined();
-            expect(serviceRun.surfaceRunId).toBe(serviceRun.runId);
-            expect((serviceRun.output as any).main.logo).toBe('logo.png');
-            expect((serviceRun.output as any).main.tcLink).toBe('https://x/tos');
-            expect((serviceRun.output as any).main.faq).toEqual(['Q: A']);
-            expect((serviceRun.output as any).main.faqFr).toEqual(['Q-fr: A-fr']);
-
-            // ── M1: User-tier dispatch (interactive Slack thread) ───
-            const slackThreadId = 'slack-thread-9999';
-            const userRun: Run<{ logo: string }> = await runner.dispatch(
+        // ── M1: Service-tier dispatch (BullMQ worker style) ─────
+        const serviceRun: Run<{ logo: string; faq: string[]; faqFr: string[] }> =
+            await runner.dispatch(
                 'product-enablement://pipeline',
-                { productId: 'P-67890' },
-                userPrincipal('alice@bitrefill.com', ['product-enablement:write']),
-                {
-                    tier: 'A',
-                    conversationKey: slackThreadId,
-                    surfaceRunId: 'slack-surface-1',
-                },
-            );
-
-            expect(userRun.status).toBe('completed');
-            expect(userRun.surfaceRunId).toBe('slack-surface-1');
-            // Same kind, same code, different principal — identical typed
-            // output shape. This is the headline claim of the unified
-            // runtime: one kind, many callers.
-            expect((userRun.output as any).main.logo).toBe('logo.png');
-
-            // Give the tier ports a tick to drain.
-            await new Promise((r) => setImmediate(r));
-
-            // ── M4: Tier port filtering by principal kind ───────────
-            // Slack port saw only user-principal events
-            expect(slackPort.rendered.length).toBeGreaterThan(0);
-            for (const ev of slackPort.rendered) {
-                const r = ev.routing as { principalKind?: string };
-                expect(r.principalKind).toBe('user');
-            }
-            // Ops port saw only service-principal events
-            expect(opsPort.rendered.length).toBeGreaterThan(0);
-            for (const ev of opsPort.rendered) {
-                const r = ev.routing as { principalKind?: string };
-                expect(r.principalKind).toBe('service');
-            }
-            // The two ports must have disjoint event sets
-            const slackIds = new Set(slackPort.rendered.map((e) => `${e.runId}-${e.seq}`));
-            for (const ev of opsPort.rendered) {
-                expect(slackIds.has(`${ev.runId}-${ev.seq}`)).toBe(false);
-            }
-
-            // ── M3: Cost rollup across the service run ──────────────
-            const serviceEvents = allEvents.filter((e) => e.runId === serviceRun.runId);
-            const usage = aggregateUsage(serviceEvents);
-            // 6 child route steps × 1 usage event each = 60 input tokens, 30 output, $0.006
-            // (route handler emits one usage event per call)
-            expect(usage.inputTokens).toBeGreaterThan(0);
-            expect(usage.outputTokens).toBeGreaterThan(0);
-            expect(usage.costUsd).toBeGreaterThan(0);
-            expect(usage.modelUsage['claude-sonnet-4-6']).toBeDefined();
-            expect(usage.modelUsage['claude-sonnet-4-6']!.inputTokens).toBe(usage.inputTokens);
-
-            // ── M3: Surface rollup for the user run (different surfaceRunId)
-            const surfaceRollup = rollupBySurface(allEvents, 'slack-surface-1');
-            expect(surfaceRollup.inputTokens).toBeGreaterThan(0);
-        } finally {
-            await stopSlack();
-            await stopOps();
-        }
-    });
-
-    it('M1+M2: orchestration kind handles HITL pause from within a step (Slack-like flow)', async () => {
-        const runner = createRunner();
-
-        runner.registerStepKind('route', async () => ({
-            kind: 'completed',
-            output: { ok: true },
-        }));
-        runner.registerStepKind('input', async () => ({
-            kind: 'paused_human',
-            prompt: 'Confirm?',
-            routes: ['yes', 'no'],
-            schema: {
-                type: 'object',
-                properties: { decision: { type: 'string', enum: ['yes', 'no'] } },
-                required: ['decision'],
-            },
-        }));
-
-        runner.registerWorkflowReader(
-            readerOf([
-                {
-                    name: 'wf-hitl',
-                    description: 'pause in a group sub-DAG',
-                    version: 1,
-                    steps: {
-                        main: {
-                            kind: 'group',
-                            steps: {
-                                prep: { kind: 'route', uri: 'p' },
-                                gate: {
-                                    kind: 'input',
-                                    schema: {} as any,
-                                    prompt: 'pick',
-                                    depends: ['prep'],
-                                },
-                            },
-                        },
-                    },
-                },
-            ]),
-        );
-
-        // M4: Tier port with HITL resolver
-        const tier = new RecordingTierPort(runner, { tier: 'A' });
-        tier.hitlAnswer = { decision: 'yes' };
-        const stop = await tier.start();
-        try {
-            const run = await runner.dispatch(
-                'wf-hitl',
-                {},
-                userPrincipal('alice', ['x']),
+                { productId: 'P-12345' },
+                servicePrincipal('autofill-worker', 'req-1'),
                 { tier: 'A' },
             );
-            expect(run.status).toBe('completed');
-            await new Promise((r) => setImmediate(r));
-            expect(tier.hitlPauses.length).toBe(1);
-            expect(tier.hitlPauses[0]!.routes).toEqual(['yes', 'no']);
-        } finally {
-            await stop();
-        }
+
+        expect(serviceRun.status).toBe('completed');
+        expect(serviceRun.runId).toBeDefined();
+        expect(serviceRun.surfaceRunId).toBe(serviceRun.runId);
+        expect((serviceRun.output as any).main.logo).toBe('logo.png');
+        expect((serviceRun.output as any).main.tcLink).toBe('https://x/tos');
+        expect((serviceRun.output as any).main.faq).toEqual(['Q: A']);
+        expect((serviceRun.output as any).main.faqFr).toEqual(['Q-fr: A-fr']);
+
+        // ── M1: User-tier dispatch (interactive Slack thread) ───
+        const slackThreadId = 'slack-thread-9999';
+        const userRun: Run<{ logo: string }> = await runner.dispatch(
+            'product-enablement://pipeline',
+            { productId: 'P-67890' },
+            userPrincipal('alice@bitrefill.com', ['product-enablement:write']),
+            {
+                tier: 'A',
+                conversationKey: slackThreadId,
+                surfaceRunId: 'slack-surface-1',
+            },
+        );
+
+        expect(userRun.status).toBe('completed');
+        expect(userRun.surfaceRunId).toBe('slack-surface-1');
+        // Same kind, same code, different principal — identical typed
+        // output shape. This is the headline claim of the unified
+        // runtime: one kind, many callers.
+        expect((userRun.output as any).main.logo).toBe('logo.png');
     });
 
     it('M1: Principal narrowing via narrowPrincipalScopes — recursive subworkflow scopes', () => {
@@ -425,49 +277,5 @@ describe('tremendous E2E — unified runtime end-to-end', () => {
             tags: ['vip', 'beta'], // single token preserves array
             source: 'autofill', // inputs.X resolution
         });
-    });
-
-    it('M4: TierPort renderer exceptions are swallowed (tail loop survives)', async () => {
-        const runner = createRunner();
-        runner.registerStepKind('route', async () => ({
-            kind: 'completed',
-            output: { ok: true },
-        }));
-        runner.registerWorkflowReader(
-            readerOf([
-                {
-                    name: 'wf',
-                    description: 'd',
-                    version: 1,
-                    steps: { s1: { kind: 'route', uri: 'x' } as WorkflowStep },
-                },
-            ]),
-        );
-
-        class ThrowingPort extends TierPort {
-            renderCount = 0;
-            render(): never {
-                this.renderCount++;
-                throw new Error('renderer broken');
-            }
-            async resolveHitl(): Promise<unknown> {
-                return null;
-            }
-        }
-        const port = new ThrowingPort(runner, { tier: 'A' });
-        const stop = await port.start();
-        try {
-            const run = await runner.dispatch(
-                'wf',
-                {},
-                userPrincipal('u', []),
-                { tier: 'A' },
-            );
-            expect(run.status).toBe('completed');
-            await new Promise((r) => setImmediate(r));
-            expect(port.renderCount).toBeGreaterThan(0);
-        } finally {
-            await stop();
-        }
     });
 });

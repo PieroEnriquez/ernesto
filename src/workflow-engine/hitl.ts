@@ -54,7 +54,6 @@ export interface ResumeIntent {
 
 interface PendingPause {
     schema: Record<string, unknown>;
-    resumePrompt?: string;
     resolve: (value: unknown) => void;
     reject: (err: Error) => void;
 }
@@ -109,21 +108,8 @@ export class HitlController {
                 resolve,
                 reject,
             };
-            if (input.resumePrompt !== undefined) {
-                pending.resumePrompt = input.resumePrompt;
-            }
             this.pending.set(key, pending);
         });
-    }
-
-    /**
-     * Read the renderer-side framing the agent attached when it paused.
-     * The renderer materializes this with the human's response to build
-     * the next agent turn's prompt. Returns `undefined` if no template
-     * was attached or no pause is pending for `(runId, promptId)`.
-     */
-    getResumePrompt(runId: string, promptId: string): string | undefined {
-        return this.pending.get(`${runId}:${promptId}`)?.resumePrompt;
     }
 
     /** Resume a paused run. Validates the value, settles the pending

@@ -231,32 +231,6 @@ export async function appendHitlToTrail(
 }
 
 /**
- * @deprecated Migration shim — call {@link appendHitlToTrail} directly.
- * Routes hitl entries through; no-ops for non-hitl components since
- * side-band kinds (thinking/status/progress/attachment) are no longer
- * part of the uiTrail contract.
- */
-export async function appendUiTrail(
-    workdir: string,
-    entry: { ts?: number; runId: string; component: unknown } | UiTrailEntry,
-): Promise<void> {
-    // New-shape entry passed straight in.
-    if ('hitl' in entry && entry.hitl) {
-        await appendHitlToTrail(workdir, entry.runId, entry.hitl);
-        return;
-    }
-    const comp = (entry as { component?: unknown }).component;
-    if (
-        comp &&
-        typeof comp === 'object' &&
-        (comp as { kind?: unknown }).kind === 'hitl'
-    ) {
-        await appendHitlToTrail(workdir, entry.runId, comp as HitlComponent);
-    }
-    // Non-hitl component — no-op (side-band kinds aren't trail material).
-}
-
-/**
  * Renderer-input — the typed payload a renderer collects from its
  * surface (Slack message, button click, MCP elicit response, CLI
  * input). Shape varies per kind; `metadata` is renderer-namespaced

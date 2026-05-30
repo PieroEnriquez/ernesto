@@ -222,40 +222,6 @@ class Runner implements WorkflowRunner {
         }
         const postPreCtx = await runBefore(this.middlewares, preCtx);
 
-        // Cache short-circuit: `resultCacheMiddleware` (or any
-        // middleware following the same protocol) writes
-        // `__cacheHit` onto annotations when a fresh cached output
-        // exists. Skip the walk entirely; synthesize a completed
-        // WalkResult so after-hooks observe the cache hit alongside
-        // a normal terminal. The synthetic walk emits no fact events
-        // (no store rows, no bus traffic) — the caller's Run handle
-        // reports status='completed' with the cached output and
-        // zero usage / zero duration credit for this dispatch.
-        const cacheHit = postPreCtx.annotations.__cacheHit;
-        if (cacheHit !== undefined) {
-            const cachedWalkResult: WalkResult = {
-                runId,
-                status: 'completed',
-                outputs: (cacheHit && typeof cacheHit === 'object'
-                    ? (cacheHit as Record<string, unknown>)
-                    : { value: cacheHit }) as Record<string, unknown>,
-            };
-            const cachedRun = projectRunHandle<TOut>(
-                cachedWalkResult,
-                surfaceRunId,
-                startedAt,
-                (filterRunId) => this.subscribeRunEvents(filterRunId),
-            );
-            await runAfter(this.middlewares, postPreCtx, cachedRun, (mw, err) => {
-                this.log.warn('middleware after-hook failed (cache hit)', {
-                    name: mw.name,
-                    runId: cachedRun.runId,
-                    errorMessage: (err as Error).message,
-                });
-            });
-            return cachedRun;
-        }
-
         // Tie the run to an abort controller chained to whatever
         // signal middleware left on opts.abortSignal (could be the
         // caller's original, a composed timeout signal, or both).
