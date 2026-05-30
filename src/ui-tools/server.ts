@@ -22,6 +22,7 @@ import type { AddressInfo } from 'node:net';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
+import { UI_COMPONENT_KINDS } from '../components/types';
 import type { UiToolContext } from './types';
 import { handleUi } from './tool-handlers/ui';
 
@@ -53,7 +54,7 @@ export interface UiMcpServerHandle {
 // reports per-component errors so an array call can partially succeed.
 
 const uiComponentSchema = z.object({
-    kind: z.enum(['thinking', 'status', 'progress', 'attachment', 'hitl']),
+    kind: z.enum(UI_COMPONENT_KINDS),
     // `props` is loose at the wire — structural validation is done by
     // `validateUiComponent` after `coerceUiComponent` normalises.
     props: z.union([

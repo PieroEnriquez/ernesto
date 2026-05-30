@@ -23,6 +23,7 @@
 
 import { z } from 'zod';
 import type { UiComponent } from '../components/types';
+import { UI_COMPONENT_KINDS } from '../components/types';
 import { coerceUiComponent } from '../components/coerce';
 import { validateUiComponent } from '../components/validation';
 import type { UiHitlPauser } from './types';
@@ -69,7 +70,7 @@ export interface BundledUiResult {
  * optimisation.
  */
 export const bundledUiComponentSchema = z.object({
-    kind: z.enum(['thinking', 'status', 'progress', 'attachment', 'hitl']),
+    kind: z.enum(UI_COMPONENT_KINDS),
     props: z.record(z.string(), z.unknown()),
     slotId: z.string().optional(),
 });

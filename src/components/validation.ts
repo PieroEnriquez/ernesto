@@ -12,6 +12,13 @@
  * so an LLM scanning the message has the recovery shape on the same
  * line — observed live-MITM showed agents retrying faster when the
  * recovery shape is colocated with the violation.
+ *
+ * Most kinds are described by a declarative field-spec table
+ * ({@link SPECS}) driving a single {@link validateFlatFields}. The
+ * irregular shapes — `hitl` (nested arrays of renderables + `expect` +
+ * `nextSteps`), `attachment` (path|url either-or), and the nested-array
+ * renderables `table`/`chart`/`tree`/`metric.delta` — keep a bespoke
+ * validator layered on top; the table can't express those cleanly.
  */
 
 import type {
@@ -38,12 +45,19 @@ export type ValidationResult<T> =
 
 const UI_KINDS: ReadonlySet<string> = new Set(UI_COMPONENT_KINDS);
 const RENDERABLE_KINDS: ReadonlySet<string> = new Set(RENDERABLE_COMPONENT_KINDS);
-const STATUS_LEVELS: ReadonlySet<string> = new Set([
+const STATUS_LEVEL_SET: ReadonlySet<string> = new Set([
     'info',
     'progress',
     'success',
     'warn',
     'error',
+]);
+const CHART_TYPE_SET: ReadonlySet<string> = new Set([
+    'line',
+    'bar',
+    'pie',
+    'scatter',
+    'area',
 ]);
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -68,6 +82,209 @@ function typeLabel(v: unknown): string {
     if (v === null) return 'null';
     if (Array.isArray(v)) return 'array';
     return typeof v;
+}
+
+// ─── Field-spec model ───────────────────────────────────────────────
+//
+// Each flat field is a terse `[name, type, tail]` tuple. The `type`
+// code derives both the `check` predicate and the `<constraint>`
+// fragment of the error; `tail` is the unique `Try:` recovery snippet
+// colocated with the violation. Optional fields use the `'…?'` codes
+// and are skipped (and dropped from the output) when absent.
+
+/** Field type codes → [predicate, constraint fragment]. */
+const FIELD_TYPES = {
+    /** required string */
+    str: [(v: unknown) => typeof v === 'string', 'must be a string'],
+    /** required non-empty string */
+    nes: [(v: unknown) => isNonEmptyString(v), 'must be a non-empty string'],
+    /** required finite number */
+    num: [
+        (v: unknown) => typeof v === 'number' && Number.isFinite(v),
+        'must be a finite number',
+    ],
+    /** required string-or-number */
+    strnum: [
+        (v: unknown) => typeof v === 'string' || typeof v === 'number',
+        'must be a string or number',
+    ],
+    /** optional string (validated only when present) */
+    'str?': [(v: unknown) => typeof v === 'string', 'must be a string when present'],
+    /** status level enum */
+    level: [
+        (v: unknown) => typeof v === 'string' && STATUS_LEVEL_SET.has(v),
+        'must be one of: info, progress, success, warn, error',
+    ],
+} as const satisfies Record<string, readonly [(v: unknown) => boolean, string]>;
+
+type FieldType = keyof typeof FIELD_TYPES;
+/** `[propName, typeCode, tailSnippet]`. */
+type FieldSpec = readonly [string, FieldType, string];
+
+interface KindSpec {
+    /** Head shown when `props` itself isn't an object:
+     *  `"<kind>.props must be {<propsHint>}. …"`. */
+    propsHint: string;
+    /** Full mini-example for the no-props `Try:` tail. */
+    example: string;
+    /** Ordered flat fields (first failure wins). Nested-shape kinds
+     *  (table/chart/tree/metric.delta) leave this short and layer a
+     *  bespoke validator on top. */
+    fields: readonly FieldSpec[];
+}
+
+const OPTIONAL: ReadonlySet<FieldType> = new Set(['str?', 'level']);
+
+/**
+ * Declarative shapes for every flat kind (top-level + renderable). The
+ * irregular ones — `table`/`chart`/`tree` (nested arrays) and
+ * `metric` (nested `delta`) — carry only their flat fields here and run
+ * a bespoke validator after the flat pass.
+ */
+const SPECS: Record<string, KindSpec> = {
+    thinking: {
+        propsHint: 'text: string',
+        example: "{ kind: 'thinking', props: { text: '…' } }",
+        fields: [['text', 'nes', "{ kind: 'thinking', props: { text: '…' } }"]],
+    },
+    status: {
+        propsHint: 'text: string, level?',
+        example: "{ kind: 'status', props: { text: '…' } }",
+        fields: [
+            ['text', 'nes', "{ kind: 'status', props: { text: '…' } }"],
+            ['level', 'level', "{ kind: 'status', props: { text: '…', level: 'progress' } }"],
+        ],
+    },
+    progress: {
+        propsHint: 'label, current, total',
+        example: "{ kind: 'progress', props: { label: '…', current: 3, total: 10 } }",
+        fields: [
+            ['label', 'nes', "{ kind: 'progress', props: { label: '…', current: 3, total: 10 } }"],
+            ['current', 'num', 'current: 3 (integer)'],
+            ['total', 'num', 'total: 10 (integer)'],
+        ],
+    },
+    markdown: {
+        propsHint: 'body: string',
+        example: "{ kind: 'markdown', props: { body: '…' } }",
+        fields: [['body', 'str', "{ kind: 'markdown', props: { body: '…' } }"]],
+    },
+    'data-ref': {
+        propsHint: 'file: string, view?, caption?',
+        example: "{ kind: 'data-ref', props: { file: 'r.json', view: 'auto' } }",
+        fields: [
+            ['file', 'nes', "{ kind: 'data-ref', props: { file: 'r.json', view: 'auto' } }"],
+            ['view', 'str?', "view: 'auto' (or 'table:byField' | 'metric:byField' | 'chart:…')"],
+            ['caption', 'str?', "caption: '…'"],
+        ],
+    },
+    'file-link': {
+        propsHint: 'path: string, label?',
+        example: "{ kind: 'file-link', props: { path: 'doc.md', label: 'Open' } }",
+        fields: [
+            ['path', 'nes', "{ kind: 'file-link', props: { path: 'doc.md', label: 'Open' } }"],
+            ['label', 'str?', "label: 'Open'"],
+        ],
+    },
+    table: {
+        propsHint: 'columns: [{id, label}], rows: [...], caption?',
+        example:
+            "{ kind: 'table', props: { columns: [{id:'region',label:'Region'}], rows: [...] } }",
+        fields: [],
+    },
+    metric: {
+        propsHint: 'label: string, value, unit?, delta?',
+        example: "{ kind: 'metric', props: { label: 'Orders', value: 42 } }",
+        fields: [
+            ['label', 'nes', "{ kind: 'metric', props: { label: 'Orders', value: 42 } }"],
+            ['value', 'strnum', "value: 42 (or '$1,200')"],
+            ['unit', 'str?', "unit: 'orders'"],
+        ],
+    },
+    chart: {
+        propsHint: 'series, chartType',
+        example: "{ kind: 'chart', props: { series: [...], chartType: 'bar' } }",
+        fields: [],
+    },
+    code: {
+        propsHint: 'body: string, language: string, caption?',
+        example: "{ kind: 'code', props: { body: '…', language: 'ts' } }",
+        fields: [
+            ['body', 'str', "{ kind: 'code', props: { body: '…', language: 'ts' } }"],
+            ['language', 'nes', "language: 'ts' (or 'sql', 'sh', …)"],
+            ['caption', 'str?', "caption: 'snippet'"],
+        ],
+    },
+    image: {
+        propsHint: 'url: string, alt?, caption?',
+        example: "{ kind: 'image', props: { url: 'https://…/x.png' } }",
+        fields: [
+            ['url', 'nes', "{ kind: 'image', props: { url: 'https://…/x.png' } }"],
+            ['alt', 'str?', "alt: 'Daily revenue chart'"],
+            ['caption', 'str?', "caption: '…'"],
+        ],
+    },
+    link: {
+        propsHint: 'url: string, title: string, description?',
+        example: "{ kind: 'link', props: { url: 'https://…', title: '…' } }",
+        fields: [
+            ['url', 'nes', "{ kind: 'link', props: { url: 'https://…', title: '…' } }"],
+            ['title', 'nes', "title: 'Open dashboard'"],
+            ['description', 'str?', "description: '…'"],
+        ],
+    },
+    tree: {
+        propsHint: 'nodes: [...]',
+        example: "{ kind: 'tree', props: { nodes: [{ label: 'root' }] } }",
+        fields: [],
+    },
+};
+
+/** Build the `"<kind>.props.<name> …"` violation for a failed field. */
+function fieldError(kind: string, field: FieldSpec, value: unknown): string {
+    const [name, type, tail] = field;
+    const constraint = FIELD_TYPES[type][1];
+    return (
+        `${kind}.props.${name} ${constraint}. ` +
+        `Received ${typeLabel(value)}. ` +
+        `Try: ${tail}`
+    );
+}
+
+/**
+ * Validate the flat fields of a kind's props against {@link SPECS}.
+ * Returns the first violation, or `null` when all flat fields pass. The
+ * caller (renderable/top-level dispatchers) layers any bespoke
+ * `extra` checks (nested arrays, either-or) on top.
+ */
+function validateFlatFields(
+    kind: string,
+    props: Record<string, unknown>,
+): string | null {
+    for (const field of SPECS[kind].fields) {
+        const [name, type] = field;
+        const value = props[name];
+        if (OPTIONAL.has(type) && value === undefined) continue;
+        if (!FIELD_TYPES[type][0](value)) {
+            return fieldError(kind, field, value);
+        }
+    }
+    return null;
+}
+
+/** Copy only the spec'd flat fields that are present onto an output
+ *  object (drops unknown keys; keeps optional ones when set). */
+function pickFlatFields(
+    kind: string,
+    props: Record<string, unknown>,
+): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const [name] of SPECS[kind].fields) {
+        const value = props[name];
+        if (value === undefined) continue;
+        out[name] = value;
+    }
+    return out;
 }
 
 // ─── Top-level dispatcher ────────────────────────────────────────────
@@ -224,19 +441,15 @@ export function validateThinking(
     const props = value.props;
     if (!isPlainObject(props)) {
         return err(
-            `thinking.props must be {text: string}. Received ${typeLabel(props)}. ` +
+            `thinking.props must be {${SPECS.thinking.propsHint}}. Received ${typeLabel(props)}. ` +
                 "Try: { kind: 'thinking', props: { text: '…' } }",
         );
     }
-    if (!isNonEmptyString(props.text)) {
-        return err(
-            `thinking.props.text must be a non-empty string. Received ${typeLabel(props.text)}. ` +
-                "Try: { kind: 'thinking', props: { text: '…' } }",
-        );
-    }
+    const flat = validateFlatFields('thinking', props);
+    if (flat) return err(flat);
     const out: ThinkingComponent = {
         kind: 'thinking',
-        props: { text: props.text },
+        props: { text: props.text as string },
     };
     if (typeof value.slotId === 'string') out.slotId = value.slotId;
     return ok(out);
@@ -254,32 +467,18 @@ export function validateStatus(
     const props = value.props;
     if (!isPlainObject(props)) {
         return err(
-            `status.props must be {text: string, level?}. Received ${typeLabel(props)}. ` +
+            `status.props must be {${SPECS.status.propsHint}}. Received ${typeLabel(props)}. ` +
                 "Try: { kind: 'status', props: { text: '…' } }",
         );
     }
-    if (!isNonEmptyString(props.text)) {
-        return err(
-            `status.props.text must be a non-empty string. Received ${typeLabel(props.text)}. ` +
-                "Try: { kind: 'status', props: { text: '…' } }",
-        );
-    }
-    let level: StatusComponent['props']['level'];
-    if (props.level !== undefined) {
-        if (typeof props.level !== 'string' || !STATUS_LEVELS.has(props.level)) {
-            return err(
-                `status.props.level must be one of: info, progress, success, warn, error. ` +
-                    `Received ${typeLabel(props.level)}. ` +
-                    "Try: { kind: 'status', props: { text: '…', level: 'progress' } }",
-            );
-        }
-        level = props.level as StatusComponent['props']['level'];
-    }
+    const flat = validateFlatFields('status', props);
+    if (flat) return err(flat);
+    const level = props.level as StatusComponent['props']['level'] | undefined;
     const out: StatusComponent = {
         kind: 'status',
         props: level === undefined
-            ? { text: props.text }
-            : { text: props.text, level },
+            ? { text: props.text as string }
+            : { text: props.text as string, level },
     };
     if (typeof value.slotId === 'string') out.slotId = value.slotId;
     return ok(out);
@@ -297,31 +496,19 @@ export function validateProgress(
     const props = value.props;
     if (!isPlainObject(props)) {
         return err(
-            `progress.props must be {label, current, total}. Received ${typeLabel(props)}. ` +
+            `progress.props must be {${SPECS.progress.propsHint}}. Received ${typeLabel(props)}. ` +
                 "Try: { kind: 'progress', props: { label: '…', current: 3, total: 10 } }",
         );
     }
-    if (!isNonEmptyString(props.label)) {
-        return err(
-            `progress.props.label must be a non-empty string. Received ${typeLabel(props.label)}. ` +
-                "Try: { kind: 'progress', props: { label: '…', current: 3, total: 10 } }",
-        );
-    }
-    if (typeof props.current !== 'number' || !Number.isFinite(props.current)) {
-        return err(
-            `progress.props.current must be a finite number. Received ${typeLabel(props.current)}. ` +
-                "Try: current: 3 (integer)",
-        );
-    }
-    if (typeof props.total !== 'number' || !Number.isFinite(props.total)) {
-        return err(
-            `progress.props.total must be a finite number. Received ${typeLabel(props.total)}. ` +
-                "Try: total: 10 (integer)",
-        );
-    }
+    const flat = validateFlatFields('progress', props);
+    if (flat) return err(flat);
     const out: ProgressComponent = {
         kind: 'progress',
-        props: { label: props.label, current: props.current, total: props.total },
+        props: {
+            label: props.label as string,
+            current: props.current as number,
+            total: props.total as number,
+        },
     };
     if (typeof value.slotId === 'string') out.slotId = value.slotId;
     return ok(out);
@@ -570,150 +757,38 @@ export function validateRenderableComponent(
                 `Try: one of ${RENDERABLE_COMPONENT_KINDS.join(', ')}`,
         );
     }
+    const rKind = kind as RenderableComponentKind;
+    const spec = SPECS[rKind];
     const props = value.props;
     if (!isPlainObject(props)) {
         return err(
-            `${kind}.props must be {${describePropsHint(kind as RenderableComponentKind)}}. ` +
+            `${kind}.props must be {${spec.propsHint}}. ` +
                 `Received ${typeLabel(props)}. ` +
-                `Try: ${renderableExample(kind as RenderableComponentKind)}`,
+                `Try: ${spec.example}`,
         );
     }
-    switch (kind as RenderableComponentKind) {
-        case 'markdown':
-            return validateMarkdown(props);
-        case 'data-ref':
-            return validateDataRef(props);
-        case 'file-link':
-            return validateFileLink(props);
+    // Flat-field pass (table/chart/tree have no flat fields; their
+    // nested-array shapes are validated bespoke below).
+    const flat = validateFlatFields(rKind, props);
+    if (flat) return err(flat);
+
+    switch (rKind) {
         case 'table':
             return validateTable(props);
         case 'metric':
             return validateMetric(props);
         case 'chart':
             return validateChart(props);
-        case 'code':
-            return validateCode(props);
-        case 'image':
-            return validateImage(props);
-        case 'link':
-            return validateLink(props);
         case 'tree':
             return validateTree(props);
+        default:
+            // Flat kinds: markdown, data-ref, file-link, code, image,
+            // link — output carries only the spec'd present fields.
+            return ok({
+                kind: rKind,
+                props: pickFlatFields(rKind, props),
+            } as unknown as RenderableComponent);
     }
-}
-
-/** Compact prop-shape hint for a renderable kind — used in the
- *  "props must be {…}" head of the error. */
-function describePropsHint(kind: RenderableComponentKind): string {
-    switch (kind) {
-        case 'markdown':
-            return 'body: string';
-        case 'data-ref':
-            return 'file: string, view?, caption?';
-        case 'file-link':
-            return 'path: string, label?';
-        case 'table':
-            return 'columns: [{id, label}], rows: [...], caption?';
-        case 'metric':
-            return 'label: string, value, unit?, delta?';
-        case 'chart':
-            return 'series, chartType';
-        case 'code':
-            return 'body: string, language: string, caption?';
-        case 'image':
-            return 'url: string, alt?, caption?';
-        case 'link':
-            return 'url: string, title: string, description?';
-        case 'tree':
-            return 'nodes: [...]';
-    }
-}
-
-/** Full mini-example for the `Try:` tail. */
-function renderableExample(kind: RenderableComponentKind): string {
-    switch (kind) {
-        case 'markdown':
-            return "{ kind: 'markdown', props: { body: '…' } }";
-        case 'data-ref':
-            return "{ kind: 'data-ref', props: { file: 'r.json', view: 'auto' } }";
-        case 'file-link':
-            return "{ kind: 'file-link', props: { path: 'doc.md', label: 'Open' } }";
-        case 'table':
-            return "{ kind: 'table', props: { columns: [{id:'region',label:'Region'}], rows: [...] } }";
-        case 'metric':
-            return "{ kind: 'metric', props: { label: 'Orders', value: 42 } }";
-        case 'chart':
-            return "{ kind: 'chart', props: { series: [...], chartType: 'bar' } }";
-        case 'code':
-            return "{ kind: 'code', props: { body: '…', language: 'ts' } }";
-        case 'image':
-            return "{ kind: 'image', props: { url: 'https://…/x.png' } }";
-        case 'link':
-            return "{ kind: 'link', props: { url: 'https://…', title: '…' } }";
-        case 'tree':
-            return "{ kind: 'tree', props: { nodes: [{ label: 'root' }] } }";
-    }
-}
-
-function validateMarkdown(
-    props: Record<string, unknown>,
-): ValidationResult<RenderableComponent> {
-    if (typeof props.body !== 'string') {
-        return err(
-            `markdown.props.body must be a string. Received ${typeLabel(props.body)}. ` +
-                "Try: { kind: 'markdown', props: { body: '…' } }",
-        );
-    }
-    return ok({ kind: 'markdown', props: { body: props.body } });
-}
-
-function validateDataRef(
-    props: Record<string, unknown>,
-): ValidationResult<RenderableComponent> {
-    if (!isNonEmptyString(props.file)) {
-        return err(
-            `data-ref.props.file must be a non-empty string. Received ${typeLabel(props.file)}. ` +
-                "Try: { kind: 'data-ref', props: { file: 'r.json', view: 'auto' } }",
-        );
-    }
-    if (props.view !== undefined && typeof props.view !== 'string') {
-        return err(
-            `data-ref.props.view must be a string when present. Received ${typeLabel(props.view)}. ` +
-                "Try: view: 'auto' (or 'table:byField' | 'metric:byField' | 'chart:…')",
-        );
-    }
-    if (props.caption !== undefined && typeof props.caption !== 'string') {
-        return err(
-            `data-ref.props.caption must be a string when present. Received ${typeLabel(props.caption)}. ` +
-                "Try: caption: '…'",
-        );
-    }
-    const out: { file: string; view?: string; caption?: string } = {
-        file: props.file,
-    };
-    if (typeof props.view === 'string') out.view = props.view;
-    if (typeof props.caption === 'string') out.caption = props.caption;
-    return ok({ kind: 'data-ref', props: out });
-}
-
-function validateFileLink(
-    props: Record<string, unknown>,
-): ValidationResult<RenderableComponent> {
-    if (!isNonEmptyString(props.path)) {
-        return err(
-            `file-link.props.path must be a non-empty string. Received ${typeLabel(props.path)}. ` +
-                "Try: { kind: 'file-link', props: { path: 'doc.md', label: 'Open' } }",
-        );
-    }
-    if (props.label !== undefined && typeof props.label !== 'string') {
-        return err(
-            `file-link.props.label must be a string when present. Received ${typeLabel(props.label)}. ` +
-                "Try: label: 'Open'",
-        );
-    }
-    const out: { path: string; label?: string } = { path: props.path };
-    if (typeof props.label === 'string') out.label = props.label;
-    return ok({ kind: 'file-link', props: out });
 }
 
 function validateTable(
@@ -776,24 +851,8 @@ function validateTable(
 function validateMetric(
     props: Record<string, unknown>,
 ): ValidationResult<RenderableComponent> {
-    if (!isNonEmptyString(props.label)) {
-        return err(
-            `metric.props.label must be a non-empty string. Received ${typeLabel(props.label)}. ` +
-                "Try: { kind: 'metric', props: { label: 'Orders', value: 42 } }",
-        );
-    }
-    if (typeof props.value !== 'string' && typeof props.value !== 'number') {
-        return err(
-            `metric.props.value must be a string or number. Received ${typeLabel(props.value)}. ` +
-                "Try: value: 42 (or '$1,200')",
-        );
-    }
-    if (props.unit !== undefined && typeof props.unit !== 'string') {
-        return err(
-            `metric.props.unit must be a string when present. Received ${typeLabel(props.unit)}. ` +
-                "Try: unit: 'orders'",
-        );
-    }
+    // label / value / unit validated by the flat-field pass; only the
+    // nested `delta` shape is bespoke.
     if (props.delta !== undefined) {
         if (!isPlainObject(props.delta)) {
             return err(
@@ -831,8 +890,7 @@ function validateChart(
                 "Try: series: [{ name: 'EU', data: [{x: 'Mon', y: 12}, …] }]",
         );
     }
-    const allowed = new Set(['line', 'bar', 'pie', 'scatter', 'area']);
-    if (typeof props.chartType !== 'string' || !allowed.has(props.chartType)) {
+    if (typeof props.chartType !== 'string' || !CHART_TYPE_SET.has(props.chartType)) {
         return err(
             `chart.props.chartType must be one of: line, bar, pie, scatter, area. ` +
                 `Received ${typeLabel(props.chartType)}. ` +
@@ -843,93 +901,6 @@ function validateChart(
         kind: 'chart',
         props: props as unknown as import('./types').ChartProps,
     });
-}
-
-function validateCode(
-    props: Record<string, unknown>,
-): ValidationResult<RenderableComponent> {
-    if (typeof props.body !== 'string') {
-        return err(
-            `code.props.body must be a string. Received ${typeLabel(props.body)}. ` +
-                "Try: { kind: 'code', props: { body: '…', language: 'ts' } }",
-        );
-    }
-    if (!isNonEmptyString(props.language)) {
-        return err(
-            `code.props.language must be a non-empty string. Received ${typeLabel(props.language)}. ` +
-                "Try: language: 'ts' (or 'sql', 'sh', …)",
-        );
-    }
-    if (props.caption !== undefined && typeof props.caption !== 'string') {
-        return err(
-            `code.props.caption must be a string when present. Received ${typeLabel(props.caption)}. ` +
-                "Try: caption: 'snippet'",
-        );
-    }
-    const out: { body: string; language: string; caption?: string } = {
-        body: props.body,
-        language: props.language,
-    };
-    if (typeof props.caption === 'string') out.caption = props.caption;
-    return ok({ kind: 'code', props: out });
-}
-
-function validateImage(
-    props: Record<string, unknown>,
-): ValidationResult<RenderableComponent> {
-    if (!isNonEmptyString(props.url)) {
-        return err(
-            `image.props.url must be a non-empty string. Received ${typeLabel(props.url)}. ` +
-                "Try: { kind: 'image', props: { url: 'https://…/x.png' } }",
-        );
-    }
-    if (props.alt !== undefined && typeof props.alt !== 'string') {
-        return err(
-            `image.props.alt must be a string when present. Received ${typeLabel(props.alt)}. ` +
-                "Try: alt: 'Daily revenue chart'",
-        );
-    }
-    if (props.caption !== undefined && typeof props.caption !== 'string') {
-        return err(
-            `image.props.caption must be a string when present. Received ${typeLabel(props.caption)}. ` +
-                "Try: caption: '…'",
-        );
-    }
-    const out: { url: string; alt?: string; caption?: string } = {
-        url: props.url,
-    };
-    if (typeof props.alt === 'string') out.alt = props.alt;
-    if (typeof props.caption === 'string') out.caption = props.caption;
-    return ok({ kind: 'image', props: out });
-}
-
-function validateLink(
-    props: Record<string, unknown>,
-): ValidationResult<RenderableComponent> {
-    if (!isNonEmptyString(props.url)) {
-        return err(
-            `link.props.url must be a non-empty string. Received ${typeLabel(props.url)}. ` +
-                "Try: { kind: 'link', props: { url: 'https://…', title: '…' } }",
-        );
-    }
-    if (!isNonEmptyString(props.title)) {
-        return err(
-            `link.props.title must be a non-empty string. Received ${typeLabel(props.title)}. ` +
-                "Try: title: 'Open dashboard'",
-        );
-    }
-    if (props.description !== undefined && typeof props.description !== 'string') {
-        return err(
-            `link.props.description must be a string when present. Received ${typeLabel(props.description)}. ` +
-                "Try: description: '…'",
-        );
-    }
-    const out: { url: string; title: string; description?: string } = {
-        url: props.url,
-        title: props.title,
-    };
-    if (typeof props.description === 'string') out.description = props.description;
-    return ok({ kind: 'link', props: out });
 }
 
 function validateTree(
