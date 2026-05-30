@@ -44,7 +44,10 @@ import { claudeVmRuntime } from './runtimes/claude';
 
 const log = debug('ernesto:harness:remote-vm');
 
-export type { SandboxClient, SandboxHandle, NetworkPolicy } from './sandbox-client';
+export type {
+    SandboxClient, SandboxHandle, NetworkPolicy,
+    SandboxFile, ExecOpts, ExecResult, ExecStreamHandle, CreateOrResumeOpts,
+} from './sandbox-client';
 export type { ProvisionSpec, ProvisionInputs } from './provision';
 export { buildProvisionSpec, WORKDIR_MOUNT, EDEN_LITE_PATH } from './provision';
 export { buildEgressPolicy, hostOf } from './egress';
@@ -55,7 +58,7 @@ export type { VmSettleRequest, VmSettleResponse, VmSettleFile } from './wire';
 // process-based runtime, defaulting to claude (cas). Swap `runtime` to run
 // cursor-agent in the VM with no other change.
 export type { VmRuntime } from './runtime';
-export { claudeVmRuntime, buildClaudeArgv } from './runtimes/claude';
+export { claudeVmRuntime, buildClaudeArgv, CLAUDE_VM_DRIVER_PATH, CLAUDE_VM_DRIVER_SOURCE } from './runtimes/claude';
 export { cursorVmRuntime, buildCursorArgv } from './runtimes/cursor';
 
 /** Construction-time env for the remote-vm harness. */
