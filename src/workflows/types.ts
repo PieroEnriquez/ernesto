@@ -163,7 +163,7 @@ export interface InputStep extends BaseStep {
  * the agent declaration (`AgentDeclaration.harness`), not to the step
  * kind — every agent step is `kind: 'agent'`. Defaults to `'cas'`.
  */
-export type AgentHarness = 'cas' | 'cursor' | 'fragua-pi';
+export type AgentHarness = 'cas' | 'cursor' | 'fragua-pi' | 'remote-vm';
 
 /**
  * Single agent step. Two forms:

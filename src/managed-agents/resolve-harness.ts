@@ -13,7 +13,7 @@
 
 import type { AgentDeclaration } from './types';
 
-export type AgentHarness = 'cas' | 'cursor' | 'fragua-pi';
+export type AgentHarness = 'cas' | 'cursor' | 'fragua-pi' | 'remote-vm';
 
 export function resolveHarness(
     decl: Pick<AgentDeclaration, 'harness' | 'provider'> | undefined,

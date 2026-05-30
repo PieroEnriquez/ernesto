@@ -56,7 +56,7 @@ export interface AgentDeclaration {
      * multi-provider harness). Authors writing new agents should set
      * `harness:` directly.
      */
-    harness?: 'cas' | 'cursor' | 'fragua-pi';
+    harness?: 'cas' | 'cursor' | 'fragua-pi' | 'remote-vm';
     provider?: 'ANTHROPIC' | 'OPEN_ROUTER';
     model: string;
     systemPrompt: SystemPromptConfig;

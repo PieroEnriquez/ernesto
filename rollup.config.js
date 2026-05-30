@@ -14,6 +14,7 @@ export default {
         'src/harness/cas/index.ts',
         'src/harness/cursor/index.ts',
         'src/harness/fragua-pi/index.ts',
+        'src/harness/remote-vm/index.ts',
         'src/harness/mock/index.ts',
         'src/workflows/index.ts',
         'src/workflow-engine/index.ts',

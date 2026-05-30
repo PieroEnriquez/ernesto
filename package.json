@@ -48,6 +48,11 @@
       "import": "./dist/harness/fragua-pi/index.js",
       "require": "./dist/harness/fragua-pi/index.cjs"
     },
+    "./harness/remote-vm": {
+      "types": "./dist/harness/remote-vm/index.d.ts",
+      "import": "./dist/harness/remote-vm/index.js",
+      "require": "./dist/harness/remote-vm/index.cjs"
+    },
     "./harness/mock": {
       "types": "./dist/harness/mock/index.d.ts",
       "import": "./dist/harness/mock/index.js",

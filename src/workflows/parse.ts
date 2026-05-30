@@ -484,9 +484,11 @@ function projectHarness(
     filename: string,
 ): AgentHarness | undefined {
     if (v === undefined) return undefined;
-    if (v === 'cas' || v === 'cursor' || v === 'fragua-pi') return v;
+    if (v === 'cas' || v === 'cursor' || v === 'fragua-pi' || v === 'remote-vm') {
+        return v;
+    }
     throw new Error(
-        `${filename}: agent step "${stepId}".harness must be "cas" | "cursor" | "fragua-pi"`,
+        `${filename}: agent step "${stepId}".harness must be "cas" | "cursor" | "fragua-pi" | "remote-vm"`,
     );
 }
 
