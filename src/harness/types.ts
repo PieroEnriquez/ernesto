@@ -189,7 +189,13 @@ export type HarnessEvent =
           schema?: unknown;
           runId: string;
       }
-    | { kind: 'error'; message: string; recoverable: boolean; runId: string };
+    | { kind: 'error'; message: string; recoverable: boolean; runId: string }
+    // A UI component the agent emitted (e.g. via a `ui` tool). Carried as
+    // `unknown` to keep harness types decoupled from `components`; the
+    // backend casts it to a UiComponent when emitting `fact.component`.
+    // Used by out-of-process runtimes (remote-vm) to bridge in-VM `ui`
+    // calls back to the host's component bus → per-tier renderers.
+    | { kind: 'component'; component: unknown; runId: string };
 
 /** Canonical conversation-replay shape. */
 export type HarnessMessage =
