@@ -160,13 +160,6 @@ export class KindRegistry {
         return out;
     }
 
-    /** Walk every entry — used by `runner.dispatch` to find the kind
-     *  for a URI before deciding which handler path to take. Returns
-     *  an array snapshot, not a live view. */
-    snapshot(): KindDecl[] {
-        return [...this.byUri.values()];
-    }
-
     /** Drop a kind from the registry. Returns true if it was present. */
     unregister(uri: string): boolean {
         return this.byUri.delete(uri);

@@ -29,6 +29,7 @@ export interface FactEvent {
  *  `string`-typed for that reason). */
 export type FactEventType =
     | 'fact.run_started'
+    | 'fact.run_resumed'
     | 'fact.run_paused_human'
     | 'fact.node_completed'
     | 'fact.run_terminated'

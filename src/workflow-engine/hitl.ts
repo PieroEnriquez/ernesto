@@ -22,6 +22,7 @@
 import { randomUUID } from 'node:crypto';
 import type { EventBus } from './event-bus';
 import type { StorePort } from './store/port';
+import { substituteFields } from './substitute-fields';
 
 export interface HitlPauseInput {
     runId: string;
@@ -175,35 +176,7 @@ export function materializeResumePrompt(
     template: string | undefined,
     value: unknown,
 ): string {
-    const scalar = (v: unknown): string => {
-        if (typeof v === 'string') return v;
-        if (typeof v === 'number' || typeof v === 'boolean') return String(v);
-        try {
-            return JSON.stringify(v);
-        } catch {
-            return String(v);
-        }
-    };
-    if (!template || template.length === 0) {
-        return `The user responded: ${scalar(value)}`;
-    }
-    let out = template.replace(/\{value\}/g, scalar(value));
-    if (
-        value &&
-        typeof value === 'object' &&
-        !Array.isArray(value)
-    ) {
-        for (const [field, fieldValue] of Object.entries(
-            value as Record<string, unknown>,
-        )) {
-            const placeholder = new RegExp(
-                `\\{${field.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\}`,
-                'g',
-            );
-            out = out.replace(placeholder, scalar(fieldValue));
-        }
-    }
-    return out;
+    return substituteFields(template, value);
 }
 
 /** Best-effort route extraction. Surfaces the enum values a renderer

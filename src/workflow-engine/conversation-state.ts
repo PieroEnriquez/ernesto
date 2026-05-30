@@ -45,6 +45,7 @@ import type {
     HitlExpect,
     RenderableComponent,
 } from '../components/types';
+import { substituteFields } from './substitute-fields';
 
 /** Schema version — bump on breaking changes. Older files load with a
  *  best-effort cast; newer files surface a warning to the renderer. */
@@ -374,32 +375,10 @@ export const defaultRendererStrategy: Required<RendererPromptStrategy> = {
     forCompleted: (input, _prev) => input.text,
     forRunningPreempted: (input, _prev) =>
         `[The user interrupted your previous response with a new message:]\n\n${input.text}`,
-    forAwaitingInputResolved: (input, pending) => {
-        const template = pending.resumePrompt;
-        if (!template || template.length === 0) {
-            return `The user responded: ${scalar(input.value)}`;
-        }
-        // Inline substitution — same algorithm as `materializeResumePrompt`
-        // in `hitl.ts` (re-exported from the package root). Kept here
-        // so this module has no cross-file dep at runtime.
-        let out = template.replace(/\{value\}/g, scalar(input.value));
-        if (
-            input.value &&
-            typeof input.value === 'object' &&
-            !Array.isArray(input.value)
-        ) {
-            for (const [field, fieldValue] of Object.entries(
-                input.value as Record<string, unknown>,
-            )) {
-                const placeholder = new RegExp(
-                    `\\{${field.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\}`,
-                    'g',
-                );
-                out = out.replace(placeholder, scalar(fieldValue));
-            }
-        }
-        return out;
-    },
+    forAwaitingInputResolved: (input, pending) =>
+        // Same algorithm as `materializeResumePrompt` in `hitl.ts`; both
+        // delegate to the shared `substituteFields` helper.
+        substituteFields(pending.resumePrompt, input.value),
     forAwaitingInputPreempted: (input, _pending, _prev) =>
         `[The user did not respond to your earlier question. Instead, they sent a new message — drop the prior request and follow their new direction:]\n\n${input.text}`,
     forErrored: (input, error, _prev) =>
