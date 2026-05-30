@@ -40,7 +40,6 @@ export {
     lintWorkspace,
     makeLintWorkspace,
     lintWorkflowFile,
-    isWorkflowPath,
     UNREGISTERED_EXTRACTION_SOURCE,
     RESERVED_SYSTEM_WORKSPACES,
 } from './lint';
@@ -76,10 +75,8 @@ export type {
 // chain + event store); the sync route primitive lives at
 // `ernesto/route` for tests + advanced internal use.
 export {
-    defineRoute, resolveRouteScope, isDynamicScope,
+    defineRoute, resolveRouteScope,
     RouteRegistry,
-    applyRenderManifest,
-    sketchComponents,
 } from './route';
 export type {
     Route, RouteConfig, RouteContext, RouteLogger, RouteScope, RouteUser,
@@ -92,7 +89,6 @@ export type { RouteCompactor } from './route/route-registry';
 
 // ─── Route results (archive + compact preview) ─────────────────────────
 export {
-    archiveRouteResult, ARCHIVE_MAX_BYTES,
     compactify,
 } from './route-results';
 export type {
@@ -116,9 +112,8 @@ export type {
 
 // ─── Agent verbs ─────────────────────────────────────────────────────────
 export {
-    executeInputSchema, executeOutputSchema, EXECUTE_DESCRIPTION,
-    EXECUTE_ACCEPTS_BUNDLED_UI, handleExecute,
-    settleInputSchema, settleOutputSchema, SETTLE_DESCRIPTION, handleSettle,
+    executeInputSchema, EXECUTE_DESCRIPTION, handleExecute,
+    settleInputSchema, SETTLE_DESCRIPTION, handleSettle,
 } from './agent-verbs';
 export type {
     ExecuteInput, ExecuteVerbContext, ExecuteVerbLogger,
@@ -129,22 +124,11 @@ export type {
 
 // ─── Dashboards spec ─────────────────────────────────────────────────────
 export {
-    dashboardSpecSchema,
-    blockSchema,
     filterSchema,
-    formatSchema,
     isDataBlock,
-    isSqlBlock,
-    isJsBlock,
     parseDashboard,
     substituteBinds,
-    toDateId,
-    dataflowOrder,
     DashboardSpecError,
-    RESERVED_BIND_NAMES,
-    SLUG_RE as DASHBOARD_SLUG_RE,
-    BLOCK_ID_RE,
-    FORMAT_VALUES,
 } from './dashboards';
 export type {
     DashboardSpec,
@@ -183,15 +167,9 @@ export { registerBrainRoutes } from './routes/brain';
 
 // ─── Components (declarative UI intent) ──────────────────────────────────
 export {
-    UI_COMPONENT_KINDS,
     RENDERABLE_COMPONENT_KINDS,
     validateUiComponent,
-    validateThinking,
     validateStatus,
-    validateProgress,
-    validateAttachment,
-    validateHitl,
-    validateRenderableComponent,
 } from './components';
 export type {
     UiComponent,

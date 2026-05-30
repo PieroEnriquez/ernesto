@@ -91,19 +91,15 @@ export type {
 export {
     HitlController,
     validateAgainstSchema,
-    materializeResumePrompt,
 } from './hitl';
 export type { HitlPauseInput, ResumeIntent } from './hitl';
 
 export {
     CONVERSATION_STATE_VERSION,
-    UI_TRAIL_CAP,
     loadConversationState,
-    saveConversationState,
     updateConversationState,
     appendHitlToTrail,
     decideRendererAction,
-    composeStrategy,
     defaultRendererStrategy,
 } from './conversation-state';
 
