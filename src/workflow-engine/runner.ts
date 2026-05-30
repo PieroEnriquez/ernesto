@@ -34,8 +34,9 @@ import type { Principal } from './principal';
 import { EventBus } from './event-bus';
 import { HandlerDispatcher } from './dispatch';
 import { InMemoryStore } from './store/in-memory-store';
-import { HitlController, type HitlPauseInput } from './hitl';
-import { walk, type WalkResult } from './engine/walker';
+import { HitlController, validateAgainstSchema, type HitlPauseInput } from './hitl';
+import { walk, type WalkResult, type WalkerDeps } from './engine/walker';
+import type { GraphSeed } from './engine/run-graph';
 import { KindRegistry, mergeWorkflowPolicyDefaults } from './kind-registry';
 import {
     type DispatchMiddleware,
@@ -136,55 +137,12 @@ class Runner implements WorkflowRunner {
         principal: Principal,
         opts: DispatchOpts = {},
     ): Promise<Run<TOut>> {
-        // M5: resolve via the kind registry first. Falls back to the
-        // workflow reader for workspace-loaded workflows that haven't
-        // been registered programmatically.
-        const declFromRegistry = this.kindRegistry.resolve(kind);
-        let workflowDecl: WorkflowDetail;
-        if (declFromRegistry && declFromRegistry.kind === 'workflow') {
-            workflowDecl = {
-                name: declFromRegistry.declaration.name,
-                path: `kind-registry://${declFromRegistry.uri}`,
-                sha: '',
-                source: 'kind-registry',
-                declaration: declFromRegistry.declaration,
-            };
-        } else if (declFromRegistry && declFromRegistry.kind === 'route') {
-            // Route kinds dispatch as a single-step workflow with one
-            // route step. The substrate's promise: dispatch is uniform
-            // across routes and workflows.
-            workflowDecl = {
-                name: declFromRegistry.uri,
-                path: `kind-registry://${declFromRegistry.uri}`,
-                sha: '',
-                source: 'kind-registry',
-                declaration: {
-                    name: declFromRegistry.uri,
-                    description: declFromRegistry.route.description ?? declFromRegistry.uri,
-                    version: 1 as const,
-                    ...(declFromRegistry.route.scope &&
-                    Array.isArray(declFromRegistry.route.scope)
-                        ? { scope: [...declFromRegistry.route.scope] }
-                        : {}),
-                    steps: {
-                        main: {
-                            kind: 'route' as const,
-                            uri: declFromRegistry.uri,
-                            params: inputs,
-                        },
-                    },
-                },
-            };
-        } else {
-            if (!this.reader) {
-                throw new Error('no workflow reader registered');
-            }
-            const detail = await this.reader.read(kind);
-            if (!detail) {
-                throw new Error(`workflow not found: ${kind}`);
-            }
-            workflowDecl = detail;
-        }
+        // M5: resolve via the kind registry first, falling back to the
+        // workflow reader. Shared with the resume path (`resumeDurable`).
+        const { workflowDecl, declFromRegistry } = await this.resolveKind(
+            kind,
+            inputs,
+        );
 
         const runId =
             opts.preallocatedRunId ?? `run-${kind}-${randomUUID()}`;
@@ -262,53 +220,7 @@ class Runner implements WorkflowRunner {
                             ? { annotations: postPreCtx.annotations }
                             : {}),
                     },
-                    {
-                        bus: this.bus,
-                        dispatcher: this.dispatcher,
-                        store: this.store,
-                        hitl: this.hitl,
-                        log: this.log,
-                        nextSeq: (id) => this.nextSeq(id),
-                        // Recursive dispatch closure — step handlers get
-                        // a pre-bound `ctx.dispatch(uri, inputs)` that
-                        // threads the parent run's identity + routing
-                        // into the child dispatch's opts. This is what
-                        // makes `kind: route uri: <workflow>` work for
-                        // workflow-from-workflow without a subworkflow
-                        // step kind.
-                        dispatch: async (uri, inputs, parent) => {
-                            const childOpts: DispatchOpts = {
-                                ...parent.routing.context,
-                                parentRunId: parent.runId,
-                                ...(parent.routing.tier !== undefined
-                                    ? { tier: parent.routing.tier }
-                                    : {}),
-                                ...(parent.routing.surfaceRunId !== undefined
-                                    ? { surfaceRunId: parent.routing.surfaceRunId }
-                                    : {}),
-                                ...(parent.routing.conversationKey !== undefined
-                                    ? { conversationKey: parent.routing.conversationKey }
-                                    : {}),
-                                context: parent.routing.context,
-                            };
-                            const child = await this.dispatch(
-                                uri,
-                                inputs,
-                                parent.principal,
-                                childOpts,
-                            );
-                            return {
-                                runId: child.runId,
-                                status: child.status,
-                                ...(child.output !== undefined
-                                    ? { output: child.output }
-                                    : {}),
-                                ...(child.error !== undefined
-                                    ? { error: child.error }
-                                    : {}),
-                            };
-                        },
-                    },
+                    this.walkerDeps(),
                 );
                 // Only retry on `errored` — completed, paused, canceled
                 // are terminal-as-is. The on:'transient' filter is a
@@ -357,10 +269,185 @@ class Runner implements WorkflowRunner {
     }
 
     async resumeRun(input: ResumeRunInput): Promise<void> {
-        await this.hitl.resume(input.runId, {
-            promptId: input.promptId,
-            value: input.value,
-        });
+        // Two pause mechanisms share this entry point:
+        //
+        //  1. In-heap agent pause — `ui.input` called `pauseForHuman`
+        //     mid-agent-turn; the SDK turn is suspended waiting for the
+        //     tool result. Resolve the in-heap promise so the turn
+        //     continues. Restart-fragile by nature (harness path).
+        //  2. Durable step-level pause — a step returned `paused_human`
+        //     or `paused_signal`; the run parked with no in-heap promise.
+        //     Re-enter the walk from the persisted resume state.
+        if (this.hitl.hasPending(input.runId, input.promptId)) {
+            await this.hitl.resume(input.runId, {
+                promptId: input.promptId,
+                value: input.value,
+            });
+            return;
+        }
+        await this.resumeDurable(input);
+    }
+
+    /** Re-enter a paused run from durable state. Validates the resume
+     *  value against the parked step's schema, then re-walks: the seed
+     *  pre-satisfies completed/skipped steps and resolves the parked
+     *  step, so handlers don't re-run. Survives a pod restart — the
+     *  only state read is the durable run row. */
+    private async resumeDurable(input: ResumeRunInput): Promise<void> {
+        const state = await this.store.getRunState(input.runId);
+        const notPending = `no pending HITL for run ${input.runId} prompt ${input.promptId}`;
+        if (!state || state.status !== 'paused' || !state.resume) {
+            throw new Error(notPending);
+        }
+        const parked = state.resume.paused.find(
+            (p) => p.promptId === input.promptId,
+        );
+        if (!parked) throw new Error(notPending);
+
+        const validationError = validateAgainstSchema(
+            input.value,
+            parked.schema ?? {},
+        );
+        if (validationError) {
+            throw new Error(`HITL value invalid: ${validationError}`);
+        }
+
+        const { workflowDecl } = await this.resolveKind(
+            state.workflow,
+            state.inputs,
+        );
+
+        const seed: GraphSeed = {
+            outputs: state.resume.outputs,
+            skipped: state.resume.skipped,
+            resolved: { [parked.stepId]: input.value },
+            // Any other still-parked pauses stay parked (re-held without
+            // re-running their handler) — multi-pause runs converge over
+            // successive resumes.
+            parked: state.resume.paused.filter(
+                (p) => p.promptId !== input.promptId,
+            ),
+        };
+
+        const ac = new AbortController();
+        this.inflightAborts.set(input.runId, ac);
+        if (!this.seqByRun.has(input.runId)) this.seqByRun.set(input.runId, 0);
+        try {
+            await walk(
+                input.runId,
+                workflowDecl.declaration,
+                {
+                    kind: state.workflow,
+                    inputs: state.inputs,
+                    principal: principalFromRouting(state.routing),
+                    opts: { ...optsFromRouting(state.routing), abortSignal: ac.signal },
+                    resume: { seed, promptId: input.promptId },
+                },
+                this.walkerDeps(),
+            );
+        } finally {
+            this.inflightAborts.delete(input.runId);
+        }
+    }
+
+    /** Resolve a kind to its frozen declaration via the registry first,
+     *  then the workflow reader. Shared by `dispatch` + `resumeDurable`.
+     *  Route kinds become a single-step `route` workflow so dispatch is
+     *  uniform across routes and workflows. */
+    private async resolveKind(
+        kind: KindRef,
+        inputs: Record<string, unknown>,
+    ): Promise<{
+        workflowDecl: WorkflowDetail;
+        declFromRegistry: ReturnType<KindRegistry['resolve']>;
+    }> {
+        const declFromRegistry = this.kindRegistry.resolve(kind);
+        let workflowDecl: WorkflowDetail;
+        if (declFromRegistry && declFromRegistry.kind === 'workflow') {
+            workflowDecl = {
+                name: declFromRegistry.declaration.name,
+                path: `kind-registry://${declFromRegistry.uri}`,
+                sha: '',
+                source: 'kind-registry',
+                declaration: declFromRegistry.declaration,
+            };
+        } else if (declFromRegistry && declFromRegistry.kind === 'route') {
+            workflowDecl = {
+                name: declFromRegistry.uri,
+                path: `kind-registry://${declFromRegistry.uri}`,
+                sha: '',
+                source: 'kind-registry',
+                declaration: {
+                    name: declFromRegistry.uri,
+                    description:
+                        declFromRegistry.route.description ?? declFromRegistry.uri,
+                    version: 1 as const,
+                    ...(declFromRegistry.route.scope &&
+                    Array.isArray(declFromRegistry.route.scope)
+                        ? { scope: [...declFromRegistry.route.scope] }
+                        : {}),
+                    steps: {
+                        main: {
+                            kind: 'route' as const,
+                            uri: declFromRegistry.uri,
+                            params: inputs,
+                        },
+                    },
+                },
+            };
+        } else {
+            if (!this.reader) {
+                throw new Error('no workflow reader registered');
+            }
+            const detail = await this.reader.read(kind);
+            if (!detail) {
+                throw new Error(`workflow not found: ${kind}`);
+            }
+            workflowDecl = detail;
+        }
+        return { workflowDecl, declFromRegistry };
+    }
+
+    /** Build the per-walk `WalkerDeps`. Shared by `dispatch` and the
+     *  resume re-walk so both use the same recursive-dispatch closure
+     *  (step handlers get a pre-bound `ctx.dispatch(uri, inputs)` that
+     *  threads the parent run's identity + routing into the child). */
+    private walkerDeps(): WalkerDeps {
+        return {
+            bus: this.bus,
+            dispatcher: this.dispatcher,
+            store: this.store,
+            log: this.log,
+            nextSeq: (id) => this.nextSeq(id),
+            dispatch: async (uri, inputs, parent) => {
+                const childOpts: DispatchOpts = {
+                    ...parent.routing.context,
+                    parentRunId: parent.runId,
+                    ...(parent.routing.tier !== undefined
+                        ? { tier: parent.routing.tier }
+                        : {}),
+                    ...(parent.routing.surfaceRunId !== undefined
+                        ? { surfaceRunId: parent.routing.surfaceRunId }
+                        : {}),
+                    ...(parent.routing.conversationKey !== undefined
+                        ? { conversationKey: parent.routing.conversationKey }
+                        : {}),
+                    context: parent.routing.context,
+                };
+                const child = await this.dispatch(
+                    uri,
+                    inputs,
+                    parent.principal,
+                    childOpts,
+                );
+                return {
+                    runId: child.runId,
+                    status: child.status,
+                    ...(child.output !== undefined ? { output: child.output } : {}),
+                    ...(child.error !== undefined ? { error: child.error } : {}),
+                };
+            },
+        };
     }
 
     pauseForHuman(input: HitlPauseInput): Promise<unknown> {
@@ -487,6 +574,58 @@ function sleepWithSignal(ms: number, signal: AbortSignal): Promise<void> {
             { once: true },
         );
     });
+}
+
+/** Reconstruct the dispatch `Principal` from the persisted routing
+ *  snapshot (`walker.ts:routingForStore` is the inverse). Used by the
+ *  resume re-walk, which has only the durable run row to work from. */
+function principalFromRouting(routing: Record<string, unknown>): Principal {
+    if (routing.principalKind === 'service') {
+        return {
+            kind: 'service',
+            workerId: typeof routing.workerId === 'string' ? routing.workerId : 'worker',
+            requestId: typeof routing.requestId === 'string' ? routing.requestId : '',
+        };
+    }
+    return {
+        kind: 'user',
+        userId: typeof routing.userId === 'string' ? routing.userId : 'unknown',
+        scopes: new Set(
+            Array.isArray(routing.scopes) ? (routing.scopes as string[]) : [],
+        ),
+    };
+}
+
+/** Reconstruct `DispatchOpts` from the persisted routing snapshot so the
+ *  resume re-walk re-derives the same `HandlerRouting`. Substrate fields
+ *  map to typed opts; everything else is replayed as `context`. */
+function optsFromRouting(routing: Record<string, unknown>): DispatchOpts {
+    const opts: DispatchOpts = {};
+    if (routing.tier === 'A' || routing.tier === 'B' || routing.tier === 'C') {
+        opts.tier = routing.tier;
+    }
+    if (typeof routing.surfaceRunId === 'string') opts.surfaceRunId = routing.surfaceRunId;
+    if (typeof routing.parentRunId === 'string') opts.parentRunId = routing.parentRunId;
+    if (typeof routing.conversationKey === 'string') {
+        opts.conversationKey = routing.conversationKey;
+    }
+    const RESERVED = new Set([
+        'tier',
+        'surfaceRunId',
+        'parentRunId',
+        'conversationKey',
+        'principalKind',
+        'userId',
+        'scopes',
+        'workerId',
+        'requestId',
+    ]);
+    const context: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(routing)) {
+        if (!RESERVED.has(k)) context[k] = v;
+    }
+    opts.context = context;
+    return opts;
 }
 
 function mapWalkStatus(s: WalkResult['status']): RunHandleStatus {

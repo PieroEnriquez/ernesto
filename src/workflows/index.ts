@@ -16,7 +16,7 @@ export { compileDashboardSpecToWorkflow } from './compile-dashboard';
 export { validateWorkflow } from './validate';
 export type { WorkflowValidateContext } from './validate';
 
-export { isAgentStep, isDynamicWorkflowStep } from './types';
+export { isAgentStep, isDynamicWorkflowStep, isMonitorStep } from './types';
 export type {
     WorkflowDeclaration,
     WorkflowStep,
@@ -27,6 +27,7 @@ export type {
     AgentHarness,
     GroupStep,
     DynamicWorkflowStep,
+    MonitorStep,
     DynamicWorkflowMeta,
     WorkflowInput,
     WorkflowOutput,

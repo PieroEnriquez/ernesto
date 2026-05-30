@@ -81,14 +81,16 @@ export type WorkflowStep =
     | InputStep
     | AgentStep
     | GroupStep
-    | DynamicWorkflowStep;
+    | DynamicWorkflowStep
+    | MonitorStep;
 
 export type StepKind =
     | 'route'
     | 'input'
     | 'agent'
     | 'group'
-    | 'dynamic-workflow';
+    | 'dynamic-workflow'
+    | 'monitor';
 
 /**
  * DAG metadata every step may declare. The workflow engine reads
@@ -398,6 +400,33 @@ export interface DynamicWorkflowMeta {
 /** Type guard. */
 export function isDynamicWorkflowStep(step: WorkflowStep): step is DynamicWorkflowStep {
     return step.kind === 'dynamic-workflow';
+}
+
+/**
+ * Monitor step — watches an external long-running job by polling, and
+ * parks the run on `paused_signal` between polls. A durable worker
+ * drives subsequent polls and resumes the run on a terminal signal
+ * (see `engine/run-graph.ts` parking + `runner.resumeRun`). The handler
+ * is registered backend-side (`runner.registerStepKind('monitor', …)`)
+ * because the polled client (Devin) lives there; the lib owns only the
+ * step shape and the pause vocabulary.
+ *
+ * A monitor workflow is one `monitor` step in a one-step DAG: it does
+ * ONE poll, emits a `fact.component` status card, and returns either
+ * `paused_signal` (still running) or `completed` (terminal). The poll
+ * worker re-dispatches/resumes from the durable run row, so the monitor
+ * survives a pod restart.
+ */
+export interface MonitorStep extends BaseStep {
+    kind: 'monitor';
+    /** Opaque signal key a worker watches to resume the run (e.g.
+     *  `devin:<sessionId>`). Supports `${{ }}` template expansion. */
+    signalKey: string;
+}
+
+/** Type guard. */
+export function isMonitorStep(step: WorkflowStep): step is MonitorStep {
+    return step.kind === 'monitor';
 }
 
 // ─── Inputs & outputs ─────────────────────────────────────────────────────

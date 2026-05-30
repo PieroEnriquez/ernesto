@@ -79,6 +79,8 @@ export type {
     StorePort,
     ListRunsOpts,
     ListEventsOpts,
+    ParkedPause,
+    ResumeState,
 } from './store/port';
 export { InMemoryStore } from './store/in-memory-store';
 

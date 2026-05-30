@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createRunner } from '../runner';
+import { InMemoryStore } from '../store/in-memory-store';
 import { createMockHarness } from '../../harness/mock';
 import {
     userPrincipal,
@@ -159,8 +160,9 @@ describe('createRunner.dispatch', () => {
         ).rejects.toThrow(/not found/);
     });
 
-    it('routes paused_human through resumeRun end-to-end', async () => {
-        const runner = createRunner();
+    it('parks paused_human durably and resumeRun re-walks to terminal', async () => {
+        const store = new InMemoryStore();
+        const runner = createRunner({ store });
         const events: FactEvent[] = [];
         await runner.subscribeEvents({ onEvent: (e) => events.push(e) });
         runner.registerStepKind('input', async () => ({
@@ -183,27 +185,106 @@ describe('createRunner.dispatch', () => {
                 },
             }),
         );
-        const runPromise = runner.dispatch(
+        // dispatch returns as soon as the run parks — it does NOT block
+        // on the resume (the durable, restart-surviving contract).
+        const run = await runner.dispatch(
             'wf-hitl',
             {},
             userPrincipal('u', []),
             {},
         );
-        // Wait for pause to land.
-        await new Promise((r) => setTimeout(r, 5));
-        const paused = events.find(
-            (e) => e.type === 'fact.run_paused_human',
-        );
+        expect(run.status).toBe('awaiting_input');
+        const paused = events.find((e) => e.type === 'fact.run_paused_human');
         expect(paused).toBeDefined();
         const promptId = (paused!.payload as any).promptId as string;
-        await runner.resumeRun({
-            runId: paused!.runId,
+        // The run is durably parked: status paused + resume blob present.
+        const parkedState = await store.getRunState(run.runId);
+        expect(parkedState?.status).toBe('paused');
+        expect(parkedState?.resume?.paused[0]?.promptId).toBe(promptId);
+
+        await runner.resumeRun({ runId: run.runId, promptId, value: { choice: 'a' } });
+
+        // resume re-walked from durable state to a real terminal.
+        expect(events.find((e) => e.type === 'fact.run_resumed')).toBeDefined();
+        const terminal = events.find((e) => e.type === 'fact.run_terminated');
+        expect(terminal?.payload).toMatchObject({ status: 'completed' });
+        const completedNode = events.find(
+            (e) => e.type === 'fact.node_completed' && (e.payload as any).nodeId === 's1',
+        );
+        expect((completedNode!.payload as any).output).toEqual({ choice: 'a' });
+        const finalState = await store.getRunState(run.runId);
+        expect(finalState?.status).toBe('completed');
+    });
+
+    it('resumeRun on an unknown/terminal run rejects (no pending HITL)', async () => {
+        const runner = createRunner();
+        await expect(
+            runner.resumeRun({ runId: 'ghost', promptId: 'p', value: 1 }),
+        ).rejects.toThrow(/no pending HITL/);
+    });
+
+    it('resumes a parked run on a FRESH runner sharing only the store (restart survival)', async () => {
+        // Models a pod restart / cross-pod worker: the only shared state
+        // between the runner that parked and the one that resumes is the
+        // durable store. No in-heap promise survives.
+        const store = new InMemoryStore();
+        const decl: WorkflowDeclaration = {
+            name: 'wf-signal',
+            description: 'd',
+            version: 1,
+            steps: {
+                // s1 parks on an external signal; s2 runs after resume.
+                mon: { kind: 'monitor' as any, signalKey: 'devin:abc' } as any,
+                after: { kind: 'route', uri: 'x://y', depends: ['mon'] },
+            },
+        };
+
+        // --- Process A: dispatch → park on paused_signal ---
+        const runnerA = createRunner({ store });
+        runnerA.registerStepKind('monitor', async () => ({
+            kind: 'paused_signal',
+            signalKey: 'devin:abc',
+        }));
+        runnerA.registerStepKind('route', async () => ({
+            kind: 'completed',
+            output: { done: true },
+        }));
+        runnerA.registerWorkflowReader(readerOf(decl));
+        const run = await runnerA.dispatch('wf-signal', {}, userPrincipal('u', []), {});
+        expect(run.status).toBe('awaiting_input');
+        const parked = await store.getRunState(run.runId);
+        const promptId = parked!.resume!.paused[0]!.promptId;
+        expect(parked!.resume!.paused[0]!.kind).toBe('signal');
+        expect(parked!.resume!.paused[0]!.signalKey).toBe('devin:abc');
+
+        // --- Process B: a brand-new runner over the same store resumes ---
+        const events: FactEvent[] = [];
+        const runnerB = createRunner({ store });
+        await runnerB.subscribeEvents({ onEvent: (e) => events.push(e) });
+        // B never registered 'monitor' — the parked step is NOT re-run;
+        // only the downstream 'route' step executes on resume.
+        runnerB.registerStepKind('route', async () => ({
+            kind: 'completed',
+            output: { done: true },
+        }));
+        runnerB.registerWorkflowReader(readerOf(decl));
+        await runnerB.resumeRun({
+            runId: run.runId,
             promptId,
-            value: { choice: 'a' },
+            value: { summary: 'PR ready' },
         });
-        const result = await runPromise;
-        expect(result.status).toBe('completed');
-        expect((result.output as any)?.s1).toEqual({ choice: 'a' });
+
+        const terminal = events.find((e) => e.type === 'fact.run_terminated');
+        expect(terminal?.payload).toMatchObject({ status: 'completed' });
+        const monNode = events.find(
+            (e) => e.type === 'fact.node_completed' && (e.payload as any).nodeId === 'mon',
+        );
+        expect((monNode!.payload as any).output).toEqual({ summary: 'PR ready' });
+        const afterNode = events.find(
+            (e) => e.type === 'fact.node_completed' && (e.payload as any).nodeId === 'after',
+        );
+        expect((afterNode!.payload as any).output).toEqual({ done: true });
+        expect((await store.getRunState(run.runId))?.status).toBe('completed');
     });
 
     it('drives a real agent step via the mock harness end-to-end', async () => {

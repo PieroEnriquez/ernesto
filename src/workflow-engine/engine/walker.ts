@@ -12,19 +12,17 @@
 import type { WorkflowDeclaration } from '../../workflows/types';
 import type { EventBus } from '../event-bus';
 import type { HandlerDispatcher } from '../dispatch';
-import type { StorePort } from '../store/port';
-import type { HitlController } from '../hitl';
+import type { StorePort, ResumeState } from '../store/port';
 import type { EngineLogger, HandlerRouting } from '../types/handler';
 import type { DispatchOpts, KindRef } from '../types/runner';
 import type { Principal } from '../principal';
 import type { FactEvent } from '../types/event';
-import { runGraph, type RunGraphDeps } from './run-graph';
+import { runGraph, type RunGraphDeps, type GraphSeed } from './run-graph';
 
 export interface WalkerDeps {
     bus: EventBus;
     dispatcher: HandlerDispatcher;
     store: StorePort;
-    hitl: HitlController;
     log: EngineLogger;
     /** Hands out the next event seq for a given run. */
     nextSeq(runId: string): number;
@@ -67,6 +65,12 @@ export interface WalkInput {
     workdirRoot?: string;
     /** Middleware-written per-dispatch annotations. */
     annotations?: Readonly<Record<string, unknown>>;
+    /** Set when re-entering a paused run via `resumeRun`. The seed
+     *  pre-satisfies completed/skipped steps and resolves the parked
+     *  step; `promptId` is announced via `fact.run_resumed`. When
+     *  present, the walk skips `fact.run_started` (the run is already
+     *  live in the durable log) and preserves the original `startedAt`. */
+    resume?: { seed: GraphSeed; promptId: string };
 }
 
 export async function walk(
@@ -78,28 +82,52 @@ export async function walk(
     const routing = buildRouting(input);
     const storeRouting = routingForStore(routing, input.principal);
     const signal = input.opts.abortSignal ?? new AbortController().signal;
-    const startedAt = Date.now();
 
-    await deps.store.putRunState({
-        runId,
-        workflow: input.kind,
-        status: 'running',
-        inputs: input.inputs,
-        routing: storeRouting,
-        startedAt,
-    });
-    emit(deps, {
-        runId,
-        seq: deps.nextSeq(runId),
-        type: 'fact.run_started',
-        payload: { workflow: input.kind, inputs: input.inputs },
-        ts: startedAt,
-        routing: storeRouting,
-    });
+    let startedAt: number;
+    if (input.resume) {
+        // Re-entering a paused run: keep the original startedAt, flip
+        // back to running (dropping the durable resume blob), and
+        // announce the resume. No fresh `fact.run_started`.
+        const prior = await deps.store.getRunState(runId);
+        startedAt = prior?.startedAt ?? Date.now();
+        await deps.store.putRunState({
+            runId,
+            workflow: input.kind,
+            status: 'running',
+            inputs: input.inputs,
+            routing: storeRouting,
+            startedAt,
+        });
+        emit(deps, {
+            runId,
+            seq: deps.nextSeq(runId),
+            type: 'fact.run_resumed',
+            payload: { promptId: input.resume.promptId },
+            ts: Date.now(),
+            routing: storeRouting,
+        });
+    } else {
+        startedAt = Date.now();
+        await deps.store.putRunState({
+            runId,
+            workflow: input.kind,
+            status: 'running',
+            inputs: input.inputs,
+            routing: storeRouting,
+            startedAt,
+        });
+        emit(deps, {
+            runId,
+            seq: deps.nextSeq(runId),
+            type: 'fact.run_started',
+            payload: { workflow: input.kind, inputs: input.inputs },
+            ts: startedAt,
+            routing: storeRouting,
+        });
+    }
 
     const graphDeps: RunGraphDeps = {
         dispatcher: deps.dispatcher,
-        hitl: deps.hitl,
         log: deps.log,
         signal,
         runId,
@@ -110,6 +138,7 @@ export async function walk(
         emitFact: (event) => emit(deps, event),
         nextSeq: (id) => deps.nextSeq(id),
         storeRouting,
+        ...(input.resume !== undefined ? { seed: input.resume.seed } : {}),
         ...(input.workdirRoot !== undefined ? { workdirRoot: input.workdirRoot } : {}),
         // Pre-bind the recursive-dispatch closure for step handlers
         // (`ctx.dispatch(uri, inputs)`). Parent identity (runId,
@@ -140,6 +169,28 @@ export async function walk(
         },
         graphDeps,
     );
+
+    if (result.status === 'paused') {
+        // One or more steps parked on a step-level pause. Persist the
+        // durable resume blob and leave the run non-terminal — the pause
+        // events were already emitted per-step inside the graph; no
+        // `fact.run_terminated`. `resumeRun` re-enters from this state.
+        const resumeState: ResumeState = {
+            outputs: result.partialOutputs,
+            skipped: result.skippedNodeIds,
+            paused: result.paused,
+        };
+        await deps.store.putRunState({
+            runId,
+            workflow: input.kind,
+            status: 'paused',
+            inputs: input.inputs,
+            routing: storeRouting,
+            startedAt,
+            resume: resumeState,
+        });
+        return { runId, status: 'paused', outputs: result.partialOutputs };
+    }
 
     if (result.status === 'canceled') {
         emit(deps, {

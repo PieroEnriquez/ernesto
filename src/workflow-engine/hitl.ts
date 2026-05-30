@@ -146,6 +146,14 @@ export class HitlController {
         pending.resolve(intent.value);
     }
 
+    /** True iff an in-heap pause is outstanding for `(runId, promptId)`.
+     *  The runner checks this to route `resumeRun`: in-heap pauses
+     *  (the agent `ui.input` mid-turn path) resolve here; step-level
+     *  pauses have no in-heap promise and resume from durable state. */
+    hasPending(runId: string, promptId: string): boolean {
+        return this.pending.has(`${runId}:${promptId}`);
+    }
+
     /** Abort all pending HITL pauses for a run (run-level abort path). */
     abortPending(runId: string, reason: string): void {
         for (const [key, pending] of this.pending.entries()) {

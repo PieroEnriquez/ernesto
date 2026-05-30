@@ -112,7 +112,7 @@ describe('walker', () => {
         expect(state?.status).toBe('errored');
     });
 
-    it('pauses on paused_human and resumes via HITL controller', async () => {
+    it('parks (durably) on paused_human without blocking siblings', async () => {
         const rig = makeRig();
         rig.dispatcher.register('input', async () => ({
             kind: 'paused_human',
@@ -133,11 +133,13 @@ describe('walker', () => {
             description: 'd',
             version: 1,
             steps: {
+                // s1 parks; the independent s2 keeps running.
                 s1: { kind: 'input', schema: {} as any, prompt: 'pick' },
                 s2: { kind: 'route', uri: 'x://y' },
             },
         };
-        const runPromise = walk(
+        // walk returns as soon as the run parks — NOT blocked on resume.
+        const result = await walk(
             'run-3',
             decl,
             {
@@ -148,21 +150,25 @@ describe('walker', () => {
             },
             { ...rig, log: NOOP_LOG },
         );
-        // Let the pause emit + state-write settle.
-        await new Promise((r) => setImmediate(r));
+        expect(result.status).toBe('paused');
+        // The independent sibling completed before the run parked.
+        expect(result.outputs.s2).toEqual({ done: true });
+        // No terminal event — the run is parked, not finished.
+        expect(
+            rig.events.find((e) => e.type === 'fact.run_terminated'),
+        ).toBeUndefined();
         const paused = rig.events.find(
             (e) => e.type === 'fact.run_paused_human',
         );
         expect(paused).toBeDefined();
         const promptId = (paused!.payload as any).promptId as string;
-        await rig.hitl.resume('run-3', {
-            promptId,
-            value: { choice: 'a' },
-        });
-        const result = await runPromise;
-        expect(result.status).toBe('completed');
-        expect(result.outputs.s1).toEqual({ choice: 'a' });
-        expect(result.outputs.s2).toEqual({ done: true });
+        // The durable resume blob carries the parked step + its promptId.
+        const state = await rig.store.getRunState('run-3');
+        expect(state?.status).toBe('paused');
+        expect(state?.resume?.paused).toHaveLength(1);
+        expect(state?.resume?.paused[0]?.stepId).toBe('s1');
+        expect(state?.resume?.paused[0]?.promptId).toBe(promptId);
+        expect(state?.resume?.outputs).toEqual({ s2: { done: true } });
     });
 
     it('marks the run aborted when the abort signal fires', async () => {

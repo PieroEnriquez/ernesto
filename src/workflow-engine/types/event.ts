@@ -31,6 +31,7 @@ export type FactEventType =
     | 'fact.run_started'
     | 'fact.run_resumed'
     | 'fact.run_paused_human'
+    | 'fact.run_paused_signal'
     | 'fact.node_completed'
     | 'fact.run_terminated'
     | 'fact.assistant_message'

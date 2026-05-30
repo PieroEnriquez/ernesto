@@ -203,7 +203,18 @@ export interface HandlerRouting {
 export type { TypedFactEvent };
 export type { Principal } from '../principal';
 
-/** What a per-kind handler returns. */
+/** What a per-kind handler returns.
+ *
+ *  The two pause variants share one durable mechanism (the engine
+ *  parks the run and `resumeRun` re-enters from persisted state — see
+ *  `engine/run-graph.ts`); they differ only in who resumes:
+ *
+ *   - `paused_human` — a person answers a prompt (Slack button / form).
+ *   - `paused_signal` — an external system-state change resumes the
+ *     run (e.g. a Devin session reaching a terminal state). A durable
+ *     worker watches `signalKey` and calls `resumeRun` on transition.
+ *     There is no user-facing prompt; the step's own
+ *     `fact.component` emit carries any UI. */
 export type HandlerResult =
     | { kind: 'completed'; output: unknown }
     | {
@@ -211,6 +222,19 @@ export type HandlerResult =
           prompt: string;
           routes: string[];
           schema?: unknown;
+          /** Agent-authored template materialized with the response on
+           *  resume — see `hitl.materializeResumePrompt`. */
+          resumePrompt?: string;
+      }
+    | {
+          kind: 'paused_signal';
+          /** Identifies the external signal a worker watches to decide
+           *  when to resume (e.g. `devin:<sessionId>`). Opaque to the
+           *  engine; the dispatching worker owns its meaning. */
+          signalKey: string;
+          /** Optional JSON-schema the resume value is validated against. */
+          schema?: unknown;
+          resumePrompt?: string;
       }
     | { kind: 'error'; code: string; message: string; details?: unknown };
 
