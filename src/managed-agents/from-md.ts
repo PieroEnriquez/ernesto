@@ -1,4 +1,5 @@
 import { load as yamlLoad } from 'js-yaml';
+import { readFrontmatter } from '../frontmatter';
 import type {
     AgentDeclaration,
     SystemPromptConfig,
@@ -57,13 +58,13 @@ export function parseManagedAgentMd(
     raw: string,
     opts: { slug: string; workspace: string },
 ): ManagedAgentMd {
-    const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(raw);
-    if (!match) {
+    const { frontMatter, body } = readFrontmatter(raw);
+    if (frontMatter === '') {
         throw new Error(
             `managed-agents/${opts.slug}.md: missing YAML frontmatter (file must begin with "---")`,
         );
     }
-    const fm = yamlLoad(match[1]);
+    const fm = yamlLoad(frontMatter);
     if (!fm || typeof fm !== 'object' || Array.isArray(fm)) {
         throw new Error(
             `managed-agents/${opts.slug}.md: frontmatter must be a YAML object`,
@@ -73,7 +74,7 @@ export function parseManagedAgentMd(
         slug: opts.slug,
         workspace: opts.workspace,
         frontMatter: fm as Record<string, unknown>,
-        body: match[2].trim(),
+        body: body.trim(),
     };
 }
 

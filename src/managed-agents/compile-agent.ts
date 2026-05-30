@@ -1,5 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { readFrontmatter } from '../frontmatter';
 import type {
     AgentDeclaration,
     AgentContext,
@@ -121,11 +122,12 @@ function readMarkdownBody(path: string): string | null {
     } catch {
         return null;
     }
-    if (!raw.startsWith('---')) {
-        return raw.trim().length > 0 ? raw : null;
-    }
-    const m = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/.exec(raw);
-    const body = m ? raw.slice(m[0].length) : raw;
+    // Frontmatter here is optional: a fence-less platform body is the
+    // whole file. `readFrontmatter` returns the raw input as `body`
+    // when there's no (terminated) fence, so this stays a no-op for
+    // fence-less files while sharing the split logic with the spec
+    // readers.
+    const { body } = readFrontmatter(raw);
     return body.trim().length > 0 ? body : null;
 }
 

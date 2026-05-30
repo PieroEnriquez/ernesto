@@ -15,6 +15,7 @@
 
 import { load as yamlLoad } from 'js-yaml';
 import { ZodError } from 'zod';
+import { readFrontmatter } from '../frontmatter';
 import {
     dashboardSpecSchema,
     type Block,
@@ -44,19 +45,18 @@ export const RESERVED_BIND_NAMES = new Set<string>([
     'dateGrain',
 ]);
 
-const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 const BIND_REFERENCE_RE = /(?<![:\w]):([a-zA-Z][a-zA-Z0-9_]*)/g;
 
 export function parseDashboard(raw: string): ParsedDashboard {
-    const match = FRONTMATTER_RE.exec(raw);
-    if (!match) {
+    const { frontMatter, body } = readFrontmatter(raw);
+    if (frontMatter === '') {
         throw new DashboardSpecError(
             'Missing YAML frontmatter — file must start with "---" and close with "---".',
         );
     }
     let yamlObj: unknown;
     try {
-        yamlObj = yamlLoad(match[1]);
+        yamlObj = yamlLoad(frontMatter);
     } catch (e) {
         throw new DashboardSpecError(`Invalid YAML frontmatter: ${(e as Error).message}`);
     }
@@ -74,7 +74,7 @@ export function parseDashboard(raw: string): ParsedDashboard {
 
     crossCheck(spec);
 
-    return { spec, body: match[2].trim() };
+    return { spec, body: body.trim() };
 }
 
 function crossCheck(spec: DashboardSpec): void {
