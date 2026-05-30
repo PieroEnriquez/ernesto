@@ -138,7 +138,10 @@ describe('createRemoteVmHarness lifecycle', () => {
         }
         // claude launched with cwd = /workdir
         expect(sandbox.streamCalls[0]!.opts?.cwd).toBe('/workdir');
-        expect(sandbox.streamCalls[0]!.argv[0]).toBe('claude');
+        // claude runtime runs the SDK query() driver (same loop as cas), not
+        // the bare CLI: `node /opt/vm/claude-driver.mjs <prompt>`.
+        expect(sandbox.streamCalls[0]!.argv[0]).toBe('node');
+        expect(sandbox.streamCalls[0]!.argv[1]).toContain('claude-driver');
         const kinds = events.map((e) => e.kind);
         expect(kinds).toContain('assistant_message');
         expect(kinds).toContain('usage');
@@ -242,16 +245,15 @@ describe('createRemoteVmHarness lifecycle', () => {
 });
 
 describe('buildClaudeArgv', () => {
-    it('streams NDJSON and threads model + maxTurns', () => {
+    it('launches the SDK query() driver with the prompt + model', () => {
         const argv = buildClaudeArgv(
             { systemPrompt: 'x', model: 'claude-opus-4-7', maxTurns: 12 },
             'do the thing',
         );
-        expect(argv[0]).toBe('claude');
-        expect(argv).toContain('do the thing');
-        expect(argv).toContain('stream-json');
+        expect(argv[0]).toBe('node');
+        expect(argv[1]).toContain('claude-driver');
+        expect(argv[2]).toBe('do the thing');
         expect(argv).toContain('claude-opus-4-7');
-        expect(argv).toContain('12');
     });
 });
 
