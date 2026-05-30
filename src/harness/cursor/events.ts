@@ -34,29 +34,21 @@ import type {
     HarnessEvent,
     RunStatus,
 } from '../types';
+import {
+    createBaseTranslatorState,
+    mapStream,
+    type BaseTranslatorState,
+} from '../translator-base';
 
 /** Per-stream state needed across rows. Cursor's `tool_call` events
- *  carry the args/result inline; we track in-flight ids to emit the
- *  matching `tool_result` exactly once. `task` events stamp subagent
- *  start/end. */
-export interface TranslatorState {
-    /** call_id → name, populated when we first see `tool_call`. The
-     *  matching close (`status: 'completed' | 'error'`) drops the entry
-     *  and emits `tool_result`. */
-    openToolCalls: Map<string, string>;
-    /** Subagent slugs keyed by the task id from `SDKTaskMessage`. */
-    openSubagents: Map<string, string>;
-    /** First `system` (`subtype: 'init'`) emits the leading
-     *  `status: running` exactly once. */
-    sawInit: boolean;
-}
+ *  carry the args/result inline; we track in-flight ids (`openToolCalls`)
+ *  to emit the matching `tool_result` exactly once. `task` events stamp
+ *  subagent start/end (`openSubagents`). All common with cas — the shape
+ *  is the shared {@link BaseTranslatorState}. */
+export type TranslatorState = BaseTranslatorState;
 
 export function createTranslatorState(): TranslatorState {
-    return {
-        openToolCalls: new Map(),
-        openSubagents: new Map(),
-        sawInit: false,
-    };
+    return createBaseTranslatorState();
 }
 
 /** Map a Cursor `RunStatus` to canonical `RunStatus`. Cursor's
@@ -92,16 +84,16 @@ export function mapCursorRunStatus(s: CursorRunStatus | string): RunStatus {
  * — pulls from the source iterator and yields per-row, so consumers
  * keep backpressure end-to-end.
  */
-export async function* mapCursorStream(
+export function mapCursorStream(
     cursorMessages: AsyncIterable<CursorSDKMessage>,
     runId: string,
 ): AsyncGenerator<HarnessEvent> {
-    const state = createTranslatorState();
-    for await (const msg of cursorMessages) {
-        for (const ev of mapCursorMessage(msg, runId, state)) {
-            yield ev;
-        }
-    }
+    return mapStream(
+        cursorMessages,
+        runId,
+        createTranslatorState,
+        mapCursorMessage,
+    );
 }
 
 /**

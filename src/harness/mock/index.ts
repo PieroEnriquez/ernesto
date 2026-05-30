@@ -17,10 +17,10 @@ import type {
     ModelInfo,
     RunHandle,
     RunResult,
-    RunStatus,
     SendOptions,
     UserMessage,
 } from '../types';
+import { makeRunHandle } from '../run-handle';
 
 /** Inputs the script function receives per `send()` call. */
 export interface MockScriptInput {
@@ -135,132 +135,47 @@ function makeMockRunHandle(
     runId: string,
     events: HarnessEvent[] | AsyncIterable<HarnessEvent>,
 ): RunHandle {
-    let status: RunStatus = 'running';
-    const statusListeners = new Set<(s: RunStatus) => void>();
-    const setStatus = (next: RunStatus): void => {
-        if (status === next) return;
-        status = next;
-        for (const fn of statusListeners) fn(next);
-    };
+    // The mock's "messages" are already canonical `HarnessEvent`s, so
+    // `mapMessage` is identity. Arrays are adapted to an async iterable
+    // so the single base drain path handles both script shapes.
+    const source: AsyncIterable<HarnessEvent> = Array.isArray(events)
+        ? (async function* () {
+              for (const ev of events) yield ev;
+          })()
+        : events;
 
-    const buffered: HarnessEvent[] = [];
-    let drainPromise: Promise<void> | null = null;
-    let drainDone = false;
-    let canceled = false;
-
-    const ensureDraining = (): Promise<void> => {
-        if (drainPromise !== null) return drainPromise;
-        drainPromise = (async () => {
-            try {
-                if (Array.isArray(events)) {
-                    for (const ev of events) {
-                        if (canceled) break;
-                        buffered.push(ev);
-                        if (ev.kind === 'status') setStatus(ev.status);
-                    }
-                } else {
-                    for await (const ev of events) {
-                        if (canceled) break;
-                        buffered.push(ev);
-                        if (ev.kind === 'status') setStatus(ev.status);
-                    }
-                }
-            } finally {
-                drainDone = true;
-                // If nothing terminal fired, infer `completed`.
-                if (
-                    !canceled &&
-                    status === 'running' &&
-                    !buffered.some(
-                        (e) =>
-                            e.kind === 'status' &&
-                            (e.status === 'completed' ||
-                                e.status === 'errored' ||
-                                e.status === 'canceled'),
-                    )
-                ) {
-                    buffered.push({
-                        kind: 'status',
-                        status: 'completed',
-                        runId,
-                    });
-                    setStatus('completed');
-                }
+    return makeRunHandle<HarnessEvent>({
+        runId,
+        source,
+        createState: () => null,
+        mapMessage: (ev) => [ev],
+        // Cooperative cancel: stop pushing further scripted events once
+        // `cancel()` fires (matches the legacy `if (canceled) break`).
+        stopOnCancel: true,
+        // Mock has no provider to interrupt — cancel is pure bookkeeping
+        // (the base appends `status: canceled` + flips the status cell).
+        cancel: async () => {},
+        // If the script never emitted a terminal status, infer
+        // `completed` after a clean drain (skipped when canceled, since
+        // the base already appended `status: canceled`).
+        finalizeStream: (_state, lastStatus) =>
+            lastStatus === 'running'
+                ? [{ kind: 'status', status: 'completed', runId }]
+                : [],
+        // Mock surfaces no SDK-specific extras — the common fold is the
+        // whole result.
+        mapResult: (fold): RunResult => {
+            const result: RunResult = {
+                runId: fold.runId,
+                status: fold.status,
+                finalAssistant: fold.finalAssistant,
+                usage: fold.usage,
+                durationMs: fold.durationMs,
+            };
+            if (fold.errorMessage) {
+                result.error = { message: fold.errorMessage };
             }
-        })();
-        return drainPromise;
-    };
-
-    const stream = async function* (): AsyncGenerator<HarnessEvent> {
-        const drain = ensureDraining();
-        let cursor = 0;
-        while (true) {
-            while (cursor < buffered.length) {
-                yield buffered[cursor++]!;
-            }
-            if (drainDone) return;
-            await Promise.race([
-                drain,
-                new Promise<void>((resolve) => setTimeout(resolve, 0)),
-            ]);
-        }
-    };
-
-    const wait = async (): Promise<RunResult> => {
-        const startedAt = Date.now();
-        await ensureDraining();
-        const durationMs = Date.now() - startedAt;
-        let inputTokens = 0;
-        let outputTokens = 0;
-        let costUsd: number | undefined;
-        let finalAssistant;
-        let errorMessage: string | undefined;
-        for (const ev of buffered) {
-            if (ev.kind === 'assistant_message') finalAssistant = ev.content;
-            else if (ev.kind === 'usage') {
-                inputTokens = ev.inputTokens;
-                outputTokens = ev.outputTokens;
-                if (typeof ev.costUsd === 'number') costUsd = ev.costUsd;
-            } else if (ev.kind === 'error') errorMessage = ev.message;
-        }
-        const terminal: RunResult['status'] =
-            status === 'canceled'
-                ? 'canceled'
-                : status === 'errored'
-                    ? 'errored'
-                    : 'completed';
-        const result: RunResult = {
-            runId,
-            status: terminal,
-            finalAssistant,
-            usage: { inputTokens, outputTokens, costUsd },
-            durationMs,
-        };
-        if (errorMessage) result.error = { message: errorMessage };
-        return result;
-    };
-
-    const cancel = async (): Promise<void> => {
-        canceled = true;
-        buffered.push({ kind: 'status', status: 'canceled', runId });
-        setStatus('canceled');
-    };
-
-    const onStatusChange = (fn: (s: RunStatus) => void): (() => void) => {
-        statusListeners.add(fn);
-        return () => {
-            statusListeners.delete(fn);
-        };
-    };
-
-    return {
-        id: runId,
-        get status(): RunStatus {
-            return status;
+            return result;
         },
-        stream,
-        wait,
-        cancel,
-        onStatusChange,
-    };
+    });
 }

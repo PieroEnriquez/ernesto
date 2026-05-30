@@ -22,12 +22,12 @@ import type {
     InteractionUpdate,
 } from '@cursor/sdk';
 import type {
-    AssistantBlock,
     HarnessEvent,
     RunHandle,
     RunResult,
     RunStatus,
 } from '../types';
+import { makeRunHandle, type TerminalFold } from '../run-handle';
 import {
     createTranslatorState,
     mapCursorDelta,
@@ -78,16 +78,12 @@ export async function cursorSend(input: CursorSendInput): Promise<RunHandle> {
     log('starting Cursor run', { runId });
 
     // Wire onDelta into the buffer so per-token deltas land in the
-    // canonical stream alongside the SDKMessage-derived events.
+    // canonical stream alongside the SDKMessage-derived events. The
+    // buffer is created here, before `agent.send`, and handed to the
+    // base via `spec.buffered` so the delta callback and the drain
+    // share one broadcast buffer.
     const buffered: HarnessEvent[] = [];
     let cursorRun: CursorRun | undefined;
-    let status: RunStatus = 'running';
-    const statusListeners = new Set<(s: RunStatus) => void>();
-    const setStatus = (next: RunStatus): void => {
-        if (status === next) return;
-        status = next;
-        for (const fn of statusListeners) fn(next);
-    };
 
     const composedOptions: CursorSendOptions = {
         ...(cursorOptions ?? {}),
@@ -118,11 +114,7 @@ export async function cursorSend(input: CursorSendInput): Promise<RunHandle> {
         cursorRun,
         runId,
         buffered,
-        setStatus,
-        statusListeners,
-        currentStatus: () => status,
-        setStatusFn: setStatus,
-        onRawMessage,
+        ...(onRawMessage ? { onRawMessage } : {}),
     });
 }
 
@@ -138,145 +130,42 @@ export function cursorRunToRunHandle(
     cursorRun: CursorRun,
     opts: CursorRunToHandleOptions,
 ): RunHandle {
-    const buffered: HarnessEvent[] = [];
-    let status: RunStatus = 'running';
-    const statusListeners = new Set<(s: RunStatus) => void>();
-    const setStatus = (next: RunStatus): void => {
-        if (status === next) return;
-        status = next;
-        for (const fn of statusListeners) fn(next);
-    };
     return buildRunHandle({
         cursorRun,
         runId: opts.runId,
-        buffered,
-        setStatus,
-        statusListeners,
-        currentStatus: () => status,
-        setStatusFn: setStatus,
-        onRawMessage: opts.onRawMessage,
+        buffered: [],
+        ...(opts.onRawMessage ? { onRawMessage: opts.onRawMessage } : {}),
     });
 }
 
 interface BuildRunHandleInput {
     cursorRun: CursorRun;
     runId: string;
+    /** Broadcast buffer, pre-seeded so cursor's `onDelta`-driven deltas
+     *  (wired before this handle exists) share the base's drain buffer. */
     buffered: HarnessEvent[];
-    setStatus: (s: RunStatus) => void;
-    statusListeners: Set<(s: RunStatus) => void>;
-    currentStatus: () => RunStatus;
-    setStatusFn: (s: RunStatus) => void;
     onRawMessage?: (msg: CursorSDKMessage) => void;
 }
 
 function buildRunHandle(args: BuildRunHandleInput): RunHandle {
-    const {
-        cursorRun,
-        runId,
-        buffered,
-        statusListeners,
-        currentStatus,
-        setStatusFn,
-        onRawMessage,
-    } = args;
+    const { cursorRun, runId, buffered, onRawMessage } = args;
 
-    let drainPromise: Promise<void> | null = null;
-    let drainDone = false;
-
-    const ensureDraining = (): Promise<void> => {
-        if (drainPromise !== null) return drainPromise;
-        drainPromise = (async () => {
-            try {
-                const state = createTranslatorState();
-                for await (const sdkMsg of cursorRun.stream()) {
-                    if (onRawMessage) {
-                        try {
-                            onRawMessage(sdkMsg);
-                        } catch (cbErr) {
-                            log('onRawMessage threw', cbErr);
-                        }
-                    }
-                    for (const ev of mapCursorMessage(sdkMsg, runId, state)) {
-                        buffered.push(ev);
-                        if (ev.kind === 'status') setStatusFn(ev.status);
-                    }
-                }
-                // Stream complete without a terminal status event?
-                // Synthesize one from Cursor's `Run.status`.
-                if (currentStatus() === 'running') {
-                    const terminal = mapTerminal(cursorRun.status);
-                    if (terminal) {
-                        buffered.push({ kind: 'status', status: terminal, runId });
-                        setStatusFn(terminal);
-                    } else {
-                        buffered.push({ kind: 'status', status: 'completed', runId });
-                        setStatusFn('completed');
-                    }
-                }
-            } catch (err) {
-                log('cursor stream errored', err);
-                const message = err instanceof Error ? err.message : String(err);
-                buffered.push({ kind: 'error', message, recoverable: false, runId });
-                buffered.push({ kind: 'status', status: 'errored', runId });
-                setStatusFn('errored');
-            } finally {
-                drainDone = true;
-            }
-        })();
-        return drainPromise;
-    };
-
-    const stream = async function* (): AsyncGenerator<HarnessEvent> {
-        const drain = ensureDraining();
-        let cursor = 0;
-        while (true) {
-            while (cursor < buffered.length) {
-                yield buffered[cursor++]!;
-            }
-            if (drainDone) return;
-            await Promise.race([
-                drain,
-                new Promise<void>((resolve) => setTimeout(resolve, 0)),
-            ]);
-        }
-    };
-
-    const wait = async (): Promise<RunResult> => {
-        const startedAt = Date.now();
-        await ensureDraining();
-        const durationMs = Date.now() - startedAt;
-
-        let finalAssistant: AssistantBlock[] | undefined;
-        let errorMessage: string | undefined;
-        for (const ev of buffered) {
-            if (ev.kind === 'assistant_message') {
-                finalAssistant = ev.content;
-            } else if (ev.kind === 'error') {
-                errorMessage = ev.message;
-            }
-        }
-
+    // Cursor's terminal data (durationMs, result text, status subtype)
+    // comes from the provider's own `wait()`, not the raw stream — so
+    // `mapResult` awaits it rather than reading a captured raw message.
+    const mapResult = async (fold: TerminalFold): Promise<RunResult> => {
         const cursorResult = await cursorRun.wait().catch(() => undefined);
-
-        const terminal: RunResult['status'] =
-            currentStatus() === 'canceled'
-                ? 'canceled'
-                : currentStatus() === 'errored'
-                    ? 'errored'
-                    : 'completed';
-
         const result: RunResult = {
-            runId,
-            status: terminal,
-            finalAssistant,
-            // Cursor doesn't expose token-level usage; populate the
-            // canonical fields with zeros and let `costReporting=false`
-            // on the capability matrix gate any UI that reads them.
-            usage: { inputTokens: 0, outputTokens: 0 },
+            runId: fold.runId,
+            status: fold.status,
+            finalAssistant: fold.finalAssistant,
+            // Cursor doesn't expose token-level usage; the fold carries
+            // zeros and `costReporting=false` gates any UI reading them.
+            usage: fold.usage,
             durationMs:
                 cursorResult && typeof cursorResult.durationMs === 'number'
                     ? cursorResult.durationMs
-                    : durationMs,
+                    : fold.durationMs,
         };
         if (cursorResult) {
             if (typeof cursorResult.result === 'string') {
@@ -286,41 +175,38 @@ function buildRunHandle(args: BuildRunHandleInput): RunHandle {
                 result.subtype = cursorResult.status;
             }
         }
-        if (errorMessage) {
-            result.error = { message: errorMessage };
+        if (fold.errorMessage) {
+            result.error = { message: fold.errorMessage };
         }
         return result;
     };
 
-    const cancel = async (): Promise<void> => {
-        try {
+    return makeRunHandle<CursorSDKMessage>({
+        runId,
+        buffered,
+        source: cursorRun.stream(),
+        createState: createTranslatorState,
+        mapMessage: (msg, id, state) =>
+            mapCursorMessage(
+                msg,
+                id,
+                state as ReturnType<typeof createTranslatorState>,
+            ),
+        ...(onRawMessage ? { onRawMessage } : {}),
+        // Cursor may end the stream without a terminal status event —
+        // synthesize one from `Run.status` (defaulting to `completed`).
+        finalizeStream: (_state, lastStatus) => {
+            if (lastStatus !== 'running') return [];
+            const terminal = mapTerminal(cursorRun.status) ?? 'completed';
+            return [{ kind: 'status', status: terminal, runId }];
+        },
+        cancel: async () => {
             if (cursorRun.supports('cancel')) {
                 await cursorRun.cancel();
             }
-        } catch (err) {
-            log('cursor cancel failed', err);
-        }
-        buffered.push({ kind: 'status', status: 'canceled', runId });
-        setStatusFn('canceled');
-    };
-
-    const onStatusChange = (fn: (s: RunStatus) => void): (() => void) => {
-        statusListeners.add(fn);
-        return () => {
-            statusListeners.delete(fn);
-        };
-    };
-
-    return {
-        id: runId,
-        get status(): RunStatus {
-            return currentStatus();
         },
-        stream,
-        wait,
-        cancel,
-        onStatusChange,
-    };
+        mapResult,
+    });
 }
 
 function mapTerminal(cursorStatus: string): RunStatus | undefined {

@@ -19,11 +19,10 @@ import type {
 import type { CompiledAgent } from '../../managed-agents/types';
 import type {
     AssistantBlock,
-    HarnessEvent,
     RunHandle,
     RunResult,
-    RunStatus,
 } from '../types';
+import { makeRunHandle } from '../run-handle';
 import { compileAgentToSdkOptions, type CompileContext } from './compile';
 import { createTranslatorState, mapSdkMessage } from './events';
 
@@ -221,159 +220,37 @@ function buildRunHandle(
     runId: string,
     opts: CasQueryToRunHandleOptions,
 ): RunHandle {
-    let status: RunStatus = 'running';
-    const statusListeners = new Set<(s: RunStatus) => void>();
-    const setStatus = (next: RunStatus): void => {
-        if (status === next) return;
-        status = next;
-        for (const fn of statusListeners) fn(next);
-    };
-
-    // Cache the consumed stream so `wait()` (which drains internally)
-    // and an external `stream()` caller can't both pull from the same
-    // underlying SDK iterator — that would race. We materialize a
-    // single async-iterable wrapper that broadcasts to whichever
-    // consumer arrives first; subsequent iterators replay from the
-    // already-collected buffer.
-    const buffered: HarnessEvent[] = [];
-    // Captured raw SDK result message — `wait()` reads SDK-specific
-    // fields (duration_api_ms, modelUsage, subtype, result text,
-    // structured_output) off it that the canonical HarnessEvent
-    // taxonomy doesn't expose. Set at most once, when the SDK emits
-    // a `type: 'result'` row.
-    let rawResult: SDKResultMessage | undefined;
-    let drainPromise: Promise<void> | null = null;
-    let drainDone = false;
-
-    const ensureDraining = (): Promise<void> => {
-        if (drainPromise !== null) return drainPromise;
-        drainPromise = (async () => {
-            try {
-                const state = createTranslatorState();
-                for await (const sdkMsg of sdkQuery as AsyncIterable<
-                    SDKMessage
-                >) {
-                    if (sdkMsg.type === 'result') {
-                        rawResult = sdkMsg;
-                    }
-                    if (opts.onRawMessage) {
-                        try {
-                            opts.onRawMessage(sdkMsg);
-                        } catch (cbErr) {
-                            log('onRawMessage callback threw', cbErr);
-                        }
-                    }
-                    for (const ev of mapSdkMessage(sdkMsg, runId, state)) {
-                        buffered.push(ev);
-                        if (ev.kind === 'status') setStatus(ev.status);
-                    }
-                }
-            } catch (err) {
-                log('CAS stream errored', err);
-                const message =
-                    err instanceof Error ? err.message : String(err);
-                buffered.push({
-                    kind: 'error',
-                    message,
-                    recoverable: false,
-                    runId,
-                });
-                buffered.push({ kind: 'status', status: 'errored', runId });
-                setStatus('errored');
-            } finally {
-                drainDone = true;
-            }
-        })();
-        return drainPromise;
-    };
-
-    const stream = async function* (): AsyncGenerator<HarnessEvent> {
-        const drain = ensureDraining();
-        let cursor = 0;
-        while (true) {
-            while (cursor < buffered.length) {
-                yield buffered[cursor++]!;
-            }
-            if (drainDone) return;
-            // Wait for the next chunk. The drain promise resolves only
-            // at termination; for incremental progress we race a
-            // micro-tick. Vitest's fake-timer config isn't in scope
-            // here, so a setImmediate-equivalent is fine.
-            await Promise.race([
-                drain,
-                new Promise<void>((resolve) => setTimeout(resolve, 0)),
-            ]);
-        }
-    };
-
-    const wait = async (): Promise<RunResult> => {
-        const startedAt = Date.now();
-        await ensureDraining();
-        const durationMs = Date.now() - startedAt;
-
-        let finalAssistant: AssistantBlock[] | undefined;
-        let inputTokens = 0;
-        let outputTokens = 0;
-        let costUsd: number | undefined;
-        let errorMessage: string | undefined;
-
-        for (const ev of buffered) {
-            if (ev.kind === 'assistant_message') {
-                finalAssistant = ev.content;
-            } else if (ev.kind === 'usage') {
-                inputTokens = ev.inputTokens;
-                outputTokens = ev.outputTokens;
-                if (typeof ev.costUsd === 'number') costUsd = ev.costUsd;
-            } else if (ev.kind === 'error') {
-                errorMessage = ev.message;
-            }
-        }
-
-        const terminal: RunResult['status'] =
-            status === 'canceled'
-                ? 'canceled'
-                : status === 'errored'
-                    ? 'errored'
-                    : 'completed';
-
-        return mapResult({
-            runId,
-            status: terminal,
-            finalAssistant,
-            usage: { inputTokens, outputTokens, costUsd },
-            durationMs,
-            errorMessage,
-            sdkResult: rawResult,
-        });
-    };
-
-    const cancel = async (): Promise<void> => {
-        try {
+    return makeRunHandle<SDKMessage>({
+        runId,
+        source: sdkQuery as AsyncIterable<SDKMessage>,
+        createState: createTranslatorState,
+        mapMessage: (msg, id, state) =>
+            mapSdkMessage(msg, id, state as ReturnType<typeof createTranslatorState>),
+        // Capture the SDK's terminal `result` row so `mapResult` can read
+        // the SDK-specific extras (duration_api_ms, modelUsage, subtype,
+        // result text, structured_output, session_id) off it.
+        isResult: (msg) => msg.type === 'result',
+        ...(opts.onRawMessage ? { onRawMessage: opts.onRawMessage } : {}),
+        // CAS interrupt is the provider cancel mechanism. Best-effort —
+        // the base appends `status: canceled` and flips status regardless.
+        cancel: async () => {
             if (typeof sdkQuery.interrupt === 'function') {
                 await sdkQuery.interrupt();
             }
-        } catch (err) {
-            log('interrupt failed', err);
-        }
-        buffered.push({ kind: 'status', status: 'canceled', runId });
-        setStatus('canceled');
-    };
-
-    const onStatusChange = (fn: (s: RunStatus) => void): (() => void) => {
-        statusListeners.add(fn);
-        return () => {
-            statusListeners.delete(fn);
-        };
-    };
-
-    return {
-        id: runId,
-        get status(): RunStatus {
-            return status;
         },
-        stream,
-        wait,
-        cancel,
-        onStatusChange,
-    };
+        mapResult: (fold, raw) =>
+            mapResult({
+                runId: fold.runId,
+                status: fold.status,
+                ...(fold.finalAssistant !== undefined
+                    ? { finalAssistant: fold.finalAssistant }
+                    : {}),
+                usage: fold.usage,
+                durationMs: fold.durationMs,
+                ...(fold.errorMessage !== undefined
+                    ? { errorMessage: fold.errorMessage }
+                    : {}),
+                ...(raw ? { sdkResult: raw as SDKResultMessage } : {}),
+            }),
+    });
 }

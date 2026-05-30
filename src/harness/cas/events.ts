@@ -22,31 +22,26 @@ import type {
     AssistantBlock,
     HarnessEvent,
 } from '../types';
+import {
+    buildUsageEvent,
+    createBaseTranslatorState,
+    mapStream,
+    type BaseTranslatorState,
+} from '../translator-base';
 
 /**
  * Per-stream state the row translator needs across rows. Tracks open
  * tool calls (to know which `tool_result` is in-flight) and active
  * subagent contexts (keyed by `parent_tool_use_id`).
+ *
+ * The common fields live on {@link BaseTranslatorState}; CAS adds none
+ * of its own today (the shape is fully shared with cursor), but keeping
+ * the alias documents the seam and leaves room for CAS-only fields.
  */
-export interface TranslatorState {
-    /** Tool-use id → tool name. Populated when we see the assistant's
-     *  `tool_use` block; consulted when the user-side `tool_result`
-     *  arrives so we can decide if it's a subagent completion. */
-    openToolCalls: Map<string, string>;
-    /** Subagents we've already emitted `subagent_started` for, keyed by
-     *  `parent_tool_use_id`. Value is the slug (`subagent_type`). */
-    openSubagents: Map<string, string>;
-    /** True once `subtype: 'init'` has been seen; the first init also
-     *  emits `status: running`. */
-    sawInit: boolean;
-}
+export type TranslatorState = BaseTranslatorState;
 
 export function createTranslatorState(): TranslatorState {
-    return {
-        openToolCalls: new Map(),
-        openSubagents: new Map(),
-        sawInit: false,
-    };
+    return createBaseTranslatorState();
 }
 
 /**
@@ -54,16 +49,11 @@ export function createTranslatorState(): TranslatorState {
  * Lazy — pulls from the source iterator and yields per-row, so consumers
  * keep backpressure end-to-end.
  */
-export async function* mapSdkStream(
+export function mapSdkStream(
     sdkMessages: AsyncIterable<SDKMessage>,
     runId: string,
 ): AsyncGenerator<HarnessEvent> {
-    const state = createTranslatorState();
-    for await (const msg of sdkMessages) {
-        for (const ev of mapSdkMessage(msg, runId, state)) {
-            yield ev;
-        }
-    }
+    return mapStream(sdkMessages, runId, createTranslatorState, mapSdkMessage);
 }
 
 /**
@@ -263,16 +253,17 @@ function mapResult(
 
     // `usage` fires AFTER `assistant_message`, BEFORE the next event.
     // For terminal results, it fires just before `status: completed` /
-    // `status: errored`.
-    out.push({
-        kind: 'usage',
-        inputTokens,
-        outputTokens,
-        cacheRead,
-        cacheWrite,
-        costUsd,
-        runId,
-    });
+    // `status: errored`. `buildUsageEvent` centralizes the
+    // optional-field rule (omit cacheRead/cacheWrite/costUsd when absent).
+    out.push(
+        buildUsageEvent(runId, {
+            inputTokens,
+            outputTokens,
+            cacheRead,
+            cacheWrite,
+            costUsd,
+        }),
+    );
 
     if (msg.subtype === 'success') {
         out.push({ kind: 'status', status: 'completed', runId });
