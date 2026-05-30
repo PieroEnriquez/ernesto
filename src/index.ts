@@ -14,7 +14,6 @@ export {
     probeWorkdirHealth, bootstrapWorkdir, buildSettlePatch,
     makeInMemoryWorkdirLock,
     makeRedisWorkdirLock, WorkdirLockAcquireTimeout,
-    makeInMemoryFsAdapter, makeInMemoryMasterFs,
     makeNodeFsAdapter, makeVolumeMasterFs,
     bootWorkdir, rehydrateWorkdir,
     commitTurn, remirrorFile, settleFromWorktree,

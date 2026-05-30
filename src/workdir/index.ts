@@ -12,7 +12,6 @@ export type { WorkdirHealth, BootstrapWorkdirInput } from './health';
 export { buildSettlePatch } from './build-patch';
 export { makeInMemoryWorkdirLock, makeRedisWorkdirLock, WorkdirLockAcquireTimeout } from './lock';
 export type { RedisLockClient } from './lock';
-export { makeInMemoryFsAdapter, makeInMemoryMasterFs } from './in-memory-adapters';
 export { makeNodeFsAdapter, makeVolumeMasterFs } from './node-adapters';
 export { bootWorkdir, rehydrateWorkdir } from './boot';
 export { commitTurn } from './commit-turn';

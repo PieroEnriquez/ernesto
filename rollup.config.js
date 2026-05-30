@@ -8,6 +8,7 @@ export default {
     // `ernesto/dashboards` then fail to resolve.
     input: [
         'src/index.ts',
+        'src/testing/index.ts',
         'src/dashboards/index.ts',
         'src/harness/index.ts',
         'src/harness/cas/index.ts',

@@ -23,6 +23,11 @@
       "import": "./dist/dashboards/index.js",
       "require": "./dist/dashboards/index.cjs"
     },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js",
+      "require": "./dist/testing/index.cjs"
+    },
     "./harness": {
       "types": "./dist/harness/index.d.ts",
       "import": "./dist/harness/index.js",
