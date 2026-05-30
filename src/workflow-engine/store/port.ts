@@ -49,6 +49,9 @@ export interface StorePort {
     listEvents(runId: string, opts?: ListEventsOpts): Promise<StoredEvent[]>;
     getRunState(runId: string): Promise<RunState | null>;
     putRunState(state: RunState): Promise<void>;
+    /** Operator/debug surface only — no runtime dispatch caller (the
+     *  hot path uses listEvents/getRunState). Kept for run-history
+     *  tooling; a new StorePort impl may stub it if unused. */
     listRuns(opts?: ListRunsOpts): Promise<RunSummary[]>;
 }
 

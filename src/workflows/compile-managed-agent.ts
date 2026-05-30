@@ -2,6 +2,10 @@
  * Compile a managed-agent Markdown file (parsed via
  * `parseManagedAgentMd`) into a `WorkflowDeclaration`.
  *
+ * NOT the same as `managed-agents/compile-agent.ts`: that builds the
+ * runtime `CompiledAgent` transport at dispatch; this projects a
+ * registration-time `WorkflowDeclaration` for the kind registry.
+ *
  * The mapping is mechanical and one-way — see
  * `workspaces/agent-ops/workflows-unification/managed-agents-mapping.md`
  * § Compile rules.

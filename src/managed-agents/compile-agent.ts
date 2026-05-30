@@ -1,3 +1,9 @@
+/**
+ * Build the runtime `CompiledAgent` transport for a managed agent at
+ * dispatch time. NOT the same as `workflows/compile-managed-agent.ts`,
+ * which projects a registration-time `WorkflowDeclaration` from the
+ * same Markdown.
+ */
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { readFrontmatter } from '../frontmatter';

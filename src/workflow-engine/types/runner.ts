@@ -111,6 +111,9 @@ export const ZERO_USAGE: RunUsage = Object.freeze({
  *  and `awaiting_input` (instead of `paused`). The mapping happens
  *  in `runner.ts:projectRunHandle`. */
 export type RunHandleStatus =
+    // Forward (M3) shape only: `dispatch` blocks until terminal today,
+    // so `projectRunHandle`/`mapWalkStatus` never emit 'running' yet.
+    // Consumers branch on the terminal members below.
     | 'running'
     | 'completed'
     | 'errored'
