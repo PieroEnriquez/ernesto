@@ -44,7 +44,14 @@ async function post(url, body) {
 
 const ernesto = createSdkMcpServer({ name: 'ernesto', version: '1.0.0', tools: [
   tool('execute', 'Dispatch an ernesto route by URI (e.g. _platform://task, a dashboard, a typed route).', { uri: z.string(), params: z.any().optional() },
-    async ({ uri, params }) => { const d = await post(BACKEND + '/ernesto/vm/execute', { uri, params: params || {} }); return { content: [{ type: 'text', text: JSON.stringify(d) }] }; }),
+    async ({ uri, params }) => {
+      // Coerce stringified params (haiku often JSON-encodes the object) into
+      // a real object so the route's Zod input validation sees the right shape.
+      let p = params;
+      if (typeof p === 'string') { try { p = JSON.parse(p); } catch { /* leave as-is */ } }
+      const d = await post(BACKEND + '/ernesto/vm/execute', { uri, params: p || {} });
+      return { content: [{ type: 'text', text: JSON.stringify(d) }] };
+    }),
   tool('settle', 'Commit your workspace edits (ships the FUSE write-overlay through lint + bot push).', { workspaces: z.array(z.string()), message: z.string() },
     async ({ workspaces, message }) => { const d = await post(CONTROL + '/settle', { workspaces, message }); return { content: [{ type: 'text', text: JSON.stringify(d) }] }; }),
 ] });
