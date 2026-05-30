@@ -147,6 +147,22 @@ describe('createRemoteVmHarness lifecycle', () => {
         expect(last.kind === 'status' && last.status).toBe('completed');
     });
 
+    it('runs the chosen runtime in the VM (cursor swaps the launched binary)', async () => {
+        const sandbox = new StubSandbox(RUN_LINES);
+        const { cursorVmRuntime } = await import('../runtimes/cursor');
+        const harness = createRemoteVmHarness({
+            sandbox,
+            backendBaseUrl: 'https://b.host',
+            runtime: cursorVmRuntime,
+        });
+        const agent = await harness.createAgent({ systemPrompt: 'test', model: 'm' }, { agentId: 'conv-cursor' });
+        await agent.send('hello');
+        // Same placement (cwd = mount), different runtime binary — proves the
+        // VM is runtime-agnostic, not hardcoded to claude.
+        expect(sandbox.streamCalls[0]!.opts?.cwd).toBe('/workdir');
+        expect(sandbox.streamCalls[0]!.argv[0]).toBe('cursor-agent');
+    });
+
     it('wait() resolves a completed RunResult with usage + cost', async () => {
         const sandbox = new StubSandbox(RUN_LINES);
         const harness = createRemoteVmHarness({

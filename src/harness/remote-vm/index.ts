@@ -39,11 +39,8 @@ import type {
 import { makeRunHandle } from '../run-handle';
 import type { NetworkPolicy, SandboxClient, SandboxHandle } from './sandbox-client';
 import { buildProvisionSpec, type ProvisionSpec } from './provision';
-import {
-    createTranslatorState,
-    mapVmLine,
-    type TranslatorState,
-} from './events';
+import type { VmRuntime } from './runtime';
+import { claudeVmRuntime } from './runtimes/claude';
 
 const log = debug('ernesto:harness:remote-vm');
 
@@ -54,6 +51,12 @@ export { buildEgressPolicy, hostOf } from './egress';
 export { mapVmStdout, mapVmLine, parseSdkLine } from './events';
 export { bridgeSettle } from './settle-bridge';
 export type { VmSettleRequest, VmSettleResponse, VmSettleFile } from './wire';
+// Runtime axis (orthogonal to the VM placement): the VM harness runs ANY
+// process-based runtime, defaulting to claude (cas). Swap `runtime` to run
+// cursor-agent in the VM with no other change.
+export type { VmRuntime } from './runtime';
+export { claudeVmRuntime, buildClaudeArgv } from './runtimes/claude';
+export { cursorVmRuntime, buildCursorArgv } from './runtimes/cursor';
 
 /** Construction-time env for the remote-vm harness. */
 export interface RemoteVmHarnessEnv {
@@ -70,6 +73,10 @@ export interface RemoteVmHarnessEnv {
     networkPolicy?: NetworkPolicy;
     /** Base snapshot (Node + claude + eden-lite pre-baked). */
     baseSnapshot?: string;
+    /** Which agent runtime runs inside the VM. Defaults to `claudeVmRuntime`
+     *  (cas). Pass `cursorVmRuntime` to run cursor-agent in the VM instead —
+     *  the placement (provision/mount/stream) is identical. */
+    runtime?: VmRuntime;
     /** Override capabilities (test seam / spike tuning). */
     capabilities?: Partial<HarnessCapabilities>;
 }
@@ -104,6 +111,8 @@ export function createRemoteVmHarness(env: RemoteVmHarnessEnv): Harness {
         ...REMOTE_VM_CAPABILITIES,
         ...(env.capabilities ?? {}),
     };
+    // The agent-runtime axis (orthogonal to the VM placement). Default = cas.
+    const runtime: VmRuntime = env.runtime ?? claudeVmRuntime;
 
     const createAgent = async (
         def: AgentDefinition,
@@ -154,6 +163,7 @@ export function createRemoteVmHarness(env: RemoteVmHarnessEnv): Harness {
             handle,
             spec,
             def,
+            runtime,
         });
     };
 
@@ -192,6 +202,7 @@ interface AgentHandleInputs {
     handle: SandboxHandle;
     spec: ProvisionSpec;
     def: AgentDefinition;
+    runtime: VmRuntime;
 }
 
 /**
@@ -201,7 +212,7 @@ interface AgentHandleInputs {
  * machine.
  */
 function makeRemoteVmAgentHandle(inputs: AgentHandleInputs): AgentHandle {
-    const { sandbox, handle, spec, def } = inputs;
+    const { sandbox, handle, spec, def, runtime } = inputs;
 
     const send = async (
         msg: UserMessage,
@@ -210,7 +221,7 @@ function makeRemoteVmAgentHandle(inputs: AgentHandleInputs): AgentHandle {
         const prompt = typeof msg === 'string' ? msg : msg.text;
         const runId = sendOpts.runId ?? `run-${randomUUID()}`;
 
-        const argv = buildClaudeArgv(def, prompt);
+        const argv = runtime.buildArgv(def, prompt);
         const exec = await sandbox.execStream(handle, argv, {
             env: spec.agentEnv,
             cwd: spec.agentCwd,
@@ -218,14 +229,13 @@ function makeRemoteVmAgentHandle(inputs: AgentHandleInputs): AgentHandle {
 
         return makeRunHandle<string>({
             runId,
-            // The platform stdout is split into whole NDJSON lines here,
-            // so the base's per-message row mapper is just the canonical
-            // per-line translator. A trailing partial line (no newline)
-            // is flushed as a final row.
+            // The platform stdout is split into whole NDJSON lines here; the
+            // base's per-message row mapper is the runtime's per-line
+            // translator (claude/cursor share the shape). A trailing partial
+            // line (no newline) is flushed as a final row.
             source: splitLines(exec.stdout),
-            createState: createTranslatorState,
-            mapMessage: (line, id, state) =>
-                mapVmLine(line, id, state as TranslatorState),
+            createState: () => runtime.createState(),
+            mapMessage: (line, id, state) => runtime.mapLine(line, id, state),
             cancel: () => exec.interrupt(),
             mapResult: (fold): RunResult => {
                 const result: RunResult = {
@@ -265,32 +275,6 @@ export async function* splitLines(
         }
     }
     if (buf.length > 0) yield buf;
-}
-
-/**
- * Build the `claude` (Agent SDK CLI) argv for an in-VM run. Streams
- * SDK messages as NDJSON on stdout (`--output-format stream-json`) so
- * the harness can map them. The system prompt + model come from the
- * definition; tools default to full Bash + native (no fn/MCP wiring on
- * this tier). Kept minimal + pure for testing.
- */
-export function buildClaudeArgv(def: AgentDefinition, prompt: string): string[] {
-    const model = typeof def.model === 'string' ? def.model : def.model.id;
-    const argv = [
-        'claude',
-        '--print',
-        prompt,
-        '--output-format',
-        'stream-json',
-        '--verbose',
-    ];
-    if (model) {
-        argv.push('--model', model);
-    }
-    if (typeof def.maxTurns === 'number') {
-        argv.push('--max-turns', String(def.maxTurns));
-    }
-    return argv;
 }
 
 /**
