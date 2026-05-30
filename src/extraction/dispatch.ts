@@ -16,8 +16,7 @@ import type {
     ExtractionResult,
     ExtractionScope,
 } from './define-extraction';
-
-const AGENT_OPS_SCOPE: ExtractionScope = 'ernesto:agent-ops';
+import { checkScope } from '../shared/scope';
 
 export type DispatchExtractionErrorCode =
     | 'source_not_found'
@@ -40,7 +39,7 @@ export async function dispatchExtraction(
         return { ok: false, error: 'source_not_found', details: { source } };
     }
 
-    const scopeDenial = checkScope(plugin, ctx.scopes);
+    const scopeDenial = checkScope(plugin.scope, ctx.scopes);
     if (scopeDenial) {
         return { ok: false, error: 'scope_denied', details: scopeDenial };
     }
@@ -70,26 +69,6 @@ export async function dispatchExtraction(
     }
 
     return { ok: true, data: raw };
-}
-
-interface ScopeDenialDetails {
-    required: ReadonlyArray<ExtractionScope>;
-    missing: ReadonlyArray<ExtractionScope>;
-    missingCount: number;
-}
-
-function checkScope(
-    plugin: ExtractionPlugin,
-    scopes: ReadonlySet<ExtractionScope>,
-): ScopeDenialDetails | null {
-    if (scopes.has(AGENT_OPS_SCOPE)) return null;
-    const missing = plugin.scope.filter((s) => !scopes.has(s));
-    if (missing.length === 0) return null;
-    return {
-        required: plugin.scope,
-        missing,
-        missingCount: missing.length,
-    };
 }
 
 function validateRequest(request: ExtractionRequest): { field: string; message: string } | null {

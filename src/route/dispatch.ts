@@ -20,8 +20,7 @@ import type { RouteContext, RouteScope } from './define-route';
 import { resolveRouteScope } from './define-route';
 import { sketchComponents } from './stage-sketch';
 import { applyRenderManifest } from './render';
-
-const AGENT_OPS_SCOPE: RouteScope = 'ernesto:agent-ops';
+import { checkScope } from '../shared/scope';
 
 export type DispatchErrorCode =
     | 'route_not_found'
@@ -192,22 +191,3 @@ export async function dispatchResolvedRoute(
 }
 
 
-interface ScopeDenialDetails {
-    required: ReadonlyArray<RouteScope>;
-    missing: ReadonlyArray<RouteScope>;
-    missingCount: number;
-}
-
-function checkScope(
-    required: ReadonlyArray<RouteScope>,
-    scopes: ReadonlySet<RouteScope>,
-): ScopeDenialDetails | null {
-    if (scopes.has(AGENT_OPS_SCOPE)) return null;
-    const missing = required.filter((s) => !scopes.has(s));
-    if (missing.length === 0) return null;
-    return {
-        required,
-        missing,
-        missingCount: missing.length,
-    };
-}

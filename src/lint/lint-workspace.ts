@@ -67,6 +67,7 @@ import type {
     WorkflowValidationError,
 } from '../workflows';
 import { parseManagedAgentMd } from '../managed-agents';
+import { AGENT_OPS_SCOPE } from '../shared/scope';
 
 /** Lint error key emitted when a `WORKSPACE.md` declares an `extractions:`
  *  entry whose `source` is not registered with the live extraction registry.
@@ -92,7 +93,6 @@ export const RESERVED_SYSTEM_WORKSPACES: ReadonlySet<string> = new Set([
     '_tmp',
     '_example',
 ]);
-const AGENT_OPS_SCOPE = 'ernesto:agent-ops';
 
 // ─── Diff parser ──────────────────────────────────────────────────────────
 
