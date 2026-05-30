@@ -130,7 +130,7 @@ class Runner implements WorkflowRunner {
         this.bus.emit(raw);
     }
 
-    async dispatch<TOut = Record<string, unknown>>(
+    async dispatch<TOut extends Record<string, unknown> = Record<string, unknown>>(
         kind: KindRef,
         inputs: Record<string, unknown>,
         principal: Principal,
@@ -160,7 +160,7 @@ class Runner implements WorkflowRunner {
                 source: 'kind-registry',
                 declaration: {
                     name: declFromRegistry.uri,
-                    description: declFromRegistry.route.description,
+                    description: declFromRegistry.route.description ?? declFromRegistry.uri,
                     version: 1 as const,
                     ...(declFromRegistry.route.scope &&
                     Array.isArray(declFromRegistry.route.scope)

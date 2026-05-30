@@ -176,7 +176,7 @@ export interface WorkflowRunner {
      *   - Slack subscriber → dispatch('agent-cas', {prompt}, userPrincipal(...), {conversationKey: threadId})
      *   - AI agent's execute() tool → dispatch(uri, params, narrowedPrincipal, {parentRunId, surfaceRunId})
      */
-    dispatch<TOut = Record<string, unknown>>(
+    dispatch<TOut extends Record<string, unknown> = Record<string, unknown>>(
         kind: KindRef,
         inputs: Record<string, unknown>,
         principal: Principal,
