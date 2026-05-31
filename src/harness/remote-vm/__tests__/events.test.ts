@@ -1,11 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { HarnessEvent } from '../../types';
-import {
-    createTranslatorState,
-    mapVmLine,
-    mapVmStdout,
-    parseSdkLine,
-} from '../events';
+import { createTranslatorState, mapVmLine, parseSdkLine } from '../events';
+import { splitLines } from '../index';
 
 describe('parseSdkLine', () => {
     it('parses a valid SDK message line', () => {
@@ -51,68 +47,55 @@ async function* chunksOf(...chunks: string[]): AsyncGenerator<string> {
     for (const c of chunks) yield c;
 }
 
-describe('mapVmStdout', () => {
-    it('emits assistant_message + usage + status:completed across a full run', async () => {
-        const lines = [
+async function collect(gen: AsyncGenerator<string>): Promise<string[]> {
+    const out: string[] = [];
+    for await (const line of gen) out.push(line);
+    return out;
+}
+
+// `splitLines` (index.ts) is the live splitter feeding `runtime.mapLine`;
+// per-line mapping is covered by the `mapVmLine` describe above. Here we
+// pin the byte-stream → whole-line behavior: arbitrary chunk boundaries
+// and a trailing newline-less line.
+describe('splitLines', () => {
+    it('yields one whole line per newline-terminated row', async () => {
+        const lines = await collect(splitLines(chunksOf('a\nb\nc\n')));
+        expect(lines).toEqual(['a', 'b', 'c']);
+    });
+
+    it('reassembles a line split mid-token across chunk boundaries', async () => {
+        const full =
+            '{"type":"system","subtype":"init"}\n' +
+            '{"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}\n';
+        const mid = Math.floor(full.length / 2);
+        const lines = await collect(
+            splitLines(chunksOf(full.slice(0, mid), full.slice(mid))),
+        );
+        expect(lines).toEqual([
             '{"type":"system","subtype":"init"}',
             '{"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}',
-            '{"type":"result","subtype":"success","usage":{"input_tokens":10,"output_tokens":3},"total_cost_usd":0.001}',
-        ];
+        ]);
+    });
+
+    it('flushes a trailing partial line with no newline', async () => {
+        const lines = await collect(splitLines(chunksOf('{"type":"system"}')));
+        expect(lines).toEqual(['{"type":"system"}']);
+    });
+
+    it('maps a full run end-to-end when piped through mapVmLine', async () => {
+        const full =
+            '{"type":"system","subtype":"init"}\n' +
+            '{"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}\n' +
+            '{"type":"result","subtype":"success","usage":{"input_tokens":10,"output_tokens":3},"total_cost_usd":0.001}\n';
+        const state = createTranslatorState();
         const events: HarnessEvent[] = [];
-        for await (const ev of mapVmStdout(chunksOf(lines.join('\n')), 'r1')) {
-            events.push(ev);
+        for await (const line of splitLines(chunksOf(full))) {
+            events.push(...mapVmLine(line, 'r1', state));
         }
         const kinds = events.map((e) => e.kind);
         expect(kinds).toContain('assistant_message');
         expect(kinds).toContain('usage');
-        expect(kinds[kinds.length - 1]).toBe('status');
         const last = events[events.length - 1];
         expect(last.kind === 'status' && last.status).toBe('completed');
-    });
-
-    it('reassembles lines split across arbitrary chunk boundaries', async () => {
-        // Same three rows, but cut mid-token across chunks.
-        const full =
-            '{"type":"system","subtype":"init"}\n' +
-            '{"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}\n' +
-            '{"type":"result","subtype":"success","usage":{"input_tokens":1,"output_tokens":1}}\n';
-        const mid = Math.floor(full.length / 2);
-        const events: HarnessEvent[] = [];
-        for await (const ev of mapVmStdout(
-            chunksOf(full.slice(0, mid), full.slice(mid)),
-            'r1',
-        )) {
-            events.push(ev);
-        }
-        expect(events.map((e) => e.kind)).toContain('assistant_message');
-        expect(events.map((e) => e.kind)).toContain('status');
-    });
-
-    it('flushes a trailing partial line with no newline', async () => {
-        const events: HarnessEvent[] = [];
-        for await (const ev of mapVmStdout(
-            chunksOf('{"type":"system","subtype":"init"}'),
-            'r1',
-        )) {
-            events.push(ev);
-        }
-        expect(events).toEqual([
-            { kind: 'status', status: 'running', runId: 'r1' },
-        ]);
-    });
-
-    it('surfaces a tool_call from an assistant tool_use block', async () => {
-        const line =
-            '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"ls"}}]}}';
-        const events: HarnessEvent[] = [];
-        for await (const ev of mapVmStdout(chunksOf(line), 'r1')) {
-            events.push(ev);
-        }
-        const toolCall = events.find((e) => e.kind === 'tool_call');
-        expect(toolCall).toMatchObject({
-            kind: 'tool_call',
-            toolUseId: 't1',
-            name: 'Bash',
-        });
     });
 });

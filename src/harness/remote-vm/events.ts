@@ -58,35 +58,3 @@ export function mapVmLine(
     if (msg === null) return [];
     return mapSdkMessage(msg, runId, state);
 }
-
-/**
- * Translate an async stream of stdout chunks (Buffers or strings) from
- * the in-VM `claude` process into the canonical `HarnessEvent` stream.
- * Handles arbitrary chunk boundaries by buffering a partial trailing
- * line across chunks. Lazy — yields per row, preserving backpressure.
- */
-export async function* mapVmStdout(
-    chunks: AsyncIterable<Buffer | string>,
-    runId: string,
-): AsyncGenerator<HarnessEvent> {
-    const state = createTranslatorState();
-    let buf = '';
-    for await (const chunk of chunks) {
-        buf += typeof chunk === 'string' ? chunk : chunk.toString('utf8');
-        let nl = buf.indexOf('\n');
-        while (nl !== -1) {
-            const line = buf.slice(0, nl);
-            buf = buf.slice(nl + 1);
-            for (const ev of mapVmLine(line, runId, state)) {
-                yield ev;
-            }
-            nl = buf.indexOf('\n');
-        }
-    }
-    // Flush any trailing partial line (a final row without a newline).
-    if (buf.length > 0) {
-        for (const ev of mapVmLine(buf, runId, state)) {
-            yield ev;
-        }
-    }
-}

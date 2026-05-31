@@ -3,12 +3,15 @@
  *
  * Structural twin of `harness/cas`: `createRemoteVmHarness(env)` returns a
  * canonical `Harness` (`{ capabilities, createAgent, listModels,
- * identify }`). All VM lifecycle is delegated to the small
- * `SandboxClient` seam; the concrete Vercel-SDK client is
- * `vercel.adapter.ts` (spike-only, NOT on the typechecked/tested path).
- * The harness logic — egress-policy build, provision-spec build, the SDK-
- * message → `HarnessEvent` mapping, lifecycle orchestration, settle
- * bridging — is unit-tested against an in-memory `SandboxClient` stub.
+ * identify }`). All VM lifecycle is delegated to the small `SandboxClient`
+ * seam; the concrete Vercel-SDK client is the backend's
+ * `ernesto/vm/sandbox/vercel-sandbox-client.ts` (the lib owns only the
+ * interface — no cloud SDK, no native dep). The harness logic —
+ * egress-policy build, provision-spec build, the SDK-message →
+ * `HarnessEvent` mapping, lifecycle orchestration — is unit-tested against
+ * an in-memory `SandboxClient` stub. (Settle is NOT a harness concern: the
+ * in-VM agent settles via eden-lite's control server, which ships the
+ * write-overlay to the gateway's `/vm/settle` — see `ernesto/vm`.)
  *
  * Security model (Build Contract §4/§5):
  *   - The microVM + a deny-all egress allowlist (exactly the backend API
@@ -51,9 +54,7 @@ export type {
 export type { ProvisionSpec, ProvisionInputs } from './provision';
 export { buildProvisionSpec, WORKDIR_MOUNT, EDEN_LITE_PATH } from './provision';
 export { buildEgressPolicy, hostOf } from './egress';
-export { mapVmStdout, mapVmLine, parseSdkLine } from './events';
-export { bridgeSettle } from './settle-bridge';
-export type { VmSettleRequest, VmSettleResponse, VmSettleFile } from './wire';
+export { mapVmLine, parseSdkLine } from './events';
 // Runtime axis (orthogonal to the VM placement): the VM harness runs ANY
 // process-based runtime, defaulting to claude (cas). Swap `runtime` to run
 // cursor-agent in the VM with no other change.

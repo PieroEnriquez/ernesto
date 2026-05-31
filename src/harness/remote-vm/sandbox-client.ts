@@ -7,10 +7,10 @@
  * SDK-message → `HarnessEvent` mapping, lifecycle orchestration — is coded
  * and unit-tested against this interface with an in-memory stub.
  *
- * The CONCRETE Vercel-SDK implementation lives in `vercel.adapter.ts`,
- * which is clearly labeled "spike-only" and is NOT imported by the
- * typechecked/tested path. This file imports no cloud SDK and adds no
- * runtime dependency.
+ * The CONCRETE implementation lives in the backend
+ * (`ernesto/vm/sandbox/vercel-sandbox-client.ts`) where the Vercel SDK +
+ * creds belong; tests implement an in-memory stub. This file imports no
+ * cloud SDK and adds no runtime dependency.
  */
 
 /**
