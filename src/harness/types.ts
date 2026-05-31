@@ -341,6 +341,14 @@ export interface AgentHandle {
     /** Send a user turn; returns a `RunHandle` that streams events
      *  until the LLM stops, the agent halts, or `cancel()` is called. */
     send(msg: UserMessage, opts?: SendOptions): Promise<RunHandle>;
+    /** Tear down this agent's backend resources — release a microVM,
+     *  close a session. Optional: harnesses with no external resource to
+     *  free omit it. Distinct from `RunHandle.cancel()` (a per-turn
+     *  interrupt that keeps the agent warm for resume); `stop()` ends the
+     *  agent. Each harness registers its own teardown, so a
+     *  renderer-initiated stop (→ `runner.abortRun` → the run's abort
+     *  signal) reaches all the way down to e.g. `SandboxClient.stop`. */
+    stop?(): Promise<void>;
     /** Replay-by-query of the agent's transcript. Gated by
      *  `capabilities.listMessages`. */
     getMessages?(): Promise<HarnessMessage[]>;

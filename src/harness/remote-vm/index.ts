@@ -257,7 +257,16 @@ function makeRemoteVmAgentHandle(inputs: AgentHandleInputs): AgentHandle {
         });
     };
 
-    return { id: handle.id, send };
+    // Teardown registered by the harness: release the microVM. Reached when
+    // a renderer-initiated stop aborts the run (the agent-handler calls
+    // `agent.stop()` on the abort signal). Idempotent — stopping an
+    // already-stopped sandbox is a no-op the client swallows. A normal
+    // turn completion does NOT call this, so the VM stays warm for resume.
+    const stop = async (): Promise<void> => {
+        await sandbox.stop(handle);
+    };
+
+    return { id: handle.id, send, stop };
 }
 
 /**
