@@ -106,10 +106,8 @@ export interface SandboxClient {
         argv: string[],
         opts?: ExecOpts,
     ): Promise<ExecStreamHandle>;
-    /** Read a file back (logs, daemon health). */
-    readFile(h: SandboxHandle, path: string): Promise<Buffer>;
-    /** Checkpoint full-FS for fast LRU restore on the next turn. */
-    snapshot(h: SandboxHandle): Promise<{ snapshotId: string }>;
-    /** Tear down (idle reap / end of turn after snapshot). */
+    /** Tear down the sandbox (cancel / end of run). The harness exposes this
+     *  as the run's stop handler so a renderer-initiated stop propagates all
+     *  the way down to releasing the microVM. */
     stop(h: SandboxHandle): Promise<void>;
 }

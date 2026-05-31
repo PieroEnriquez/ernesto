@@ -67,13 +67,9 @@ class StubSandbox implements SandboxClient {
             interrupt: async () => {},
         };
     }
-    async readFile(): Promise<Buffer> {
-        return Buffer.from('');
+    async stop(): Promise<void> {
+        this.order.push('stop');
     }
-    async snapshot(): Promise<{ snapshotId: string }> {
-        return { snapshotId: 'snap-1' };
-    }
-    async stop(): Promise<void> {}
 }
 
 const RUN_LINES = [
