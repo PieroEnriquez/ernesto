@@ -177,7 +177,12 @@ export type {
     SandboxHooks,
     SandboxBindMiddlewareOpts,
 } from './middleware/sandbox-bind';
-export { toolSurfaceComposeMiddleware } from './middleware/tool-surface-compose';
+export {
+    toolSurfaceComposeMiddleware,
+    TOOL_SURFACE_ANNOTATIONS,
+    readDisallowedToolsExtra,
+    readSystemPromptExtras,
+} from './middleware/tool-surface-compose';
 export type {
     ToolSurfaceComposer,
     ToolSurfaceComposeInput,

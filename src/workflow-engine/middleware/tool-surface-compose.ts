@@ -60,9 +60,32 @@ export interface ToolSurfaceComposeInput {
 export interface ToolSurfaceComposition {
     /** SDK-shaped mcpServers map: `{ ernesto: {...}, mongo: {...}, ui: {...} }`. */
     mcpServers: Record<string, unknown>;
+    disallowedToolsExtra?: ReadonlyArray<string>;
+    systemPromptExtras?: ReadonlyArray<string>;
     /** Release function. Called in after-hook for ephemeral sessions;
      *  skipped for persistent (workspace-tier) sessions. */
     teardown?: () => Promise<void> | void;
+}
+
+export const TOOL_SURFACE_ANNOTATIONS = {
+    DISALLOWED_TOOLS_EXTRA: 'disallowedToolsExtra' as const,
+    SYSTEM_PROMPT_EXTRAS: 'systemPromptExtras' as const,
+} as const;
+
+export function readDisallowedToolsExtra(
+    annotations: Readonly<Record<string, unknown>>,
+): string[] {
+    const v = annotations[TOOL_SURFACE_ANNOTATIONS.DISALLOWED_TOOLS_EXTRA];
+    if (!Array.isArray(v)) return [];
+    return v.filter((x): x is string => typeof x === 'string');
+}
+
+export function readSystemPromptExtras(
+    annotations: Readonly<Record<string, unknown>>,
+): string[] {
+    const v = annotations[TOOL_SURFACE_ANNOTATIONS.SYSTEM_PROMPT_EXTRAS];
+    if (!Array.isArray(v)) return [];
+    return v.filter((x): x is string => typeof x === 'string');
 }
 
 export interface ToolSurfaceComposeMiddlewareOpts {
@@ -111,6 +134,14 @@ export function toolSurfaceComposeMiddleware(
             ctx.annotations[annotationKey] = composition.mcpServers;
             if (composition.teardown) {
                 ctx.annotations[`${annotationKey}__teardown`] = composition.teardown;
+            }
+            if (composition.disallowedToolsExtra && composition.disallowedToolsExtra.length > 0) {
+                ctx.annotations[TOOL_SURFACE_ANNOTATIONS.DISALLOWED_TOOLS_EXTRA] =
+                    [...composition.disallowedToolsExtra];
+            }
+            if (composition.systemPromptExtras && composition.systemPromptExtras.length > 0) {
+                ctx.annotations[TOOL_SURFACE_ANNOTATIONS.SYSTEM_PROMPT_EXTRAS] =
+                    [...composition.systemPromptExtras];
             }
             ctx.sessionId = sessionId;
             return ctx;
