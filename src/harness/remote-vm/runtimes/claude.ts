@@ -15,7 +15,7 @@
  * SDKMessages stream as NDJSON and map via the SAME `cas/events` translator.
  */
 
-import type { AgentDefinition } from '../../types';
+import type { AgentDefinition, SystemPromptConfig } from '../../types';
 import type { VmRuntime } from '../runtime';
 import { createTranslatorState, mapVmLine } from '../events';
 
@@ -28,7 +28,12 @@ export const CLAUDE_VM_DRIVER_SOURCE = `import { query, createSdkMcpServer, tool
 import { z } from 'zod';
 
 const prompt = process.argv[2] || process.env.AGENT_PROMPT || '';
-const model = process.argv[3] || process.env.AGENT_MODEL || undefined;
+// argv[3] is a JSON config blob: { model?, systemPrompt, disallowedTools? }.
+// Carries the resolved agent definition (incl. dispatch-time tool-surface
+// extras: workspace-claim denials + systemPrompt hints) into the VM.
+let cfg = {};
+try { cfg = JSON.parse(process.argv[3] || '{}'); } catch { cfg = {}; }
+const model = cfg.model || process.env.AGENT_MODEL || undefined;
 const BACKEND = process.env.ERNESTO_VM_BACKEND_URL || '';
 const CONTROL = 'http://127.0.0.1:7070';
 const HDRS = { 'content-type': 'application/json', 'ngrok-skip-browser-warning': '1' };
@@ -65,9 +70,15 @@ const options = {
   cwd: process.cwd(),
   permissionMode: 'bypassPermissions',
   allowedTools: ['Read','Glob','Grep','Write','Edit','Bash','mcp__ernesto__execute','mcp__ernesto__settle','mcp__ui__ui'],
+  // Denylist on top of the allowlist — authority-scoped workspace claims
+  // (replacesBuiltinTools) + the author's declared disallowedTools.
+  ...(Array.isArray(cfg.disallowedTools) && cfg.disallowedTools.length ? { disallowedTools: cfg.disallowedTools } : {}),
   mcpServers: { ernesto, ui },
   maxTurns: Number(process.env.AGENT_MAX_TURNS || 24),
   ...(model ? { model } : {}),
+  // The resolved agent systemPrompt (string or { type:'preset', append }).
+  // Carries the systemPromptExtras the composer appended at dispatch time.
+  ...(cfg.systemPrompt !== undefined ? { systemPrompt: cfg.systemPrompt } : {}),
 };
 try { for await (const msg of query({ prompt, options })) w(msg); }
 catch (err) { w({ type: 'result', subtype: 'error_during_execution', is_error: true, result: String(err && err.message || err) }); process.exit(1); }
@@ -75,9 +86,20 @@ catch (err) { w({ type: 'result', subtype: 'error_during_execution', is_error: t
 
 export function buildClaudeArgv(def: AgentDefinition, prompt: string): string[] {
     const model = typeof def.model === 'string' ? def.model : def.model.id;
-    const argv = ['node', CLAUDE_VM_DRIVER_PATH, prompt];
-    if (model) argv.push(model);
-    return argv;
+    // Single JSON config arg — robust to optional fields (a bare positional
+    // `model` mis-aligns when absent). Forwards systemPrompt + disallowedTools
+    // so the in-VM driver honours them (parity with the cas harness); without
+    // this the VM silently drops both, defeating workspace-claim enforcement.
+    const config: {
+        model?: string;
+        systemPrompt: SystemPromptConfig;
+        disallowedTools?: string[];
+    } = { systemPrompt: def.systemPrompt };
+    if (model) config.model = model;
+    if (def.disallowedTools && def.disallowedTools.length > 0) {
+        config.disallowedTools = def.disallowedTools;
+    }
+    return ['node', CLAUDE_VM_DRIVER_PATH, prompt, JSON.stringify(config)];
 }
 
 export const claudeVmRuntime: VmRuntime = {

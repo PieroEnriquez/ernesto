@@ -241,7 +241,7 @@ describe('createRemoteVmHarness lifecycle', () => {
 });
 
 describe('buildClaudeArgv', () => {
-    it('launches the SDK query() driver with the prompt + model', () => {
+    it('launches the SDK query() driver with the prompt + a JSON config arg', () => {
         const argv = buildClaudeArgv(
             { systemPrompt: 'x', model: 'claude-opus-4-7', maxTurns: 12 },
             'do the thing',
@@ -249,7 +249,33 @@ describe('buildClaudeArgv', () => {
         expect(argv[0]).toBe('node');
         expect(argv[1]).toContain('claude-driver');
         expect(argv[2]).toBe('do the thing');
-        expect(argv).toContain('claude-opus-4-7');
+        const cfg = JSON.parse(argv[3]!);
+        expect(cfg.model).toBe('claude-opus-4-7');
+        expect(cfg.systemPrompt).toBe('x');
+    });
+
+    it('forwards disallowedTools + systemPrompt extras into the VM (parity with cas)', () => {
+        const argv = buildClaudeArgv(
+            {
+                systemPrompt: { type: 'preset', preset: 'claude_code', append: 'use teams:// for tasks' },
+                model: 'm',
+                disallowedTools: ['Task', 'TaskCreate'],
+            },
+            'go',
+        );
+        const cfg = JSON.parse(argv[3]!);
+        expect(cfg.disallowedTools).toEqual(['Task', 'TaskCreate']);
+        expect(cfg.systemPrompt).toEqual({
+            type: 'preset',
+            preset: 'claude_code',
+            append: 'use teams:// for tasks',
+        });
+    });
+
+    it('omits disallowedTools from the config when none are declared', () => {
+        const argv = buildClaudeArgv({ systemPrompt: 'x', model: 'm' }, 'go');
+        const cfg = JSON.parse(argv[3]!);
+        expect(cfg.disallowedTools).toBeUndefined();
     });
 });
 
