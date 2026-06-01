@@ -93,7 +93,8 @@ export type RenderEntry =
         yLabel?: string;
         caption?: string;
     })
-    | (RenderEntryBase & { ui: 'thinking' });
+    | (RenderEntryBase & { ui: 'thinking' })
+    | (RenderEntryBase & { ui: 'actions' });
 
 /** Walk the manifest against a route's output, returning the
  *  components to render. Pure — no side effects. */
@@ -288,5 +289,13 @@ function buildLegacyComponent(
             if (typeof value === 'string')
                 return { kind: 'thinking', props: { text: value } };
             return null;
+
+        case 'actions': {
+            // The projected field is the button list itself
+            // (`ActionButton[]`); each entry carries label + actionId +
+            // opaque value the tier renderer wires to a click handler.
+            if (!Array.isArray(value) || value.length === 0) return null;
+            return { kind: 'actions', props: { buttons: value as import('../components/types').ActionButton[] } };
+        }
     }
 }

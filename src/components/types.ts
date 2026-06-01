@@ -212,6 +212,24 @@ export interface TreeProps {
     nodes: TreeNode[];
 }
 
+/** A single interactive button in an `actions` component. `actionId` is
+ *  matched by the tier renderer's action handler (Slack `app.action`,
+ *  etc.); `value` is the opaque payload handed back on click. */
+export interface ActionButton {
+    label: string;
+    actionId: string;
+    value?: unknown;
+    style?: 'primary' | 'danger';
+}
+
+/** Props for the `actions` component — a row of interactive buttons.
+ *  Unlike the other renderables (which project to inert text/image),
+ *  `actions` is the one interactive renderable: the tier renderer
+ *  surfaces real buttons and routes clicks to the matching `actionId`. */
+export interface ActionsProps {
+    buttons: ActionButton[];
+}
+
 /** Renderable component union — nested inside `hitl.props.render`. */
 export type RenderableComponent =
     | { kind: 'markdown'; props: MarkdownProps }
@@ -223,7 +241,8 @@ export type RenderableComponent =
     | { kind: 'code'; props: CodeProps }
     | { kind: 'image'; props: ImageProps }
     | { kind: 'link'; props: LinkProps }
-    | { kind: 'tree'; props: TreeProps };
+    | { kind: 'tree'; props: TreeProps }
+    | { kind: 'actions'; props: ActionsProps };
 
 /** Stable tuple of renderable kinds. */
 export const RENDERABLE_COMPONENT_KINDS = [
@@ -237,6 +256,7 @@ export const RENDERABLE_COMPONENT_KINDS = [
     'image',
     'link',
     'tree',
+    'actions',
 ] as const;
 
 export type RenderableComponentKind = (typeof RENDERABLE_COMPONENT_KINDS)[number];

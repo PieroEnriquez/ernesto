@@ -45,6 +45,8 @@ export type {
     LinkProps,
     TreeProps,
     TreeNode,
+    ActionButton,
+    ActionsProps,
 } from './types';
 
 export {

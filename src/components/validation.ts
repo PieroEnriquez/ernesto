@@ -238,6 +238,11 @@ const SPECS: Record<string, KindSpec> = {
         example: "{ kind: 'tree', props: { nodes: [{ label: 'root' }] } }",
         fields: [],
     },
+    actions: {
+        propsHint: 'buttons: [{ label, actionId }]',
+        example: "{ kind: 'actions', props: { buttons: [{ label: 'Update', actionId: 'teams_update_task__abc' }] } }",
+        fields: [],
+    },
 };
 
 /** Build the `"<kind>.props.<name> …"` violation for a failed field. */
@@ -781,6 +786,8 @@ export function validateRenderableComponent(
             return validateChart(props);
         case 'tree':
             return validateTree(props);
+        case 'actions':
+            return validateActions(props);
         default:
             // Flat kinds: markdown, data-ref, file-link, code, image,
             // link — output carries only the spec'd present fields.
@@ -915,5 +922,29 @@ function validateTree(
     return ok({
         kind: 'tree',
         props: props as unknown as import('./types').TreeProps,
+    });
+}
+
+function validateActions(
+    props: Record<string, unknown>,
+): ValidationResult<RenderableComponent> {
+    if (!Array.isArray(props.buttons) || props.buttons.length === 0) {
+        return err(
+            `actions.props.buttons must be a non-empty array. Received ${typeLabel(props.buttons)}. ` +
+                "Try: buttons: [{ label: 'Update', actionId: 'teams_update_task__abc' }]",
+        );
+    }
+    for (let i = 0; i < props.buttons.length; i++) {
+        const b = props.buttons[i];
+        if (!isPlainObject(b) || typeof b.label !== 'string' || typeof b.actionId !== 'string') {
+            return err(
+                `actions.props.buttons[${i}] must be { label: string, actionId: string, value?, style? }. ` +
+                    `Received ${typeLabel(b)}.`,
+            );
+        }
+    }
+    return ok({
+        kind: 'actions',
+        props: props as unknown as import('./types').ActionsProps,
     });
 }
