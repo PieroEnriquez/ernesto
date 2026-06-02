@@ -267,6 +267,40 @@ describe('lintWorkspace (scope-less)', () => {
         expect(failed.errors.some(e => e.code === 'archived_workspace_edit' && e.workspace === 'hr')).toBe(true);
     });
 
+    it('allows the archive transition (not archived at HEAD -> archived: true)', async () => {
+        const before = ['---', 'name: hr', 'description: HR', 'admin: hr-admin', '---', ''].join('\n');
+        const after = ['---', 'name: hr', 'description: HR', 'admin: hr-admin', 'archived: true', '---', ''].join('\n');
+        await seedWorkspace(root, 'hr', before);
+        await commitAll(root, 'seed');
+        await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', after);
+        const diff = diffModify('workspaces/hr/WORKSPACE.md', before, after);
+        const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
+        expect(result.ok).toBe(true);
+    });
+
+    it('allows the unarchive flip (archived: true -> archived: false, WORKSPACE.md only)', async () => {
+        const before = ['---', 'name: hr', 'description: HR', 'admin: hr-admin', 'archived: true', '---', ''].join('\n');
+        const after = ['---', 'name: hr', 'description: HR', 'admin: hr-admin', 'archived: false', '---', ''].join('\n');
+        await seedWorkspace(root, 'hr', before);
+        await commitAll(root, 'archived seed');
+        await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', after);
+        const diff = diffModify('workspaces/hr/WORKSPACE.md', before, after);
+        const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
+        expect(result.ok).toBe(true);
+    });
+
+    it('blocks editing an archived workspace WORKSPACE.md without unarchiving', async () => {
+        const before = ['---', 'name: hr', 'description: HR', 'admin: hr-admin', 'archived: true', '---', ''].join('\n');
+        const after = ['---', 'name: hr', 'description: HR (updated)', 'admin: hr-admin', 'archived: true', '---', ''].join('\n');
+        await seedWorkspace(root, 'hr', before);
+        await commitAll(root, 'archived seed');
+        await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', after);
+        const diff = diffModify('workspaces/hr/WORKSPACE.md', before, after);
+        const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
+        const failed = expectErrors(result);
+        expect(failed.errors.some(e => e.code === 'archived_workspace_edit' && e.workspace === 'hr')).toBe(true);
+    });
+
     it('flags file_too_large when a staged file exceeds 1 MiB', async () => {
         const big = 'x'.repeat(1024 * 1024 + 1);
         await writeStagedFile(root, 'workspaces/hr/big.txt', big);
@@ -725,5 +759,205 @@ describe('unregistered_extraction_source — registry-driven validation', () => 
         );
         const result = await lint({ diff, workspaces: ['hr'], workingTreeRoot: root });
         expect(result).toEqual({ ok: true });
+    });
+});
+
+describe('navigation frontmatter — section / order / title', () => {
+    let root: string;
+
+    beforeEach(async () => {
+        root = await mkdtemp(path.join(tmpdir(), 'lint-ws-nav-'));
+        await initRepo(root);
+        await seedWorkspace(root, 'hr', VALID_HR);
+        await commitAll(root, 'seed');
+    });
+
+    afterEach(async () => {
+        await rm(root, { recursive: true, force: true });
+    });
+
+    /** WORKSPACE.md body declaring an ordered `sections:` list. */
+    function hrWithSections(sectionsYaml: string): string {
+        return [
+            '---',
+            'name: hr',
+            'description: HR policies and procedures',
+            'admin: hr-admin',
+            sectionsYaml,
+            '---',
+            '',
+            '# HR',
+        ].join('\n');
+    }
+
+    function contentFile(fmLines: string[]): string {
+        return ['---', ...fmLines, '---', '', '# A doc', ''].join('\n');
+    }
+
+    async function lintContent(p: string, body: string) {
+        await writeStagedFile(root, p, body);
+        const diff = diffAdd(p, body);
+        return lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
+    }
+
+    it('passes a content file with well-typed section/order/title', async () => {
+        const body = contentFile(['section: Policies', 'order: 2', 'title: Leave Policy']);
+        const result = await lintContent('workspaces/hr/leave.md', body);
+        expect(result).toEqual({ ok: true });
+    });
+
+    it('passes a content file with no frontmatter at all', async () => {
+        const result = await lintContent('workspaces/hr/plain.md', '# Plain\n');
+        expect(result).toEqual({ ok: true });
+    });
+
+    it('flags invalid_nav_frontmatter when section is not a string', async () => {
+        const body = contentFile(['section:', '  - nested', '  - list']);
+        const result = await lintContent('workspaces/hr/bad-section.md', body);
+        const failed = expectErrors(result);
+        expect(failed.errors.some(e =>
+            e.code === 'invalid_nav_frontmatter' &&
+            e.path === 'workspaces/hr/bad-section.md' &&
+            /section/.test(e.message),
+        )).toBe(true);
+    });
+
+    it('flags invalid_nav_frontmatter when section is an empty string', async () => {
+        const body = contentFile(['section: "   "', 'title: x']);
+        const result = await lintContent('workspaces/hr/empty-section.md', body);
+        const failed = expectErrors(result);
+        expect(failed.errors.some(e =>
+            e.code === 'invalid_nav_frontmatter' && /section/.test(e.message),
+        )).toBe(true);
+    });
+
+    it('flags invalid_nav_frontmatter when order is not a number', async () => {
+        const body = contentFile(['order: first']);
+        const result = await lintContent('workspaces/hr/bad-order.md', body);
+        const failed = expectErrors(result);
+        expect(failed.errors.some(e =>
+            e.code === 'invalid_nav_frontmatter' && /order/.test(e.message),
+        )).toBe(true);
+    });
+
+    it('flags invalid_nav_frontmatter when title is not a string', async () => {
+        const body = contentFile(['title: 123', 'order: 1']);
+        // YAML parses `title: 123` as a number → wrong type.
+        const result = await lintContent('workspaces/hr/bad-title.md', body);
+        const failed = expectErrors(result);
+        expect(failed.errors.some(e =>
+            e.code === 'invalid_nav_frontmatter' && /title/.test(e.message),
+        )).toBe(true);
+    });
+
+    it('does NOT shape-check nav keys on WORKSPACE.md itself', async () => {
+        // A section/order on the contract file is not a content-nav key.
+        const wsBody = [
+            '---',
+            'name: hr', 'description: HR policies and procedures', 'admin: hr-admin',
+            'order: not-a-number',
+            '---', '', '# HR',
+        ].join('\n');
+        await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', wsBody);
+        const diff = diffModify('workspaces/hr/WORKSPACE.md', VALID_HR, wsBody);
+        const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
+        // No invalid_nav_frontmatter for WORKSPACE.md.
+        if (!result.ok) {
+            expect((result as FailedLint).errors.every(e => e.code !== 'invalid_nav_frontmatter')).toBe(true);
+        } else {
+            expect(result).toEqual({ ok: true });
+        }
+    });
+
+    it('passes when section is one of WORKSPACE.md declared sections', async () => {
+        const ws = hrWithSections('sections: [Policies, Benefits]');
+        await seedWorkspace(root, 'hr', ws);
+        await commitAll(root, 'add sections');
+        const body = contentFile(['section: Benefits']);
+        const result = await lintContent('workspaces/hr/benefits.md', body);
+        expect(result).toEqual({ ok: true });
+    });
+
+    it('flags unknown_section when section is not in declared sections', async () => {
+        const ws = hrWithSections('sections: [Policies, Benefits]');
+        await seedWorkspace(root, 'hr', ws);
+        await commitAll(root, 'add sections');
+        const body = contentFile(['section: Onboarding']);
+        const result = await lintContent('workspaces/hr/onb.md', body);
+        const failed = expectErrors(result);
+        const err = failed.errors.find(e => e.code === 'unknown_section');
+        expect(err).toBeDefined();
+        expect(err!.workspace).toBe('hr');
+        expect(err!.path).toBe('workspaces/hr/onb.md');
+        expect(err!.message).toContain('Onboarding');
+    });
+
+    it('skips the unknown_section check when WORKSPACE.md declares no sections', async () => {
+        // Seeded VALID_HR has no sections: → any section value is allowed.
+        const body = contentFile(['section: Anything']);
+        const result = await lintContent('workspaces/hr/free.md', body);
+        expect(result).toEqual({ ok: true });
+    });
+
+    it('flags invalid_workspace_sections when sections is not an array', async () => {
+        const ws = hrWithSections('sections: Policies');
+        await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', ws);
+        const diff = diffModify('workspaces/hr/WORKSPACE.md', VALID_HR, ws);
+        const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
+        const failed = expectErrors(result);
+        expect(failed.errors.some(e =>
+            e.code === 'invalid_workspace_sections' && e.workspace === 'hr',
+        )).toBe(true);
+    });
+
+    it('flags invalid_workspace_sections when sections is an array of non-strings', async () => {
+        const ws = hrWithSections('sections: [1, 2, 3]');
+        await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', ws);
+        const diff = diffModify('workspaces/hr/WORKSPACE.md', VALID_HR, ws);
+        const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
+        const failed = expectErrors(result);
+        expect(failed.errors.some(e => e.code === 'invalid_workspace_sections')).toBe(true);
+    });
+
+    it('does not fire unknown_section when sections is malformed (only invalid_workspace_sections)', async () => {
+        // Malformed declared list → yields no usable set → unknown_section skipped.
+        const ws = hrWithSections('sections: Policies');
+        await seedWorkspace(root, 'hr', ws);
+        await commitAll(root, 'bad sections');
+        const body = contentFile(['section: Whatever']);
+        const result = await lintContent('workspaces/hr/x.md', body);
+        // The content file add alone doesn't touch WORKSPACE.md, so
+        // invalid_workspace_sections won't fire here; the key point is that
+        // unknown_section must NOT fire off a malformed declared list.
+        if (!result.ok) {
+            expect((result as FailedLint).errors.every(e => e.code !== 'unknown_section')).toBe(true);
+        } else {
+            expect(result).toEqual({ ok: true });
+        }
+    });
+
+    it('ignores nav frontmatter under generated dirs (extracted/, attached/)', async () => {
+        const ws = hrWithSections('sections: [Policies]');
+        await seedWorkspace(root, 'hr', ws);
+        await commitAll(root, 'sections');
+        const body = contentFile(['section: NotDeclared', 'order: bad']);
+        await writeStagedFile(root, 'workspaces/hr/extracted/doc.md', body);
+        const diff = diffAdd('workspaces/hr/extracted/doc.md', body);
+        const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
+        const failed = expectErrors(result);
+        // It will fail on forbidden_generated_path, but NOT on nav rules.
+        expect(failed.errors.every(e =>
+            e.code !== 'invalid_nav_frontmatter' && e.code !== 'unknown_section',
+        )).toBe(true);
+    });
+
+    it('also validates .mdx content files', async () => {
+        const ws = hrWithSections('sections: [Policies]');
+        await seedWorkspace(root, 'hr', ws);
+        await commitAll(root, 'sections');
+        const body = contentFile(['section: Ghost']);
+        const result = await lintContent('workspaces/hr/page.mdx', body);
+        const failed = expectErrors(result);
+        expect(failed.errors.some(e => e.code === 'unknown_section')).toBe(true);
     });
 });

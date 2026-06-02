@@ -27,6 +27,18 @@
  *   file_too_large                — any file > 1 MiB → fail.
  *   merge_markers                 — leftover git conflict markers from a
  *                                   stash pop or rebase.
+ *   invalid_nav_frontmatter       — a content file's navigation frontmatter
+ *                                   has a wrong-typed `section` (must be a
+ *                                   non-empty string), `order` (must be a
+ *                                   number), or `title` (must be a string).
+ *                                   These are the keys the workspace viewer's
+ *                                   curated nav renders.
+ *   unknown_section               — when a workspace's `WORKSPACE.md`
+ *                                   frontmatter declares `sections:` (the
+ *                                   ordered list of section names), a content
+ *                                   file's `section` must be one of them.
+ *   invalid_workspace_sections    — `sections:` in `WORKSPACE.md`, when
+ *                                   present, must be an array of strings.
  *   read_denied                   — diff touches `workspaces/{w}/**` and
  *                                   the principal lacks `{w}`'s `read:`
  *                                   scope (default: everyone). `write:`,
@@ -92,6 +104,7 @@ export const RESERVED_SYSTEM_WORKSPACES: ReadonlySet<string> = new Set([
     PLATFORM_WORKSPACE,
     '_tmp',
     '_example',
+    '_docs',
 ]);
 
 // ─── Diff parser ──────────────────────────────────────────────────────────
@@ -171,6 +184,32 @@ function isWorkspaceMd(p: string, w: string): boolean {
     return p === `workspaces/${w}/WORKSPACE.md`;
 }
 
+/** A markdown content file the workspace viewer renders in its curated nav:
+ *  any `.md`/`.mdx` under `workspaces/{w}/` that is NOT the `WORKSPACE.md`
+ *  contract and NOT a generated mirror (`extracted/`, `attached/`). Its
+ *  navigation frontmatter (`section`, `order`, `title`) is shape-checked. */
+function isContentMarkdown(p: string, w: string): boolean {
+    if (workspaceOf(p) !== w) return false;
+    if (isWorkspaceMd(p, w)) return false;
+    if (isGeneratedPath(p)) return false;
+    return /\.mdx?$/.test(p);
+}
+
+/** Read the declared `sections:` order from a workspace's WORKSPACE.md
+ *  frontmatter. Returns the validated list of section names, plus whether
+ *  the field was present but malformed (so the caller can fire
+ *  `invalid_workspace_sections` once). */
+function readDeclaredSections(
+    fm: Frontmatter | undefined,
+): { present: boolean; valid: boolean; sections: readonly string[] } {
+    const raw = fm?.sections;
+    if (raw === undefined) return { present: false, valid: true, sections: [] };
+    if (!Array.isArray(raw) || raw.some(s => typeof s !== 'string')) {
+        return { present: true, valid: false, sections: [] };
+    }
+    return { present: true, valid: true, sections: raw as string[] };
+}
+
 // ─── Frontmatter ──────────────────────────────────────────────────────────
 
 interface Frontmatter {
@@ -181,6 +220,12 @@ interface Frontmatter {
     admin?: unknown;
     archived?: unknown;
     tags?: unknown;
+    /** WORKSPACE.md only: ordered list of section names for curated nav. */
+    sections?: unknown;
+    /** Content files only: nav frontmatter the viewer renders. */
+    section?: unknown;
+    order?: unknown;
+    title?: unknown;
     [k: string]: unknown;
 }
 
@@ -501,6 +546,17 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
                 });
             }
 
+            // invalid_workspace_sections — `sections:`, when present, must be
+            // an array of strings (the curated-nav section order the viewer
+            // renders). A wrong shape can't be projected to a section list.
+            const declaredSections = readDeclaredSections(data);
+            if (declaredSections.present && !declaredSections.valid) {
+                errors.push({
+                    code: 'invalid_workspace_sections', workspace: w, path: target,
+                    message: `WORKSPACE.md for '${w}' frontmatter 'sections' must be an array of strings`,
+                });
+            }
+
             // unregistered_extraction_source — gated on caller wiring a
             // registry resolver. Bypassable for privileged route shims that
             // legitimately mutate WORKSPACE.md frontmatter outside the
@@ -579,6 +635,78 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
             }
         }
 
+        // Navigation frontmatter pass — content files only. Shape-checks the
+        // `section`/`order`/`title` keys the workspace viewer's curated nav
+        // renders, and (when the workspace's WORKSPACE.md declares an ordered
+        // `sections:` list) enforces that each file's `section` is one of
+        // them. Reads post-stage frontmatter from disk; deletes are skipped.
+        const declaredSectionsCache = new Map<string, ReadonlySet<string>>();
+        const getDeclaredSections = async (
+            w: string,
+        ): Promise<ReadonlySet<string> | undefined> => {
+            if (declaredSectionsCache.has(w)) return declaredSectionsCache.get(w);
+            const ws = await readWorkspaceMdFromDisk(workingTreeRoot, w);
+            const decl = readDeclaredSections(ws.frontmatter);
+            const set = decl.present && decl.valid ? new Set(decl.sections) : undefined;
+            declaredSectionsCache.set(w, set as ReadonlySet<string>);
+            return set;
+        };
+
+        for (const e of entries) {
+            if (e.isDelete) continue;
+            const p = e.toPath;
+            if (!p) continue;
+            const w = workspaceOf(p);
+            if (!w || !declared.has(w) || !isContentMarkdown(p, w)) continue;
+
+            let body: string;
+            try {
+                body = await readFile(path.join(workingTreeRoot, p), 'utf8');
+            } catch {
+                continue; // best-effort
+            }
+            const fm = parseFrontmatter(body);
+            // No frontmatter (or malformed) on a content file is fine here —
+            // nav keys are all optional. Only validate when we have a mapping.
+            if (!fm.ok) continue;
+            const data = fm.data;
+
+            if (data.section !== undefined &&
+                (typeof data.section !== 'string' || data.section.trim() === '')) {
+                errors.push({
+                    code: 'invalid_nav_frontmatter', workspace: w, path: p,
+                    message: `File ${p} frontmatter 'section' must be a non-empty string`,
+                });
+            }
+            if (data.order !== undefined &&
+                (typeof data.order !== 'number' || Number.isNaN(data.order))) {
+                errors.push({
+                    code: 'invalid_nav_frontmatter', workspace: w, path: p,
+                    message: `File ${p} frontmatter 'order' must be a number`,
+                });
+            }
+            if (data.title !== undefined && typeof data.title !== 'string') {
+                errors.push({
+                    code: 'invalid_nav_frontmatter', workspace: w, path: p,
+                    message: `File ${p} frontmatter 'title' must be a string`,
+                });
+            }
+
+            // unknown_section — only when `section` is a usable string AND the
+            // workspace declares a `sections:` list. A wrong-typed declared
+            // list (invalid_workspace_sections above) yields no set, so this
+            // check is skipped rather than firing spurious unknowns.
+            if (typeof data.section === 'string' && data.section.trim() !== '') {
+                const allowed = await getDeclaredSections(w);
+                if (allowed && !allowed.has(data.section)) {
+                    errors.push({
+                        code: 'unknown_section', workspace: w, path: p,
+                        message: `File ${p} declares section '${data.section}', which is not in WORKSPACE.md's declared sections [${[...allowed].join(', ')}]`,
+                    });
+                }
+            }
+        }
+
         // Per-workspace pass: workspace_md_missing, archived_workspace_edit,
         // and the read/write/admin scope rules.
         const touchedWorkspaces = new Set<string>();
@@ -601,15 +729,21 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
             }
 
             const fm = ws.frontmatter ?? {};
+            const oldFmRead = await readOldFrontmatter(workingTreeRoot, w);
 
-            // archived_workspace_edit
-            if (fm.archived === true) {
+            // archived_workspace_edit — a workspace that was ALREADY archived
+            // at HEAD is frozen: only the unarchive flip (archived:false,
+            // WORKSPACE.md-only) may touch it. Gate on the pre-diff (HEAD)
+            // state — mirroring the scope rules below — NOT the post-patch
+            // working tree. The working tree shows `archived: true` for a
+            // *fresh* archive too, so reading it here made the archive
+            // transition itself unreachable (you could only ever unarchive).
+            const wasArchived = oldFmRead.exists && oldFmRead.frontmatter?.archived === true;
+            if (wasArchived) {
                 const touchedInWs = [...touchedPaths].filter(p => workspaceOf(p) === w);
                 const onlyWorkspaceMd = touchedInWs.every(p => isWorkspaceMd(p, w));
-                const wsMdEntry = entries.find(e => e.toPath && isWorkspaceMd(e.toPath, w));
-                const newFmFromAdded = wsMdEntry ? parseFrontmatter(wsMdEntry.addedHead) : undefined;
-                const unarchives = newFmFromAdded?.ok && newFmFromAdded.data.archived === false;
-                if (!onlyWorkspaceMd || !unarchives) {
+                const unarchives = onlyWorkspaceMd && fm.archived === false;
+                if (!unarchives) {
                     errors.push({
                         code: 'archived_workspace_edit',
                         workspace: w,
@@ -631,8 +765,7 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
                 continue; // can't reason about per-file rules without read
             }
 
-            // Per-file write_denied / admin_denied.
-            const oldFmRead = await readOldFrontmatter(workingTreeRoot, w);
+            // Per-file write_denied / admin_denied. (`oldFmRead` computed above.)
             const wsEntries = entries.filter(e => {
                 const t = e.toPath ?? e.fromPath;
                 return t !== undefined && workspaceOf(t) === w;
