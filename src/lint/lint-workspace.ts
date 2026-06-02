@@ -752,6 +752,30 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
                 }
             }
 
+            // project_md_missing — a `projects/<name>/` folder is a sub-workspace:
+            // it must carry a PROJECT.md landing (its source-of-truth contract,
+            // like WORKSPACE.md for the workspace). Only fires for projects this
+            // diff actually touches, so non-adopting workspaces are unaffected.
+            const projPrefix = `workspaces/${w}/projects/`;
+            const touchedProjects = new Set<string>();
+            for (const p of touchedPaths) {
+                if (!p.startsWith(projPrefix)) continue;
+                const rest = p.slice(projPrefix.length);
+                const slash = rest.indexOf('/');
+                if (slash > 0) touchedProjects.add(rest.slice(0, slash)); // inside projects/<name>/…
+            }
+            for (const proj of touchedProjects) {
+                const pmd = path.join(workingTreeRoot, 'workspaces', w, 'projects', proj, 'PROJECT.md');
+                const exists = await readFile(pmd, 'utf8').then(() => true).catch(() => false);
+                if (!exists) {
+                    errors.push({
+                        code: 'project_md_missing',
+                        workspace: w,
+                        message: `Project '${w}/projects/${proj}' has no PROJECT.md; add the project's source-of-truth landing before adding other files`,
+                    });
+                }
+            }
+
             // Scope rules — skipped in scope-less mode.
             if (!principal) continue;
 

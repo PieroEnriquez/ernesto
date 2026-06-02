@@ -301,6 +301,31 @@ describe('lintWorkspace (scope-less)', () => {
         expect(failed.errors.some(e => e.code === 'archived_workspace_edit' && e.workspace === 'hr')).toBe(true);
     });
 
+    it('flags project_md_missing when a projects/<name>/ has files but no PROJECT.md', async () => {
+        await writeStagedFile(root, 'workspaces/hr/projects/onboarding/note.md', '# n\n')
+        const diff = diffAdd('workspaces/hr/projects/onboarding/note.md', '# n\n')
+        const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root })
+        const failed = expectErrors(result)
+        expect(failed.errors.some(e => e.code === 'project_md_missing' && e.workspace === 'hr')).toBe(true)
+    })
+
+    it('allows a projects/<name>/ that includes a PROJECT.md', async () => {
+        await writeStagedFile(root, 'workspaces/hr/projects/onboarding/PROJECT.md', '# Onboarding\n')
+        await writeStagedFile(root, 'workspaces/hr/projects/onboarding/note.md', '# n\n')
+        const diff =
+            diffAdd('workspaces/hr/projects/onboarding/PROJECT.md', '# Onboarding\n') +
+            diffAdd('workspaces/hr/projects/onboarding/note.md', '# n\n')
+        const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root })
+        expect(result.ok).toBe(true)
+    })
+
+    it('does not flag project_md_missing for a settle that never touches projects/', async () => {
+        await writeStagedFile(root, 'workspaces/hr/note.md', '# n\n')
+        const diff = diffAdd('workspaces/hr/note.md', '# n\n')
+        const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root })
+        expect(result.ok).toBe(true)
+    })
+
     it('flags file_too_large when a staged file exceeds 1 MiB', async () => {
         const big = 'x'.repeat(1024 * 1024 + 1);
         await writeStagedFile(root, 'workspaces/hr/big.txt', big);
