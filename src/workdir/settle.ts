@@ -1,5 +1,8 @@
 import { Workdir } from './types';
 import { runGit } from './run-git';
+import { stat } from 'fs/promises';
+import * as nodePath from 'path';
+import { scanWorkspaceBoundaries, boundaryForName } from '../workspaces/boundaries';
 
 /**
  * Per-workspace subdirectories that are generated content (extraction worker,
@@ -113,9 +116,35 @@ export async function settleFromWorktree(
 ): Promise<SettleResult> {
     return workdir.lock(async () => {
         const root = workdir.workingTreeRoot;
-        const wsPaths = input.workspaces.map(w => `workspaces/${w}`);
 
-        // Stage each workspace minus its master-fs overlays. `extracted/`
+        // Resolve each declared workspace (by identity = leaf name) to its
+        // CURRENT location, honoring nesting and relocation. The old
+        // `workspaces/<name>` assumption breaks the moment a workspace is
+        // nested (`hr/recruiting`) or has just been `git mv`-ed — the path no
+        // longer exists, so `git add workspaces/<name>` would fatal. We instead
+        // stage the path that EXISTS, and diff over BOTH the conventional
+        // top-level path AND the resolved path so a relocation's rename
+        // (old → new) is paired and its deletions are linted.
+        const boundaries = await scanWorkspaceBoundaries(root);
+        const exists = async (rel: string): Promise<boolean> =>
+            stat(nodePath.join(root, rel)).then(() => true, () => false);
+        const stagePaths: string[] = [];
+        const diffPaths = new Set<string>();
+        for (const ws of input.workspaces) {
+            const conventional = `workspaces/${ws}`;
+            const resolved = boundaryForName(boundaries, ws)?.dir;
+            diffPaths.add(conventional);
+            if (resolved) diffPaths.add(resolved);
+            // Prefer the resolved (current) path; include the conventional one
+            // only when it still exists on disk (flat layout, or the not-moved
+            // case). A moved-away conventional path is left to its already-
+            // staged deletion (from the caller's `git mv`).
+            for (const p of new Set([resolved, conventional].filter((x): x is string => !!x))) {
+                if (await exists(p)) stagePaths.push(p);
+            }
+        }
+
+        // Stage each resolved path minus its master-fs overlays. `extracted/`
         // and `attached/` (subdirs) and `attachments.yaml` (file) are
         // hard-link mirrors of master-fs placed at session boot (deployer-
         // owned: backend's `ensureMasterFsOverlays`); they must never enter
@@ -126,17 +155,18 @@ export async function settleFromWorktree(
         // hiding the mirrored master-fs content. Only git treats them as
         // out-of-bounds.
         const addArgs = ['add', '--'];
-        for (const ws of input.workspaces) {
-            addArgs.push(`workspaces/${ws}`);
+        for (const p of stagePaths) {
+            addArgs.push(p);
             for (const sub of GENERATED_SUBDIRS) {
-                addArgs.push(`:(exclude)workspaces/${ws}/${sub}`);
+                addArgs.push(`:(exclude)${p}/${sub}`);
             }
             for (const file of GENERATED_FILES) {
-                addArgs.push(`:(exclude)workspaces/${ws}/${file}`);
+                addArgs.push(`:(exclude)${p}/${file}`);
             }
         }
-        await runGit(root, addArgs);
+        if (stagePaths.length > 0) await runGit(root, addArgs);
 
+        const wsPaths = [...diffPaths];
         const diff = await runGit(root, [
             'diff', '--cached', '--', ...wsPaths,
         ]);

@@ -44,6 +44,14 @@ export {
 } from './lint';
 export type { LintPrincipal, MakeLintWorkspaceOptions } from './lint';
 
+// ─── Workspace boundary resolution (FS-derived identity → location) ──────
+export {
+    scanWorkspaceBoundaries,
+    boundaryForName,
+    boundaryForPath,
+} from './workspaces/boundaries';
+export type { WorkspaceBoundary } from './workspaces/boundaries';
+
 // ─── Workflows (declaration + composition + lint) ────────────────────────
 export {
     parseWorkflowYaml,

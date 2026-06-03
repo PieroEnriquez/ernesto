@@ -186,4 +186,35 @@ describe('settleFromWorktree', () => {
         expect(body).toContain('User: poc@bitrefill.com');
         expect(body).toContain('Tier: A');
     });
+
+    it('relocates a workspace under a parent: stages the move, lints both rename endpoints', async () => {
+        const workdir = buildWorkdir();
+        // Seed pricing (top-level) + product (parent), commit.
+        await workdir.fs.writeFile('workspaces/pricing/WORKSPACE.md', enc('---\nname: pricing\n---\n'));
+        await workdir.fs.writeFile('workspaces/product/WORKSPACE.md', enc('---\nname: product\n---\n'));
+        await runGit(tmpRoot, ['add', '-A']);
+        await runGit(tmpRoot, ['commit', '-q', '-m', 'seed pricing+product']);
+
+        // Relocate pricing under product (the move that used to fatal at staging).
+        await runGit(tmpRoot, ['mv', 'workspaces/pricing', 'workspaces/product/pricing']);
+
+        let captured = '';
+        const capturingLint: LintFn = async ({ diff }) => { captured = diff; return { ok: true }; };
+
+        const r = await settleFromWorktree(workdir, {
+            workspaces: ['pricing', 'product'], // declare by leaf identity
+            message: 'group pricing under product',
+            lint: capturingLint,
+        });
+
+        expect(r.ok).toBe(true);
+        // The diff pairs the rename: BOTH endpoints present (old + new), so the
+        // relocation's deletion side is linted, not silently dropped.
+        expect(captured).toContain('workspaces/pricing/WORKSPACE.md');
+        expect(captured).toContain('workspaces/product/pricing/WORKSPACE.md');
+        // The commit tree has the new location and not the old.
+        const tree = await runGit(tmpRoot, ['ls-tree', '-r', '--name-only', 'HEAD']);
+        expect(tree).toContain('workspaces/product/pricing/WORKSPACE.md');
+        expect(tree).not.toContain('workspaces/pricing/WORKSPACE.md');
+    });
 });
