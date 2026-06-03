@@ -31,8 +31,8 @@ import { tmpdir } from 'os';
 import { randomBytes } from 'crypto';
 import { Workdir } from './types';
 import { runGit } from './run-git';
-import { SettleResult, LintFn, PushToMainFn, LintError } from './settle';
-import { scanWorkspaceBoundaries, boundaryForName } from '../workspaces/boundaries';
+import { SettleResult, LintFn, PushToMainFn } from './settle';
+import { runSettleCore } from './settle-core';
 
 export interface SettleFromPatchInput {
     workspaces: ReadonlyArray<string>;
@@ -142,81 +142,19 @@ export async function settleFromPatch(
             };
         }
 
-        // Step 3 — lint. Same shape as settleFromWorktree: stage is already
-        // populated by `git apply --index`; ask git for the cached diff
-        // scoped to the declared workspaces and hand it to the lint fn.
-        // Diff scoped to the declared workspaces, nesting-/relocation-aware:
-        // the patch is already applied to the index, so the tree reflects any
-        // relocation. Resolve each declared leaf to its CURRENT location and
-        // include BOTH the conventional and resolved paths, so a rename is
-        // paired and a nested workspace's changes aren't silently excluded from
-        // the lint diff (which would let them bypass the gate).
-        const boundaries = await scanWorkspaceBoundaries(root);
-        const wsPaths = new Set<string>();
-        for (const w of input.workspaces) {
-            wsPaths.add(`workspaces/${w}`);
-            const resolved = boundaryForName(boundaries, w)?.dir;
-            if (resolved) wsPaths.add(resolved);
-        }
-        const diff = await runGit(root, [
-            'diff', '--cached', '--', ...wsPaths,
-        ]);
-
-        const lintRes = await input.lint({
-            diff,
+        // Steps 3–6 — converge on the shared lint → commit → push →
+        // journal-rebase tail. The stage is already populated by
+        // `git apply --index`; the core scopes the lint diff nesting-aware,
+        // commits with the caller's trailers (`Tier: C`, `User: …`), bot-pushes,
+        // and rebases the ephemeral workdir onto new main. A lint failure
+        // hard-resets the ephemeral tree (it is per-request, not the dev's).
+        return runSettleCore(workdir, {
             workspaces: input.workspaces,
-            workingTreeRoot: root,
-        });
-        if (!lintRes.ok) {
-            await runGit(root, ['reset', '--hard', 'HEAD']);
-            return {
-                ok: false,
-                error: 'lint_failed',
-                errors: lintRes.errors as ReadonlyArray<LintError>,
-            };
-        }
-
-        // Step 4 — commit. Same trailer convention as settleFromWorktree;
-        // the caller sets `Tier: C` and `User: …` in trailers.
-        const commitMessage = formatCommitMessage(input.message, input.trailers);
-        await runGit(root, ['commit', '-m', commitMessage]);
-        const sha = (await runGit(root, ['rev-parse', 'HEAD'])).trim();
-
-        if (!input.pushToMain) {
-            return { ok: true, sha, pushed: false };
-        }
-
-        // Step 5 — bot push. Same code path as Tier A; the bot is the only
-        // credential allowed to write `main`. If a concurrent settle has
-        // already landed, the deployer's push returns fast_forward_required
-        // — we bubble that up; the CLI rebases on the laptop and retries.
-        const push = await input.pushToMain({
-            branchRef: workdir.branchRef,
-            sha,
             message: input.message,
+            lint: input.lint,
+            pushToMain: input.pushToMain,
+            trailers: input.trailers,
+            onLintFail: 'reset-hard',
         });
-        if (!push.ok) return push;
-
-        // Step 6 — sync the ephemeral workdir to the new main. This isn't
-        // strictly required for correctness (the workdir is discarded) but
-        // it keeps the ephemeral pool reusable if a deployer ever wants a
-        // long-lived server-side worktree for Tier C settles.
-        try {
-            await runGit(root, ['fetch', '--quiet', 'origin', 'main']);
-            await runGit(root, ['reset', '--hard', 'FETCH_HEAD']);
-        } catch {
-            // Recoverable — commit already landed on main.
-        }
-
-        return { ok: true, sha: push.sha, pushed: true };
     });
-}
-
-function formatCommitMessage(
-    message: string,
-    trailers?: Readonly<Record<string, string>>,
-): string {
-    if (!trailers || Object.keys(trailers).length === 0) return message;
-    const trailerLines = Object.entries(trailers).map(([k, v]) => `${k}: ${v}`);
-    return `${message}\n\n${trailerLines.join('\n')}`;
 }

@@ -18,6 +18,8 @@ export {
     bootWorkdir, rehydrateWorkdir,
     commitTurn, remirrorFile, settleFromWorktree,
     settleFromPatch,
+    overlayToDiff, diffToOverlay,
+    settleFromOverlay, writeOverlayFiles,
     RipgrepNotInstalledError,
 } from './workdir';
 export type {
@@ -29,6 +31,7 @@ export type {
     MaterializeResult,
     SettleInput, SettleResult as WorkdirSettleResult,
     SettleFromPatchInput, SettleFromPatchResult,
+    SettleFromOverlayInput, SettleFromOverlayResult,
     LintFn, LintInput, LintError, PushToMainFn,
     RedisLockClient,
     WorkdirHealth, BootstrapWorkdirInput,
@@ -69,6 +72,20 @@ export {
     boundaryDirs,
 } from './workspaces/visibility';
 export type { WorkspaceVisibility } from './workspaces/visibility';
+
+// ─── Workspace overlay VIEW (read side of the content-overlay model) ─────
+export {
+    makeOverlayView,
+    emptyPatch,
+} from './workspaces/overlay';
+export type {
+    WorkspacePatch,
+    PatchEntry,
+    OverlayView,
+    FsReader,
+    FsReaderDirent,
+    ComputeOverlayVisibilityOptions,
+} from './workspaces/overlay';
 
 // ─── Workflows (declaration + composition + lint) ────────────────────────
 export {

@@ -3,6 +3,7 @@ import { runGit } from './run-git';
 import { stat } from 'fs/promises';
 import * as nodePath from 'path';
 import { scanWorkspaceBoundaries, boundaryForName } from '../workspaces/boundaries';
+import { runSettleCore } from './settle-core';
 
 /**
  * Per-workspace subdirectories that are generated content (extraction worker,
@@ -166,61 +167,18 @@ export async function settleFromWorktree(
         }
         if (stagePaths.length > 0) await runGit(root, addArgs);
 
-        const wsPaths = [...diffPaths];
-        const diff = await runGit(root, [
-            'diff', '--cached', '--', ...wsPaths,
-        ]);
-
-        const lintRes = await input.lint({
-            diff,
+        // Converge on the shared lint → commit → push → journal-rebase tail.
+        // The lint diff is scoped to the same paths we staged; a lint failure
+        // un-stages just those paths (the working tree is the dev's, not an
+        // ephemeral apply target, so we never hard-reset it).
+        return runSettleCore(workdir, {
             workspaces: input.workspaces,
-            workingTreeRoot: root,
-        });
-        if (!lintRes.ok) {
-            await runGit(root, ['reset', 'HEAD', '--', ...wsPaths]);
-            return { ok: false, error: 'lint_failed', errors: lintRes.errors };
-        }
-
-        const commitMessage = formatCommitMessage(input.message, input.trailers);
-        await runGit(root, ['commit', '-m', commitMessage]);
-        const sha = (await runGit(root, ['rev-parse', 'HEAD'])).trim();
-
-        if (!input.pushToMain) {
-            return { ok: true, sha, pushed: false };
-        }
-
-        const push = await input.pushToMain({
-            branchRef: workdir.branchRef,
-            sha,
             message: input.message,
+            lint: input.lint,
+            pushToMain: input.pushToMain,
+            trailers: input.trailers,
+            scopedPaths: [...diffPaths],
+            onLintFail: 'reset-paths',
         });
-        if (!push.ok) return push;
-
-        // Step 6: rebase the workdir's journal branch onto the new main.
-        // The push succeeded — origin/main now points at the canonical sha
-        // (typically equal to our local commit; in a bot-rewrite scenario it
-        // may differ but should have the same tree). Fetch and hard-reset so
-        // refs/workdirs/{wdid} continues from the new main; subsequent
-        // settles on this workdir won't trip a fast-forward error.
-        try {
-            await runGit(root, ['fetch', '--quiet', 'origin', 'main']);
-            await runGit(root, ['reset', '--hard', 'FETCH_HEAD']);
-        } catch (err) {
-            // The commit landed on main; failing to rebase locally is a
-            // recoverable local-state issue, not a settle failure.
-            // eslint-disable-next-line no-console
-            console.warn('settleFromWorktree: post-push journal rebase failed', err);
-        }
-
-        return { ok: true, sha: push.sha, pushed: true };
     });
-}
-
-function formatCommitMessage(
-    message: string,
-    trailers?: Readonly<Record<string, string>>,
-): string {
-    if (!trailers || Object.keys(trailers).length === 0) return message;
-    const trailerLines = Object.entries(trailers).map(([k, v]) => `${k}: ${v}`);
-    return `${message}\n\n${trailerLines.join('\n')}`;
 }
