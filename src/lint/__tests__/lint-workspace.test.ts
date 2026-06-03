@@ -986,3 +986,123 @@ describe('navigation frontmatter — section / order / title', () => {
         expect(failed.errors.some(e => e.code === 'unknown_section')).toBe(true);
     });
 });
+
+// ─── Nested sub-workspaces (workspace-nesting Stage 0) ──────────────────────
+//
+// A directory under `workspaces/` is a workspace BOUNDARY iff it carries a
+// `WORKSPACE.md`, at any depth. Nesting is a *location* change, not an
+// *identity* change: a sub-workspace's `name` is its LEAF segment (globally
+// unique = route scheme = scope prefix), and its files are attributed to it,
+// not to its enclosing parent. These tests pin that behavior; the flat-layout
+// tests above pin that nothing changed when no nested boundary exists.
+
+const VALID_RECRUITING = [
+    '---',
+    'name: recruiting',
+    'description: Recruiting pipeline, roles, and sourcing',
+    'admin: recruiting-admin',
+    '---',
+    '',
+    '# Recruiting',
+].join('\n');
+
+describe('lintWorkspace — nested sub-workspaces', () => {
+    let root: string;
+
+    beforeEach(async () => {
+        root = await mkdtemp(path.join(tmpdir(), 'lint-ws-nested-'));
+        await initRepo(root);
+        // Parent `hr` and a committed sub-workspace `hr/recruiting`.
+        await seedWorkspace(root, 'hr', VALID_HR);
+        await writeStagedFile(root, 'workspaces/hr/recruiting/WORKSPACE.md', VALID_RECRUITING);
+        await commitAll(root, 'seed hr + nested recruiting');
+    });
+
+    afterEach(async () => {
+        await rm(root, { recursive: true, force: true });
+    });
+
+    it('attributes files under hr/recruiting/ to recruiting (declaring recruiting alone admits them)', async () => {
+        await writeStagedFile(root, 'workspaces/hr/recruiting/roles/eng.md', '# Eng role\n');
+        const diff = diffAdd('workspaces/hr/recruiting/roles/eng.md', '# Eng role\n');
+        const result = await lintWorkspace({ diff, workspaces: ['recruiting'], workingTreeRoot: root });
+        expect(result).toEqual({ ok: true });
+    });
+
+    it('charges a nested file to the sub-workspace, not the parent: declaring only the parent is out_of_scope', async () => {
+        await writeStagedFile(root, 'workspaces/hr/recruiting/roles/eng.md', '# Eng role\n');
+        const diff = diffAdd('workspaces/hr/recruiting/roles/eng.md', '# Eng role\n');
+        // Declaring only `hr` must NOT admit a file that belongs to `recruiting`.
+        const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
+        const failed = expectErrors(result);
+        expect(failed.errors.some(e =>
+            e.code === 'out_of_scope_path' &&
+            e.path === 'workspaces/hr/recruiting/roles/eng.md',
+        )).toBe(true);
+    });
+
+    it('a file directly under the parent (above the nested boundary) still attributes to the parent', async () => {
+        await writeStagedFile(root, 'workspaces/hr/leave-policy.md', '# Leave\n');
+        const diff = diffAdd('workspaces/hr/leave-policy.md', '# Leave\n');
+        const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
+        expect(result).toEqual({ ok: true });
+    });
+
+    it("a nested WORKSPACE.md's name must equal its LEAF segment", async () => {
+        // name matches leaf → OK.
+        const ok = diffModify(
+            'workspaces/hr/recruiting/WORKSPACE.md', VALID_RECRUITING, VALID_RECRUITING + '\n\nmore.\n',
+        );
+        await writeStagedFile(root, 'workspaces/hr/recruiting/WORKSPACE.md', VALID_RECRUITING + '\n\nmore.\n');
+        const okResult = await lintWorkspace({ diff: ok, workspaces: ['recruiting'], workingTreeRoot: root });
+        expect(okResult).toEqual({ ok: true });
+    });
+
+    it('rejects a nested WORKSPACE.md whose name is the parent path, not the leaf', async () => {
+        const wrong = VALID_RECRUITING.replace('name: recruiting', 'name: hr');
+        await writeStagedFile(root, 'workspaces/hr/recruiting/WORKSPACE.md', wrong);
+        const diff = diffModify('workspaces/hr/recruiting/WORKSPACE.md', VALID_RECRUITING, wrong);
+        const result = await lintWorkspace({ diff, workspaces: ['recruiting'], workingTreeRoot: root });
+        const failed = expectErrors(result);
+        expect(failed.errors.some(e =>
+            e.code === 'invalid_frontmatter' &&
+            /does not match directory name 'recruiting'/.test(e.message),
+        )).toBe(true);
+    });
+
+    it('validates a freshly-created nested sub-workspace by its leaf name', async () => {
+        // New sub-workspace `hr/sourcing` created from scratch.
+        const body = VALID_RECRUITING
+            .replace('name: recruiting', 'name: sourcing')
+            .replace('admin: recruiting-admin', 'admin: recruiting-admin');
+        await writeStagedFile(root, 'workspaces/hr/sourcing/WORKSPACE.md', body);
+        const diff = diffAdd('workspaces/hr/sourcing/WORKSPACE.md', body);
+        const result = await lintWorkspace({ diff, workspaces: ['sourcing'], workingTreeRoot: root });
+        expect(result).toEqual({ ok: true });
+    });
+
+    it('blocks deleting a nested WORKSPACE.md (the sub-workspace contract)', async () => {
+        const diff = diffDelete('workspaces/hr/recruiting/WORKSPACE.md', VALID_RECRUITING);
+        // After delete the file is gone; the deleted path falls back to the
+        // enclosing parent `hr`, so declare both to isolate the delete rule.
+        const result = await lintWorkspace({ diff, workspaces: ['hr', 'recruiting'], workingTreeRoot: root });
+        const failed = expectErrors(result);
+        expect(failed.errors.some(e =>
+            e.code === 'forbidden_workspace_md_delete' &&
+            e.workspace === 'recruiting' &&
+            e.path === 'workspaces/hr/recruiting/WORKSPACE.md',
+        )).toBe(true);
+    });
+
+    it('flags extracted/ under a nested sub-workspace as a generated path', async () => {
+        await writeStagedFile(root, 'workspaces/hr/recruiting/extracted/x.md', 'data\n');
+        const diff = diffAdd('workspaces/hr/recruiting/extracted/x.md', 'data\n');
+        const result = await lintWorkspace({ diff, workspaces: ['recruiting'], workingTreeRoot: root });
+        const failed = expectErrors(result);
+        expect(failed.errors.some(e =>
+            e.code === 'forbidden_generated_path' &&
+            e.workspace === 'recruiting' &&
+            e.path === 'workspaces/hr/recruiting/extracted/x.md',
+        )).toBe(true);
+    });
+});

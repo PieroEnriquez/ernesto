@@ -162,37 +162,85 @@ function parseDiff(diff: string): DiffEntry[] {
 
 // ─── Path classifiers ─────────────────────────────────────────────────────
 
+/** Flat first-segment workspace name. Retained for the path-pattern rules
+ *  (WORKSPACE.md create/delete) and the standalone `lintWorkflowFile`, which
+ *  has no working-tree boundary scan. Depth-aware attribution — the rule that
+ *  honours nested sub-workspaces — lives in `makeWorkspaceResolver`. In the
+ *  flat layout the two agree (the only boundary is `workspaces/<name>/`). */
 function workspaceOf(p: string): string | undefined {
     const m = /^workspaces\/([^/]+)(?:\/.*)?$/.exec(p);
     return m?.[1];
 }
 
-function isGeneratedPath(p: string): boolean {
-    const m = /^workspaces\/[^/]+\/([^/]+)(?:\/.*)?$/.exec(p);
-    if (!m) return false;
-    if ((GENERATED_SUBDIRS as readonly string[]).includes(m[1])) return true;
-    // `attachments.yaml` is a single-file master-fs overlay, authored only
-    // by `_platform://attach` and `_platform://detach`. Same rule as the
-    // generated subdirs: settle's pathspec excludes it, but lint catches
-    // hand-crafted diffs (settleFromPatch) too. Spec §3.5 describes the
-    // target state where the yaml lives in git; until the route flip
-    // lands this guard stays.
-    return /^workspaces\/[^/]+\/attachments\.yaml$/.test(p);
+/** True iff `p` is a `WORKSPACE.md` at any depth under `workspaces/`. */
+function isWsMdPath(p: string): boolean {
+    return /^workspaces\/.+\/WORKSPACE\.md$/.test(p);
 }
 
-function isWorkspaceMd(p: string, w: string): boolean {
-    return p === `workspaces/${w}/WORKSPACE.md`;
+/** The workspace name a `WORKSPACE.md` path declares: the leaf of its parent
+ *  dir (`workspaces/hr/recruiting/WORKSPACE.md` → `recruiting`). A workspace's
+ *  identity is its leaf basename — globally unique, equal to its route scheme
+ *  and scope prefix — never the full path (workspace-nesting design §"key
+ *  insight"). */
+function wsMdLeaf(p: string): string | undefined {
+    const m = /^workspaces\/(.+)\/WORKSPACE\.md$/.exec(p);
+    return m ? m[1].split('/').pop() : undefined;
 }
 
-/** A markdown content file the workspace viewer renders in its curated nav:
- *  any `.md`/`.mdx` under `workspaces/{w}/` that is NOT the `WORKSPACE.md`
- *  contract and NOT a generated mirror (`extracted/`, `attached/`). Its
- *  navigation frontmatter (`section`, `order`, `title`) is shape-checked. */
-function isContentMarkdown(p: string, w: string): boolean {
-    if (workspaceOf(p) !== w) return false;
-    if (isWorkspaceMd(p, w)) return false;
-    if (isGeneratedPath(p)) return false;
-    return /\.mdx?$/.test(p);
+/** A resolved workspace boundary: its leaf `name` and the `dir` that carries
+ *  its `WORKSPACE.md`. For a flat workspace the two coincide
+ *  (`{ name:'hr', dir:'workspaces/hr' }`); for a nested sub-workspace the dir
+ *  records the location (`{ name:'recruiting', dir:'workspaces/hr/recruiting' }`). */
+interface WsRef { name: string; dir: string; }
+
+/**
+ * Depth-aware workspace attribution. A directory under `workspaces/` is a
+ * boundary iff it contains a `WORKSPACE.md`; nesting is a *location* change,
+ * not an identity change, so a path is attributed to the DEEPEST boundary
+ * that encloses it:
+ *
+ *   workspaces/hr/recruiting/jobs/x.md
+ *     → { name:'recruiting', dir:'workspaces/hr/recruiting' }
+ *
+ * when `workspaces/hr/recruiting/WORKSPACE.md` exists in the post-stage tree.
+ * With no nested boundary (today's flat layout) the deepest boundary is
+ * `workspaces/<seg>/`, so this is byte-identical to the old first-segment
+ * rule. Non-`workspaces/` paths resolve to `undefined`. Boundary existence is
+ * probed against the same working tree every other rule reads, memoized per
+ * dir; per-path results are memoized too.
+ */
+function makeWorkspaceResolver(workingTreeRoot: string) {
+    const dirIsBoundary = new Map<string, Promise<boolean>>();
+    const cache = new Map<string, WsRef | undefined>();
+
+    const probe = (dir: string): Promise<boolean> => {
+        let hit = dirIsBoundary.get(dir);
+        if (!hit) {
+            hit = readFile(path.join(workingTreeRoot, dir, 'WORKSPACE.md'), 'utf8')
+                .then(() => true, () => false);
+            dirIsBoundary.set(dir, hit);
+        }
+        return hit;
+    };
+
+    return async (p: string): Promise<WsRef | undefined> => {
+        if (cache.has(p)) return cache.get(p);
+        const m = /^workspaces\/(.+)$/.exec(p);
+        if (!m) { cache.set(p, undefined); return undefined; }
+        const segs = m[1].split('/');
+        let ref: WsRef | undefined;
+        for (let depth = segs.length; depth >= 1 && !ref; depth--) {
+            const dir = 'workspaces/' + segs.slice(0, depth).join('/');
+            if (await probe(dir)) ref = { name: segs[depth - 1], dir };
+        }
+        // Flat fallback: no `WORKSPACE.md` ancestor on disk (a workspace being
+        // created without its contract yet, or a malformed path). Attribute to
+        // the first segment exactly as the pre-nesting rule did, so
+        // `workspace_md_missing` / `out_of_scope_path` still fire as before.
+        if (!ref) ref = { name: segs[0], dir: 'workspaces/' + segs[0] };
+        cache.set(p, ref);
+        return ref;
+    };
 }
 
 /** Read the declared `sections:` order from a workspace's WORKSPACE.md
@@ -261,9 +309,9 @@ function parseFrontmatter(body: string): FrontmatterResult {
 
 async function readWorkspaceMdFromDisk(
     workingTreeRoot: string,
-    workspace: string,
+    wsDir: string,
 ): Promise<{ exists: boolean; frontmatter?: Frontmatter }> {
-    const file = path.join(workingTreeRoot, 'workspaces', workspace, 'WORKSPACE.md');
+    const file = path.join(workingTreeRoot, wsDir, 'WORKSPACE.md');
     try {
         const body = await readFile(file, 'utf8');
         const fm = parseFrontmatter(body);
@@ -281,11 +329,11 @@ async function readWorkspaceMdFromDisk(
  */
 async function readOldFrontmatter(
     workingTreeRoot: string,
-    workspace: string,
+    wsDir: string,
 ): Promise<{ exists: boolean; frontmatter?: Frontmatter }> {
     try {
         const content = await runGit(workingTreeRoot, [
-            'show', `HEAD:workspaces/${workspace}/WORKSPACE.md`,
+            'show', `HEAD:${wsDir}/WORKSPACE.md`,
         ]);
         const fm = parseFrontmatter(content);
         return { exists: true, frontmatter: fm.ok ? fm.data : undefined };
@@ -409,7 +457,6 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
         const errors: LintError[] = [];
         const entries = parseDiff(diff);
         const declared = new Set(workspaces);
-        const allowedPrefixes = workspaces.map(w => `workspaces/${w}/`);
 
         const touchedPaths = new Set<string>();
         for (const e of entries) {
@@ -417,16 +464,60 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
             if (e.toPath) touchedPaths.add(e.toPath);
         }
 
-        // out_of_scope_path
+        // Resolve every touched path to its (possibly nested) workspace
+        // boundary once, against the post-stage working tree. All attribution
+        // below keys on `refOf` so a nested sub-workspace's files are charged
+        // to the sub-workspace (leaf name), not its enclosing parent.
+        const resolveWs = makeWorkspaceResolver(workingTreeRoot);
+        const refByPath = new Map<string, WsRef | undefined>();
+        for (const p of touchedPaths) refByPath.set(p, await resolveWs(p));
+        const refOf = (p: string): WsRef | undefined => {
+            if (refByPath.has(p)) return refByPath.get(p);
+            const w = workspaceOf(p);
+            return w ? { name: w, dir: `workspaces/${w}` } : undefined;
+        };
+
+        // Depth-aware path classifiers (relative to the resolved boundary).
+        const isWsMd = (p: string): boolean => {
+            const r = refOf(p);
+            return !!r && p === `${r.dir}/WORKSPACE.md`;
+        };
+        const relToBoundary = (p: string): string => {
+            const r = refOf(p);
+            if (!r) return p;
+            if (p === r.dir) return '';
+            return p.startsWith(r.dir + '/') ? p.slice(r.dir.length + 1) : p;
+        };
+        // `extracted/`/`attached/` (and the `attachments.yaml` overlay) sit
+        // directly under a boundary — at any depth, relative to that boundary.
+        const isGenerated = (p: string): boolean => {
+            const rel = relToBoundary(p);
+            if ((GENERATED_SUBDIRS as readonly string[]).some(
+                s => rel === s || rel.startsWith(s + '/'),
+            )) return true;
+            return rel === 'attachments.yaml';
+        };
+        // A markdown content file the viewer renders in its curated nav: any
+        // `.md`/`.mdx` under the resolved workspace that is NOT the WORKSPACE.md
+        // contract and NOT a generated mirror.
+        const isContentMd = (p: string, w: string): boolean => {
+            if (refOf(p)?.name !== w) return false;
+            if (isWsMd(p)) return false;
+            if (isGenerated(p)) return false;
+            return /\.mdx?$/.test(p);
+        };
+
+        // out_of_scope_path — a touched path is in scope iff its resolved
+        // boundary's leaf name is one the settle declared. Nesting is location,
+        // not identity: `workspaces/hr/recruiting/x` resolves to `recruiting`,
+        // so declaring `recruiting` (alone) admits it.
         for (const p of touchedPaths) {
-            const insideAny = allowedPrefixes.some(pref =>
-                p === pref.slice(0, -1) || p.startsWith(pref),
-            );
-            if (!insideAny) {
+            const ref = refOf(p);
+            if (!ref || !declared.has(ref.name)) {
                 errors.push({
                     code: 'out_of_scope_path',
                     path: p,
-                    message: `Path ${p} is not under any of: ${allowedPrefixes.join(', ')}`,
+                    message: `Path ${p} is not under any declared workspace: ${[...declared].join(', ') || '(none)'}`,
                 });
             }
         }
@@ -438,10 +529,10 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
         // a settleFromPatch with a hand-crafted diff).
         if (!isBypassed('forbidden_generated_path')) {
             for (const p of touchedPaths) {
-                if (isGeneratedPath(p)) {
+                if (isGenerated(p)) {
                     errors.push({
                         code: 'forbidden_generated_path',
-                        workspace: workspaceOf(p),
+                        workspace: refOf(p)?.name,
                         path: p,
                         message: `Path ${p} is under a generated subdirectory (extracted/, attached/) and cannot be edited by hand`,
                     });
@@ -449,28 +540,31 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
             }
         }
 
-        // forbidden_workspace_md_delete
+        // forbidden_workspace_md_delete — detect by path pattern, not by a
+        // boundary probe: the file is gone from the post-stage tree, so it is
+        // no longer a discoverable boundary. The deleted contract names the
+        // workspace by its leaf (depth-proof).
         for (const e of entries) {
             if (!e.isDelete) continue;
             const p = e.fromPath;
-            if (!p) continue;
-            const w = workspaceOf(p);
-            if (w && isWorkspaceMd(p, w)) {
-                errors.push({
-                    code: 'forbidden_workspace_md_delete',
-                    workspace: w,
-                    path: p,
-                    message: `WORKSPACE.md for workspace '${w}' was deleted; this file is the workspace's contract`,
-                });
-            }
+            if (!p || !isWsMdPath(p)) continue;
+            const w = wsMdLeaf(p);
+            errors.push({
+                code: 'forbidden_workspace_md_delete',
+                workspace: w,
+                path: p,
+                message: `WORKSPACE.md for workspace '${w}' was deleted; this file is the workspace's contract`,
+            });
         }
 
-        // forbidden_workspace_name (new workspace creation only)
+        // forbidden_workspace_name (new workspace creation only). Keys on the
+        // leaf of the new WORKSPACE.md's parent dir — a nested sub-workspace
+        // is named/validated by its leaf (`hr/recruiting` → `recruiting`).
         for (const e of entries) {
             if (e.fromPath !== undefined) continue;
-            if (!e.toPath) continue;
-            const w = workspaceOf(e.toPath);
-            if (!w || !isWorkspaceMd(e.toPath, w)) continue;
+            if (!e.toPath || !isWsMdPath(e.toPath)) continue;
+            const w = wsMdLeaf(e.toPath);
+            if (!w) continue;
             if (RESERVED_SYSTEM_WORKSPACES.has(w)) continue;
             if (w.startsWith('_')) {
                 errors.push({
@@ -489,17 +583,19 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
             }
         }
 
-        // missing_frontmatter / invalid_frontmatter — reads post-stage from disk
+        // missing_frontmatter / invalid_frontmatter — reads post-stage from
+        // disk. Keyed on the touched WORKSPACE.md PATH (so a nested
+        // `hr/recruiting/WORKSPACE.md` is read at its real location); the
+        // workspace's `name` must equal its LEAF segment (`recruiting`), not
+        // the full path — that is the nested-name check the design calls for.
         const touchedWorkspaceMds = new Set<string>();
         for (const e of entries) {
             const target = e.toPath;
-            if (!target) continue;
-            const w = workspaceOf(target);
-            if (!w || !isWorkspaceMd(target, w)) continue;
-            touchedWorkspaceMds.add(w);
+            if (!target || !isWsMdPath(target)) continue;
+            touchedWorkspaceMds.add(target);
         }
-        for (const w of touchedWorkspaceMds) {
-            const target = `workspaces/${w}/WORKSPACE.md`;
+        for (const target of touchedWorkspaceMds) {
+            const w = wsMdLeaf(target)!; // identity = leaf segment
             let fileBody: string;
             try {
                 fileBody = await readFile(path.join(workingTreeRoot, target), 'utf8');
@@ -616,7 +712,7 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
                     errors.push({
                         code: 'file_too_large',
                         path: p,
-                        workspace: workspaceOf(p),
+                        workspace: refOf(p)?.name,
                         message: `File ${p} is ${st.size} bytes; max allowed is ${MAX_FILE_BYTES}`,
                     });
                     continue;
@@ -626,7 +722,7 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
                     errors.push({
                         code: 'merge_markers',
                         path: p,
-                        workspace: workspaceOf(p),
+                        workspace: refOf(p)?.name,
                         message: `File ${p} contains unresolved git conflict markers; resolve them before settling`,
                     });
                 }
@@ -642,13 +738,13 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
         // them. Reads post-stage frontmatter from disk; deletes are skipped.
         const declaredSectionsCache = new Map<string, ReadonlySet<string>>();
         const getDeclaredSections = async (
-            w: string,
+            wsDir: string,
         ): Promise<ReadonlySet<string> | undefined> => {
-            if (declaredSectionsCache.has(w)) return declaredSectionsCache.get(w);
-            const ws = await readWorkspaceMdFromDisk(workingTreeRoot, w);
+            if (declaredSectionsCache.has(wsDir)) return declaredSectionsCache.get(wsDir);
+            const ws = await readWorkspaceMdFromDisk(workingTreeRoot, wsDir);
             const decl = readDeclaredSections(ws.frontmatter);
             const set = decl.present && decl.valid ? new Set(decl.sections) : undefined;
-            declaredSectionsCache.set(w, set as ReadonlySet<string>);
+            declaredSectionsCache.set(wsDir, set as ReadonlySet<string>);
             return set;
         };
 
@@ -656,8 +752,9 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
             if (e.isDelete) continue;
             const p = e.toPath;
             if (!p) continue;
-            const w = workspaceOf(p);
-            if (!w || !declared.has(w) || !isContentMarkdown(p, w)) continue;
+            const ref = refOf(p);
+            if (!ref || !declared.has(ref.name) || !isContentMd(p, ref.name)) continue;
+            const w = ref.name;
 
             let body: string;
             try {
@@ -697,7 +794,7 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
             // list (invalid_workspace_sections above) yields no set, so this
             // check is skipped rather than firing spurious unknowns.
             if (typeof data.section === 'string' && data.section.trim() !== '') {
-                const allowed = await getDeclaredSections(w);
+                const allowed = await getDeclaredSections(ref.dir);
                 if (allowed && !allowed.has(data.section)) {
                     errors.push({
                         code: 'unknown_section', workspace: w, path: p,
@@ -708,15 +805,17 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
         }
 
         // Per-workspace pass: workspace_md_missing, archived_workspace_edit,
-        // and the read/write/admin scope rules.
-        const touchedWorkspaces = new Set<string>();
+        // and the read/write/admin scope rules. Keyed on the resolved boundary
+        // so a nested sub-workspace is its own unit (its own WORKSPACE.md,
+        // scope, archive/project rules), read at its real `dir`.
+        const touchedWsDirs = new Map<string, string>(); // leaf name -> boundary dir
         for (const p of touchedPaths) {
-            const w = workspaceOf(p);
-            if (w && declared.has(w)) touchedWorkspaces.add(w);
+            const ref = refOf(p);
+            if (ref && declared.has(ref.name)) touchedWsDirs.set(ref.name, ref.dir);
         }
 
-        for (const w of touchedWorkspaces) {
-            const ws = await readWorkspaceMdFromDisk(workingTreeRoot, w);
+        for (const [w, wsDir] of touchedWsDirs) {
+            const ws = await readWorkspaceMdFromDisk(workingTreeRoot, wsDir);
 
             // workspace_md_missing
             if (!ws.exists) {
@@ -729,7 +828,7 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
             }
 
             const fm = ws.frontmatter ?? {};
-            const oldFmRead = await readOldFrontmatter(workingTreeRoot, w);
+            const oldFmRead = await readOldFrontmatter(workingTreeRoot, wsDir);
 
             // archived_workspace_edit — a workspace that was ALREADY archived
             // at HEAD is frozen: only the unarchive flip (archived:false,
@@ -740,8 +839,8 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
             // transition itself unreachable (you could only ever unarchive).
             const wasArchived = oldFmRead.exists && oldFmRead.frontmatter?.archived === true;
             if (wasArchived) {
-                const touchedInWs = [...touchedPaths].filter(p => workspaceOf(p) === w);
-                const onlyWorkspaceMd = touchedInWs.every(p => isWorkspaceMd(p, w));
+                const touchedInWs = [...touchedPaths].filter(p => refOf(p)?.name === w);
+                const onlyWorkspaceMd = touchedInWs.every(p => isWsMd(p));
                 const unarchives = onlyWorkspaceMd && fm.archived === false;
                 if (!unarchives) {
                     errors.push({
@@ -756,7 +855,7 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
             // it must carry a PROJECT.md landing (its source-of-truth contract,
             // like WORKSPACE.md for the workspace). Only fires for projects this
             // diff actually touches, so non-adopting workspaces are unaffected.
-            const projPrefix = `workspaces/${w}/projects/`;
+            const projPrefix = `${wsDir}/projects/`;
             const touchedProjects = new Set<string>();
             for (const p of touchedPaths) {
                 if (!p.startsWith(projPrefix)) continue;
@@ -765,7 +864,7 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
                 if (slash > 0) touchedProjects.add(rest.slice(0, slash)); // inside projects/<name>/…
             }
             for (const proj of touchedProjects) {
-                const pmd = path.join(workingTreeRoot, 'workspaces', w, 'projects', proj, 'PROJECT.md');
+                const pmd = path.join(workingTreeRoot, wsDir, 'projects', proj, 'PROJECT.md');
                 const exists = await readFile(pmd, 'utf8').then(() => true).catch(() => false);
                 if (!exists) {
                     errors.push({
@@ -792,14 +891,14 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
             // Per-file write_denied / admin_denied. (`oldFmRead` computed above.)
             const wsEntries = entries.filter(e => {
                 const t = e.toPath ?? e.fromPath;
-                return t !== undefined && workspaceOf(t) === w;
+                return t !== undefined && refOf(t)?.name === w;
             });
 
             for (const e of wsEntries) {
                 const target = e.toPath ?? e.fromPath!;
 
                 // WORKSPACE.md edits: frontmatter changed → admin; body-only → write.
-                if (isWorkspaceMd(target, w) && !e.isDelete) {
+                if (isWsMd(target) && !e.isDelete) {
                     const isNewWs = !oldFmRead.exists;
                     const fmChanged = isNewWs || frontmatterDiffers(oldFmRead.frontmatter, fm);
                     if (fmChanged) {
