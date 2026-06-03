@@ -70,6 +70,13 @@ import yaml from 'js-yaml';
 import type { LintFn, LintError } from '../workdir/settle';
 import { runGit } from '../workdir/run-git';
 import {
+    parseWorkspaceFrontmatter,
+    canRead as canReadFm,
+    canWrite as canWriteFm,
+    canAdmin as canAdminFm,
+    type WorkspaceFrontmatter,
+} from '../workspaces/access';
+import {
     parseWorkflowYaml,
     validateWorkflow,
     compileManagedAgentMdToWorkflow,
@@ -377,40 +384,32 @@ function hasAgentOps(p: LintPrincipal | undefined): boolean {
     return !!p && p.scopes.has(AGENT_OPS_SCOPE);
 }
 
-/** Read access. Default (no `read:`): everyone. `write`/`admin`/agent-ops bypass. */
-function canRead(fm: Frontmatter, p: LintPrincipal | undefined): boolean {
-    if (hasAgentOps(p)) return true;
-    const r = readScopeOf(fm);
-    if (r === undefined) return true;
-    if (!p) return false;
-    if (p.scopes.has(r)) return true;
-    const w = writeScopeOf(fm);
-    if (w !== undefined && p.scopes.has(w)) return true;
-    const a = adminScopeOf(fm);
-    if (a !== undefined && p.scopes.has(a)) return true;
-    return false;
+/** Project the lint's loose `Frontmatter` onto the canonical access shape: the
+ *  access model decides purely from `read`/`write`/`admin` (string scopes). */
+function accessFm(fm: Frontmatter): WorkspaceFrontmatter {
+    return { read: asStr(fm.read), write: asStr(fm.write), admin: asStr(fm.admin) };
 }
 
-/** Write access. Default: same as read. `admin`/agent-ops bypass. */
+/** Read access. Default (no `read:`): everyone. `write`/`admin` satisfy; the
+ *  agent-ops bypass is decided here, the rest by the canonical access model. */
+function canRead(fm: Frontmatter, p: LintPrincipal | undefined): boolean {
+    if (hasAgentOps(p)) return true;
+    if (!p) return canReadFm(accessFm(fm), new Set());
+    return canReadFm(accessFm(fm), p.scopes);
+}
+
+/** Write access. Default: same as read. `admin` satisfies; agent-ops bypass. */
 function canWrite(fm: Frontmatter, p: LintPrincipal | undefined): boolean {
     if (hasAgentOps(p)) return true;
-    const w = writeScopeOf(fm);
-    const r = readScopeOf(fm);
-    if (w === undefined && r === undefined) return true;
-    if (!p) return false;
-    const effectiveWrite = w ?? r;
-    if (effectiveWrite !== undefined && p.scopes.has(effectiveWrite)) return true;
-    const a = adminScopeOf(fm);
-    if (a !== undefined && p.scopes.has(a)) return true;
-    return false;
+    if (!p) return canWriteFm(accessFm(fm), new Set());
+    return canWriteFm(accessFm(fm), p.scopes);
 }
 
 /** Admin access. No default — `admin:` is required. agent-ops bypass. */
 function canAdmin(fm: Frontmatter, p: LintPrincipal | undefined): boolean {
     if (hasAgentOps(p)) return true;
-    if (!p) return false;
-    const a = adminScopeOf(fm);
-    return a !== undefined && p.scopes.has(a);
+    if (!p) return canAdminFm(accessFm(fm), new Set());
+    return canAdminFm(accessFm(fm), p.scopes);
 }
 
 /** Compare two frontmatter objects after canonicalizing key order. */

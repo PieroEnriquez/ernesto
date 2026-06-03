@@ -52,6 +52,24 @@ export {
 } from './workspaces/boundaries';
 export type { WorkspaceBoundary } from './workspaces/boundaries';
 
+// ─── Workspace access model (single source of truth) ─────────────────────
+export {
+    parseWorkspaceFrontmatter,
+    canRead,
+    canWrite,
+    canAdmin,
+} from './workspaces/access';
+export type { WorkspaceFrontmatter } from './workspaces/access';
+export { validateTreeRelPath } from './workspaces/path';
+export {
+    computeWorkspaceVisibility,
+    workspaceForPath,
+    canReadPath,
+    readableBoundaries,
+    boundaryDirs,
+} from './workspaces/visibility';
+export type { WorkspaceVisibility } from './workspaces/visibility';
+
 // ─── Workflows (declaration + composition + lint) ────────────────────────
 export {
     parseWorkflowYaml,
