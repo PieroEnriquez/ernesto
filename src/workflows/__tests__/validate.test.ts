@@ -38,6 +38,33 @@ describe('validateWorkflow', () => {
         expect(res.errors.some(e => e.code === 'workflow_name_mismatch')).toBe(false);
     });
 
+    it('accepts ${{ workspace.root }} / ${{ workspace.name }} references (reader-resolved)', () => {
+        const decl = baseDecl({
+            steps: {
+                main: {
+                    kind: 'agent', model: 'm', systemPrompt: 'sys',
+                    prompt: 'Read ${{ workspace.root }}/rubric.md for ${{ workspace.name }}',
+                    next: 'outputs.r',
+                },
+            },
+        });
+        const res = validateWorkflow(decl, { filename: 'demo.yaml' });
+        expect(res.errors.some(e => e.code === 'workflow_template_unresolved')).toBe(false);
+    });
+
+    it('still rejects an unknown reference root', () => {
+        const decl = baseDecl({
+            steps: {
+                main: {
+                    kind: 'agent', model: 'm', systemPrompt: 'sys',
+                    prompt: '${{ bogus.field }}', next: 'outputs.r',
+                },
+            },
+        });
+        const res = validateWorkflow(decl, { filename: 'demo.yaml' });
+        expect(res.errors.some(e => e.code === 'workflow_template_unresolved')).toBe(true);
+    });
+
     it('emits workflow_step_unreachable for a depends on an unknown step', () => {
         const decl = baseDecl({
             steps: {

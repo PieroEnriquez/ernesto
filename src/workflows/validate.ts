@@ -519,7 +519,16 @@ function checkTemplateReference(
         if (parts.length < 2) return 'reference must be of the form context.<field>';
         return null;
     }
-    return `unknown reference root "${root}" (expected inputs.* | steps.* | context.*)`;
+    if (root === 'workspace') {
+        // `workspace.root` / `workspace.name` — the workspace's ambient
+        // identity. Resolved at reader-load time (the workspaces-reader
+        // substitutes the boundary's CURRENT location), so a relocated or
+        // nested workspace keeps working without editing the prompt source.
+        // Accepted here so a workflow that references it lints clean.
+        if (parts.length < 2) return 'reference must be of the form workspace.<field>';
+        return null;
+    }
+    return `unknown reference root "${root}" (expected inputs.* | steps.* | context.* | workspace.*)`;
 }
 
 // ─── workflow_input_schema_invalid ──────────────────────────────────────
