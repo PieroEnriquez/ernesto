@@ -1,4 +1,7 @@
 import { runGit } from './run-git';
+import { stat } from 'fs/promises';
+import * as nodePath from 'path';
+import { scanWorkspaceBoundaries, boundaryForName } from '../workspaces/boundaries';
 
 /**
  * Stage + diff a unified patch for the named workspaces, with the
@@ -22,17 +25,38 @@ export async function buildSettlePatch(
     workingTreeRoot: string,
     workspaces: ReadonlyArray<string>,
 ): Promise<{ patch: string; parentSha: string }> {
-    const addArgs = ['add', '--'];
+    // Resolve each declared workspace (by leaf identity) to its CURRENT
+    // location — nesting-/relocation-aware, mirroring `settleFromWorktree`.
+    // The old `git add workspaces/<name>` fatals the moment a workspace is
+    // nested (`hr/recruiting`) or has just been `git mv`-ed away. Stage the
+    // path that EXISTS; diff over both the conventional top-level path AND the
+    // resolved path so a relocation's rename (old → new) is captured in the
+    // patch and its deletion side isn't dropped.
+    const boundaries = await scanWorkspaceBoundaries(workingTreeRoot);
+    const exists = (rel: string): Promise<boolean> =>
+        stat(nodePath.join(workingTreeRoot, rel)).then(() => true, () => false);
+    const stagePaths: string[] = [];
+    const diffPaths = new Set<string>();
     for (const w of workspaces) {
-        addArgs.push(`workspaces/${w}`);
-        addArgs.push(`:(exclude)workspaces/${w}/extracted`);
-        addArgs.push(`:(exclude)workspaces/${w}/attached`);
+        const conventional = `workspaces/${w}`;
+        const resolved = boundaryForName(boundaries, w)?.dir;
+        diffPaths.add(conventional);
+        if (resolved) diffPaths.add(resolved);
+        for (const p of new Set([resolved, conventional].filter((x): x is string => !!x))) {
+            if (await exists(p)) stagePaths.push(p);
+        }
+    }
+    const addArgs = ['add', '--'];
+    for (const p of stagePaths) {
+        addArgs.push(p);
+        addArgs.push(`:(exclude)${p}/extracted`);
+        addArgs.push(`:(exclude)${p}/attached`);
         // Master-fs-managed sentinel; never belongs in a Tier-C settle patch.
         // Keep in lockstep with `settle.ts`'s `GENERATED_FILES`.
-        addArgs.push(`:(exclude)workspaces/${w}/.derived-from-sha`);
+        addArgs.push(`:(exclude)${p}/.derived-from-sha`);
     }
-    await runGit(workingTreeRoot, addArgs);
-    const patch = await runGit(workingTreeRoot, ['diff', '--cached', '--binary', '--']);
+    if (stagePaths.length > 0) await runGit(workingTreeRoot, addArgs);
+    const patch = await runGit(workingTreeRoot, ['diff', '--cached', '--binary', '--', ...diffPaths]);
     const parentSha = (await runGit(workingTreeRoot, ['rev-parse', 'origin/main'])).trim();
     return { patch, parentSha };
 }

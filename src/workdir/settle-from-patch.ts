@@ -32,6 +32,7 @@ import { randomBytes } from 'crypto';
 import { Workdir } from './types';
 import { runGit } from './run-git';
 import { SettleResult, LintFn, PushToMainFn, LintError } from './settle';
+import { scanWorkspaceBoundaries, boundaryForName } from '../workspaces/boundaries';
 
 export interface SettleFromPatchInput {
     workspaces: ReadonlyArray<string>;
@@ -144,7 +145,19 @@ export async function settleFromPatch(
         // Step 3 — lint. Same shape as settleFromWorktree: stage is already
         // populated by `git apply --index`; ask git for the cached diff
         // scoped to the declared workspaces and hand it to the lint fn.
-        const wsPaths = input.workspaces.map(w => `workspaces/${w}`);
+        // Diff scoped to the declared workspaces, nesting-/relocation-aware:
+        // the patch is already applied to the index, so the tree reflects any
+        // relocation. Resolve each declared leaf to its CURRENT location and
+        // include BOTH the conventional and resolved paths, so a rename is
+        // paired and a nested workspace's changes aren't silently excluded from
+        // the lint diff (which would let them bypass the gate).
+        const boundaries = await scanWorkspaceBoundaries(root);
+        const wsPaths = new Set<string>();
+        for (const w of input.workspaces) {
+            wsPaths.add(`workspaces/${w}`);
+            const resolved = boundaryForName(boundaries, w)?.dir;
+            if (resolved) wsPaths.add(resolved);
+        }
         const diff = await runGit(root, [
             'diff', '--cached', '--', ...wsPaths,
         ]);
