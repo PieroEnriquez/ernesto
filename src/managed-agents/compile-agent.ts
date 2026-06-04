@@ -23,10 +23,10 @@ import type {
  * silently if absent.
  *
  * Platform body composition (§7.3 stop):
- *   `<cwd>/workspaces/_platform/WORKSPACE.md`         (universal)
- *   `<cwd>/workspaces/_platform/tier-{a|b|c}.md`      (tier-specific,
- *                                                      appended when
- *                                                      `ctx.tier` set)
+ *   `<cwd>/workspaces/_platform/WORKSPACE.md`         (universal engine contract)
+ *   `<cwd>/workspaces/_platform/<surface>.md`         (per-surface overlay —
+ *                                                      in-process / mcp —
+ *                                                      appended when set)
  *
  * Tier-specific files describe how the Ernesto system itself behaves
  * on that tier (workdir mechanics, settle pathway, what `execute`
@@ -111,14 +111,23 @@ function readPlatformBody(cwd: string | undefined): string | null {
 }
 
 /**
- * Read `<cwd>/workspaces/_platform/tier-{a|b|c}.md` body, frontmatter
- * stripped. Optional — absent files are not an error (a tier that
- * hasn't authored its file yet inherits only the universal body).
+ * Read the per-surface overlay body (`_platform/<surface>.md`), frontmatter
+ * stripped, for backend-run agents. Optional — absent files are not an error.
+ *
+ * The overlay names the runtime surface, not a "tier": in-process and MCP are
+ * backend-injected here. A laptop run carries its own overlay (the plugin's
+ * SKILL.md) and is not injected from `_platform`, so it resolves to null.
  */
+const OVERLAY_BY_RUNTIME: Record<string, string> = {
+    a: 'in-process',
+    vm: 'in-process', // VM is isolation on the in-process surface, not a separate overlay
+    b: 'mcp',
+};
 function readTierBody(cwd: string | undefined, tier: TierId): string | null {
     if (!cwd) return null;
-    const slug = tier.toLowerCase();
-    return readMarkdownBody(join(cwd, 'workspaces', '_platform', `tier-${slug}.md`));
+    const overlay = OVERLAY_BY_RUNTIME[tier.toLowerCase()];
+    if (!overlay) return null;
+    return readMarkdownBody(join(cwd, 'workspaces', '_platform', `${overlay}.md`));
 }
 
 function readMarkdownBody(path: string): string | null {

@@ -187,56 +187,62 @@ describe('compileAgent — tier-specific platform body', () => {
         writeFileSync(join(tmp, 'workspaces', '_platform', name), body, 'utf8');
     }
 
-    it('appends universal body + tier-a body when tier: "A" is set', () => {
+    it('appends universal body + in-process overlay when the surface is "A"', () => {
         writePlatformFile('WORKSPACE.md', 'Universal rules.');
-        writePlatformFile('tier-a.md', 'Tier A specifics.');
+        writePlatformFile('in-process.md', 'In-process specifics.');
         const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, tier: 'A' });
         expect(r.systemPrompt).toBe(
-            'You are a test agent.\n\nUniversal rules.\n\nTier A specifics.',
+            'You are a test agent.\n\nUniversal rules.\n\nIn-process specifics.',
         );
     });
 
-    it('uses tier-b.md when tier: "B"', () => {
+    it('uses mcp.md when the surface is "B"', () => {
         writePlatformFile('WORKSPACE.md', 'Universal.');
-        writePlatformFile('tier-a.md', 'A only.');
-        writePlatformFile('tier-b.md', 'B only.');
-        writePlatformFile('tier-c.md', 'C only.');
+        writePlatformFile('in-process.md', 'In-process only.');
+        writePlatformFile('mcp.md', 'MCP only.');
         const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, tier: 'B' });
-        expect(r.systemPrompt).toBe('You are a test agent.\n\nUniversal.\n\nB only.');
+        expect(r.systemPrompt).toBe('You are a test agent.\n\nUniversal.\n\nMCP only.');
     });
 
-    it('skips tier append when tier is omitted (legacy callers unaffected)', () => {
+    it('a laptop surface ("C") has no injected overlay — it carries its own', () => {
         writePlatformFile('WORKSPACE.md', 'Universal.');
-        writePlatformFile('tier-a.md', 'A only.');
-        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp } });
-        expect(r.systemPrompt).toBe('You are a test agent.\n\nUniversal.');
-    });
-
-    it('missing tier-{tier}.md falls back to universal only', () => {
-        writePlatformFile('WORKSPACE.md', 'Universal.');
+        writePlatformFile('in-process.md', 'In-process only.');
         const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, tier: 'C' });
         expect(r.systemPrompt).toBe('You are a test agent.\n\nUniversal.');
     });
 
-    it('missing universal but present tier file emits just the tier body', () => {
-        writePlatformFile('tier-a.md', 'Tier A solo.');
-        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, tier: 'A' });
-        expect(r.systemPrompt).toBe('You are a test agent.\n\nTier A solo.');
+    it('skips the overlay when the surface is omitted (legacy callers unaffected)', () => {
+        writePlatformFile('WORKSPACE.md', 'Universal.');
+        writePlatformFile('in-process.md', 'In-process only.');
+        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp } });
+        expect(r.systemPrompt).toBe('You are a test agent.\n\nUniversal.');
     });
 
-    it('strips frontmatter from the tier file too', () => {
+    it('missing overlay file falls back to universal only', () => {
         writePlatformFile('WORKSPACE.md', 'Universal.');
-        writePlatformFile('tier-a.md', '---\nname: tier-a\n---\nFrontmatter-stripped tier body.');
+        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, tier: 'A' });
+        expect(r.systemPrompt).toBe('You are a test agent.\n\nUniversal.');
+    });
+
+    it('missing universal but present overlay emits just the overlay body', () => {
+        writePlatformFile('in-process.md', 'In-process solo.');
+        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, tier: 'A' });
+        expect(r.systemPrompt).toBe('You are a test agent.\n\nIn-process solo.');
+    });
+
+    it('strips frontmatter from the overlay too', () => {
+        writePlatformFile('WORKSPACE.md', 'Universal.');
+        writePlatformFile('in-process.md', '---\nname: in-process\n---\nFrontmatter-stripped overlay body.');
         const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, tier: 'A' });
         expect(r.systemPrompt).toBe(
-            'You are a test agent.\n\nUniversal.\n\nFrontmatter-stripped tier body.',
+            'You are a test agent.\n\nUniversal.\n\nFrontmatter-stripped overlay body.',
         );
     });
 
     it('composePlatformBody returns the concatenated body for direct (non-compileAgent) callers', () => {
         writePlatformFile('WORKSPACE.md', 'U.');
-        writePlatformFile('tier-c.md', 'C.');
-        expect(composePlatformBody(tmp, 'C')).toBe('U.\n\nC.');
+        writePlatformFile('in-process.md', 'P.');
+        expect(composePlatformBody(tmp, 'A')).toBe('U.\n\nP.');
     });
 
     it('composePlatformBody returns null when both files are absent', () => {
