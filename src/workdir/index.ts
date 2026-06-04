@@ -10,6 +10,12 @@ export { runGit, tryRunGit } from './run-git';
 export { probeWorkdirHealth, bootstrapWorkdir } from './health';
 export type { WorkdirHealth, BootstrapWorkdirInput } from './health';
 export { buildSettlePatch } from './build-patch';
+export {
+    resolveWorkspaceStagePaths,
+    buildStageAddArgs,
+    GENERATED_SUBDIRS,
+    GENERATED_FILES,
+} from './settle-core';
 export { makeInMemoryWorkdirLock, makeRedisWorkdirLock, WorkdirLockAcquireTimeout } from './lock';
 export type { RedisLockClient } from './lock';
 export { makeNodeFsAdapter, makeVolumeMasterFs } from './node-adapters';

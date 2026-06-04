@@ -11,6 +11,8 @@ export {
 export {
     runGit, tryRunGit,
     probeWorkdirHealth, bootstrapWorkdir, buildSettlePatch,
+    resolveWorkspaceStagePaths, buildStageAddArgs,
+    GENERATED_SUBDIRS, GENERATED_FILES,
     makeInMemoryWorkdirLock,
     makeRedisWorkdirLock, WorkdirLockAcquireTimeout,
     makeNodeFsAdapter, makeVolumeMasterFs,
