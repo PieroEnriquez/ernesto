@@ -280,7 +280,7 @@ interface HttpCtx {
  * flag, so the empty / short-page convention is the only reliable terminator).
  *
  * Returns `[]` on 404 (the endpoint may legitimately be empty on the account's
- * plan — style guides in particular are gated by Crowdin tier).
+ * plan — style guides in particular are gated by the Crowdin plan).
  *
  * `path` should NOT include a leading `?` — query params are composed here.
  */

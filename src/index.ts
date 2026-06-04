@@ -24,7 +24,7 @@ export {
 } from './workdir';
 export type {
     FsAdapter, MasterFsAdapter, MasterFsResolution,
-    Workdir, WorkdirInput, WorkdirLock, WorkdirTier,
+    Workdir, WorkdirInput, WorkdirLock,
     LayoutEntry, BootInput, BootResult,
     GlobOptions, GrepOptions, GrepResult, GrepOutputMode,
     CommitTurnInput, CommitTurnResult,
@@ -149,7 +149,7 @@ export {
 export type {
     AgentDeclaration, AgentContext, CompiledAgent,
     SystemPromptConfig, JsonSchemaOutputFormat,
-    ManagedAgentMd, ExtendsResolver, TierId,
+    ManagedAgentMd, ExtendsResolver, Transport, Isolation,
 } from './managed-agents';
 
 // ─── Agent verbs ─────────────────────────────────────────────────────────

@@ -23,7 +23,7 @@ export type MaterializeResult =
  * live-update path publishes the changed paths over pubsub; the subscriber
  * calls `remirrorFile` for each active workdir whose scope includes the
  * touched workspace, so the workdir's directory entry is re-pointed at the
- * fresh inode (hardlink tier) or rewritten (bytes tier).
+ * fresh inode (hardlink mode) or rewritten (bytes mode).
  *
  * Returns `not-found` when the master-fs resolver doesn't know about the
  * path — caller should treat that as "removed from master-fs" and may want

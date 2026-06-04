@@ -1,6 +1,6 @@
 export type {
     FsAdapter, MasterFsAdapter, MasterFsResolution,
-    Workdir, WorkdirInput, WorkdirLock, WorkdirTier,
+    Workdir, WorkdirInput, WorkdirLock,
     LayoutEntry, BootInput, BootResult,
     GlobOptions, GrepOptions, GrepResult, GrepOutputMode,
 } from './types';

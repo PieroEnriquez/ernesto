@@ -194,7 +194,7 @@ export type HarnessEvent =
     // `unknown` to keep harness types decoupled from `components`; the
     // backend casts it to a UiComponent when emitting `fact.component`.
     // Used by out-of-process runtimes (remote-vm) to bridge in-VM `ui`
-    // calls back to the host's component bus → per-tier renderers.
+    // calls back to the host's component bus → per-transport renderers.
     | { kind: 'component'; component: unknown; runId: string };
 
 /** Canonical conversation-replay shape. */
@@ -265,7 +265,7 @@ export interface CreateOptions {
     /** Per-call MCP servers — merged on top of the harness env's
      *  defaults (call-level entries win on key collision). Lets each
      *  workflow run hand the harness session-scoped tool surfaces
-     *  (e.g. tier-A's `ernesto` MCP closing over the run's workdir +
+     *  (e.g. the in-process transport's `ernesto` MCP closing over the run's workdir +
      *  user + scopes) without rebuilding the harness. */
     mcpServers?: Record<string, unknown>;
 }

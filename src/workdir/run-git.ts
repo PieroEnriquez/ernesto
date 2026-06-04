@@ -22,8 +22,8 @@ export interface RunGitOptions {
  * and fast-forward shapes explicitly.
  *
  * `GIT_TERMINAL_PROMPT=0` is forced into the env so a missing credential never
- * blocks the calling process on stdin (the same trap that bit Tier-A early
- * and the Tier-C CLI before this consolidation).
+ * blocks the calling process on stdin (the same trap that bit the in-process
+ * transport early and the laptop CLI before this consolidation).
  *
  * `GIT_CEILING_DIRECTORIES=cwd` stops git's auto-discovery from walking above
  * the given `cwd` to find a `.git/` in a parent. Without this, ops run from a

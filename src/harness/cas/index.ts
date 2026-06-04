@@ -18,6 +18,7 @@ import type {
     HarnessCapabilities,
     ModelInfo,
 } from '../types';
+import type { Transport } from '../../managed-agents/types';
 import { casCreateAgent } from './create';
 
 // Adapter internals (compile/events/send/create) are not re-exported:
@@ -80,15 +81,14 @@ export interface CasHarnessEnv {
     defaults?: { disallowedTools?: string[] };
     /** Override capabilities (test seam). */
     capabilities?: Partial<HarnessCapabilities>;
-    /** Which transport the harness is deployed under, carried on the
-     *  runtime surface (`ctx.tier`): `'A'` for the in-process transport,
-     *  `'B'` for the mcp transport (a remote MCP client), `'C'` for the
-     *  laptop transport. The platform-body composer selects the matching
-     *  platform body and appends it to the system prompt — without it the
-     *  agent gets no platform routing discipline (catalog lookup rules,
-     *  sensitive topics, citation requirements). Set once per process at
-     *  boot. */
-    tier?: 'A' | 'B' | 'C';
+    /** Which transport the harness is deployed under, carried through
+     *  `ctx.transport`: `'in-process'`, `'mcp'` (a remote MCP client),
+     *  `'laptop'`, or `'vm'`. The platform-body composer selects the
+     *  matching platform body and appends it to the system prompt —
+     *  without it the agent gets no platform routing discipline (catalog
+     *  lookup rules, sensitive topics, citation requirements). Set once
+     *  per process at boot. */
+    transport?: Transport;
 }
 
 const CAS_CAPABILITIES: HarnessCapabilities = {
@@ -152,7 +152,7 @@ export function createCasHarness(env: CasHarnessEnv = {}): Harness {
             resumeSessionId: opts.resumeSessionId,
             forkSession: opts.forkSession,
             defaultDisallowedTools: env.defaults?.disallowedTools,
-            ...(env.tier ? { tier: env.tier } : {}),
+            ...(env.transport ? { transport: env.transport } : {}),
         });
     };
 

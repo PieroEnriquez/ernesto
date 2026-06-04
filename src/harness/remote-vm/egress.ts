@@ -1,7 +1,7 @@
 /**
  * Egress-policy builder — PURE, unit-tested.
  *
- * The remote-vm tier's security model is a deny-all TLS-SNI firewall with
+ * The remote-vm layer's security model is a deny-all TLS-SNI firewall with
  * an allowlist of EXACTLY two destinations: the backend API host (which
  * serves the scope-gated `/vm/*` gateway) and the Anthropic model
  * endpoint. Full Bash + WebFetch are safe inside the VM because there is

@@ -19,7 +19,7 @@ export interface FactEvent {
     type: string;
     payload: Record<string, unknown>;
     ts: number;
-    /** Per-run untyped routing blob (tier, scopes, parentRunId, …). */
+    /** Per-run untyped routing blob (transport, scopes, parentRunId, …). */
     routing?: Readonly<Record<string, unknown>>;
 }
 
@@ -131,7 +131,7 @@ export type TypedFactEvent =
           stepId: string;
           /** The structured UI intent — see `components/types.ts`.
            *  Top-level kinds: thinking / status / progress / attachment
-           *  / hitl. Per-tier subscribers switch on `component.kind`. */
+           *  / hitl. Per-transport subscribers switch on `component.kind`. */
           component: UiComponent;
           ts: number;
       };

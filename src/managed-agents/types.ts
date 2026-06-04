@@ -9,6 +9,9 @@
  * The §7.1 split between *declaration* and *invocation* lives here; the
  * §7.2 `AgentContext` is the single threaded value every dispatcher
  * passes through.
+ *
+ * This lib is the canonical owner of the `Transport` / `Isolation`
+ * vocabulary; the backend imports these names from here.
  */
 
 /**
@@ -88,19 +91,24 @@ export interface AgentDeclaration {
 }
 
 /**
- * The runtime surface the dispatcher is running on (the transport).
- * Threaded through to `compileAgent` so the per-surface
- * `_platform/<surface>.md` body is appended on top of the universal
- * `_platform/WORKSPACE.md`. Absent ≡ skip the per-surface append
+ * How a run reaches the backend — the transport it is composing on.
+ * Threaded through to `compileAgent` so the per-transport
+ * `_platform/<transport>.md` body is appended on top of the universal
+ * `_platform/WORKSPACE.md`. Absent ≡ skip the per-transport append
  * (legacy callers, tests, scripts without a workdir).
  *
- * - `A` — the in-process transport (runs in the host process: chat
- *   backend, cron, managed-agent runtime).
- * - `B` — the mcp transport (a remote MCP client).
- * - `C` — the laptop transport (a dev laptop with a synced checkout +
- *   plugin).
+ * - `in-process` — runs in the host process (chat backend, cron,
+ *   managed-agent runtime).
+ * - `mcp` — a remote MCP client.
+ * - `laptop` — a dev laptop with a synced checkout + plugin.
+ * - `vm` — an isolated microVM; shares the `in-process` settle
+ *   substrate and the overlay treats it like `in-process`.
  */
-export type TierId = 'A' | 'B' | 'C';
+export type Transport = 'in-process' | 'mcp' | 'laptop' | 'vm';
+
+/** Execution boundary a run held — `none` (managed/in-process) or `vm`
+ *  (isolated microVM). */
+export type Isolation = 'none' | 'vm';
 
 /**
  * The single threaded value every dispatcher (chat adapter, cron
@@ -119,12 +127,12 @@ export interface AgentContext {
         cwd?: string;
     };
     /**
-     * Which transport (runtime surface) is composing this agent. Drives
-     * the per-surface `_platform/<surface>.md` append. Optional for
+     * Which transport is composing this agent. Drives the
+     * per-transport `_platform/<transport>.md` append. Optional for
      * backwards compatibility — callers that haven't migrated still get
      * the universal body only.
      */
-    tier?: TierId;
+    transport?: Transport;
 }
 
 /**

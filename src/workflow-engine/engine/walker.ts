@@ -27,7 +27,7 @@ export interface WalkerDeps {
     /** Hands out the next event seq for a given run. */
     nextSeq(runId: string): number;
     /** Recursive dispatch closure built by the runner. Pre-binds the
-     *  parent run's principal + routing (tier, parentRunId =
+     *  parent run's principal + routing (transport, parentRunId =
      *  ctx.runId, surfaceRunId, conversationKey) so step handlers can
      *  call `ctx.dispatch(uri, inputs)` without re-supplying them.
      *  Optional for unit-test setups that don't recurse. */
@@ -235,7 +235,7 @@ export async function walk(
 /** Build the typed `HandlerRouting` from the dispatch input. */
 function buildRouting(input: WalkInput): HandlerRouting {
     const r: HandlerRouting = { context: input.opts.context ?? {} };
-    if (input.opts.tier !== undefined) r.tier = input.opts.tier;
+    if (input.opts.transport !== undefined) r.transport = input.opts.transport;
     if (input.opts.surfaceRunId !== undefined) r.surfaceRunId = input.opts.surfaceRunId;
     if (input.opts.parentRunId !== undefined) r.parentRunId = input.opts.parentRunId;
     if (input.opts.conversationKey !== undefined) r.conversationKey = input.opts.conversationKey;
@@ -246,7 +246,7 @@ function buildRouting(input: WalkInput): HandlerRouting {
 function routingForStore(r: HandlerRouting, p: Principal): Record<string, unknown> {
     return {
         ...r.context,
-        ...(r.tier !== undefined ? { tier: r.tier } : {}),
+        ...(r.transport !== undefined ? { transport: r.transport } : {}),
         ...(r.surfaceRunId !== undefined ? { surfaceRunId: r.surfaceRunId } : {}),
         ...(r.parentRunId !== undefined ? { parentRunId: r.parentRunId } : {}),
         ...(r.conversationKey !== undefined ? { conversationKey: r.conversationKey } : {}),

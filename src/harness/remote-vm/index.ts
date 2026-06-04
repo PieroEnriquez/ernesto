@@ -1,5 +1,5 @@
 /**
- * remote-vm harness — Vercel-Sandbox microVM agent-execution tier.
+ * remote-vm harness — Vercel-Sandbox microVM agent-execution layer.
  *
  * Structural twin of `harness/cas`: `createRemoteVmHarness(env)` returns a
  * canonical `Harness` (`{ capabilities, createAgent, listModels,

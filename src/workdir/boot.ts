@@ -43,7 +43,6 @@ export async function bootWorkdir(input: BootInput): Promise<BootResult> {
 export function rehydrateWorkdir(input: WorkdirInput): Workdir {
     return {
         workdirId: input.workdirId,
-        tier: input.tier,
         workingTreeRoot: input.workingTreeRoot,
         branchRef: `refs/workdirs/${input.workdirId}`,
         fs: input.fs,

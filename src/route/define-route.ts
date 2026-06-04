@@ -7,8 +7,8 @@
  *
  * Spec: §30 (Route / defineRoute / RouteContext).
  * This module is the minimal scaffolding ahead of backend wiring; it omits
- * the full `RouteContext` shape from §30 (`principal`, the runtime surface
- * (`ctx.tier`), `ernesto`, `workdirId`) because none of those values exist
+ * the full `RouteContext` shape from §30 (`principal`, the transport
+ * (`ctx.transport`), `ernesto`, `workdirId`) because none of those values exist
  * yet on the lib side. The
  * scaffolding context surfaces just what handlers can use today: `user`,
  * a live scope snapshot, an optional `workdirRoot`, and a logger.

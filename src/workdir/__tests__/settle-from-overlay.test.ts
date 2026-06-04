@@ -39,7 +39,7 @@ describe('settleFromOverlay — server-side 3-way reconcile', () => {
     function buildWorkdir() {
         const fs = makeNodeFsAdapter(root);
         return rehydrateWorkdir({
-            workdirId: 'wd1', tier: 'managed', workingTreeRoot: root,
+            workdirId: 'wd1', workingTreeRoot: root,
             fs, master: { resolve: async () => ({ kind: 'not-found' }) },
             lock: makeInMemoryWorkdirLock('wd1'),
         });

@@ -12,7 +12,7 @@ import type {
     AgentContext,
     CompiledAgent,
     SystemPromptConfig,
-    TierId,
+    Transport,
 } from './types';
 
 /**
@@ -24,16 +24,17 @@ import type {
  *
  * Platform body composition (§7.3 stop):
  *   `<cwd>/workspaces/_platform/WORKSPACE.md`         (universal engine contract)
- *   `<cwd>/workspaces/_platform/<surface>.md`         (per-surface overlay —
+ *   `<cwd>/workspaces/_platform/<transport>.md`       (per-transport overlay —
  *                                                      in-process / mcp —
  *                                                      appended when set)
  *
- * The per-surface files describe how the Ernesto system itself behaves
+ * The per-transport files describe how the Ernesto system itself behaves
  * on that transport (workdir mechanics, settle pathway, what `execute`
- * looks like). The per-surface file is loaded *in addition to* the
- * universal body — never instead of it. Frontends pass the runtime
- * surface (`ctx.tier = 'A' | 'B' | 'C'`). Frontends that haven't been
- * migrated (or scripts / tests without a workdir) keep working unchanged.
+ * looks like). The per-transport file is loaded *in addition to* the
+ * universal body — never instead of it. Frontends pass the transport
+ * (`ctx.transport = 'in-process' | 'mcp' | 'laptop' | 'vm'`). Frontends
+ * that haven't been migrated (or scripts / tests without a workdir) keep
+ * working unchanged.
  *
  * Stop 2 of §7 phase 1. Subsequent stops layer in:
  * - §7.3 L1-L5 cache discipline (returns layered fragments instead of
@@ -48,7 +49,7 @@ export function compileAgent(
     ctx: AgentContext,
     defaults: { disallowedTools?: string[] } = {},
 ): CompiledAgent {
-    const platformBody = composePlatformBody(ctx.session.cwd, ctx.tier);
+    const platformBody = composePlatformBody(ctx.session.cwd, ctx.transport);
     const systemPrompt = platformBody
         ? appendPlatformBody(decl.systemPrompt, platformBody)
         : decl.systemPrompt;
@@ -64,12 +65,11 @@ export function compileAgent(
 }
 
 /**
- * Compose the universal platform body + (optionally) the per-surface
+ * Compose the universal platform body + (optionally) the per-transport
  * body from a bound workdir cwd. Returns the concatenated markdown or
  * `null` if neither file resolves to non-empty content.
  *
- * This is the single home for the composition across all three
- * transports:
+ * This is the single home for the composition across all transports:
  *
  * - **the in-process transport** (runs in the host process):
  *   `compileAgent` calls this; result becomes the SDK
@@ -79,7 +79,7 @@ export function compileAgent(
  * - **the laptop transport** (a dev laptop with a synced checkout +
  *   plugin): the laptop calls this when regenerating its local skill.
  *
- * All three reach for the same files, so behavioral drift between
+ * They all reach for the same files, so behavioral drift between
  * transports can only come from authoring drift in the markdown — not
  * from the loaders interpreting things differently.
  *
@@ -88,12 +88,12 @@ export function compileAgent(
  */
 export function composePlatformBody(
     cwd: string | undefined,
-    tier?: TierId,
+    transport?: Transport,
 ): string | null {
     const universal = readPlatformBody(cwd);
-    const tierBody = tier ? readTierBody(cwd, tier) : null;
-    if (universal && tierBody) return universal + '\n\n' + tierBody;
-    return universal ?? tierBody ?? null;
+    const overlayBody = transport ? readTransportOverlay(cwd, transport) : null;
+    if (universal && overlayBody) return universal + '\n\n' + overlayBody;
+    return universal ?? overlayBody ?? null;
 }
 
 /**
@@ -112,21 +112,24 @@ function readPlatformBody(cwd: string | undefined): string | null {
 }
 
 /**
- * Read the per-surface overlay body (`_platform/<surface>.md`), frontmatter
- * stripped, for backend-run agents. Optional — absent files are not an error.
+ * Read the per-transport overlay body (`_platform/<overlay>.md`),
+ * frontmatter stripped, for backend-run agents. Optional — absent files
+ * are not an error.
  *
- * The overlay names the runtime surface, not a "tier": in-process and MCP are
- * backend-injected here. A laptop run carries its own overlay (the plugin's
+ * Only the backend-injected transports map to an overlay file:
+ * `in-process` (and `vm`, which shares the in-process substrate — VM is
+ * isolation, not a separate overlay) → `in-process.md`; `mcp` →
+ * `mcp.md`. A `laptop` run carries its own overlay (the plugin's
  * SKILL.md) and is not injected from `_platform`, so it resolves to null.
  */
-const OVERLAY_BY_RUNTIME: Record<string, string> = {
-    a: 'in-process',
-    vm: 'in-process', // VM is isolation on the in-process surface, not a separate overlay
-    b: 'mcp',
+const OVERLAY_BY_TRANSPORT: Record<string, string> = {
+    'in-process': 'in-process',
+    'vm': 'in-process',
+    'mcp': 'mcp',
 };
-function readTierBody(cwd: string | undefined, tier: TierId): string | null {
+function readTransportOverlay(cwd: string | undefined, transport: Transport): string | null {
     if (!cwd) return null;
-    const overlay = OVERLAY_BY_RUNTIME[tier.toLowerCase()];
+    const overlay = OVERLAY_BY_TRANSPORT[transport];
     if (!overlay) return null;
     return readMarkdownBody(join(cwd, 'workspaces', '_platform', `${overlay}.md`));
 }

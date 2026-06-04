@@ -1,8 +1,9 @@
 /**
  * Shared agent-verb types.
  *
- * The verbs (`execute`, `settle`) are the Tier-A/B/C-uniform agent-facing
- * surface. The lib owns input/output schemas + verb handlers; tier frontends
+ * The verbs (`execute`, `settle`) are the transport-uniform agent-facing
+ * surface (same shape across in-process / mcp / laptop). The lib owns
+ * input/output schemas + verb handlers; transport frontends
  * register them as the appropriate transport (SDK custom tool, MCP tool,
  * HTTPS endpoint) and inject side-effect implementations via `hooks`.
  */

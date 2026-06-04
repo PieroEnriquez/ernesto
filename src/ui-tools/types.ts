@@ -37,7 +37,7 @@ export type AttachmentTransformResult =
 
 /** Optional pre-emit hook for `attachment` components. The lib calls
  *  this after structural validation but before `fact.component` is
- *  emitted — so a per-tier rewrite (e.g. Slack's SVG → PNG
+ *  emitted — so a per-transport rewrite (e.g. Slack's SVG → PNG
  *  rasterization) can surface as a tool-result error the agent can
  *  react to in the same turn. Hooks must not throw; return
  *  `{ok: false, error}` for any failure surface. */
@@ -61,7 +61,7 @@ export interface UiToolContext {
      *  allocate a workdir (tests, ad-hoc CLI dispatches); `{ref}` then
      *  fails with `ref_unsupported`. */
     workdirRoot?: string;
-    /** Per-tier hook for transforming `attachment` components before
+    /** Per-transport hook for transforming `attachment` components before
      *  emit. Failures land in the tool result as per-component
      *  errors so the agent can react in the same turn. Use case:
      *  Slack rasterizes SVG → PNG and reports failures (invalid SVG,

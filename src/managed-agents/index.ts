@@ -10,5 +10,6 @@ export type {
     CompiledAgent,
     SystemPromptConfig,
     JsonSchemaOutputFormat,
-    TierId,
+    Transport,
+    Isolation,
 } from './types';

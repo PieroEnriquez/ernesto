@@ -4,7 +4,7 @@
  *
  * Storage: `<workdir>/.ernesto/state.json`. The workdir is the per-
  * conversation anchor (resolved by the renderer's `conversationKey` —
- * `slack:<threadTs>`, `tier-b:<convId>`, `tier-c:<pid>`, …). One state
+ * `slack:<threadTs>`, `mcp:<convId>`, `laptop:<pid>`, …). One state
  * file per workdir; one workdir per conversation.
  *
  * **Why on disk (not Mongo, not in-memory)**

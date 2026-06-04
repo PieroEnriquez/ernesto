@@ -271,7 +271,7 @@ describe('loggingMiddleware', () => {
             'wf',
             {},
             userPrincipal('alice', []),
-            { tier: 'A', surfaceRunId: 'surf-1' },
+            { transport: 'in-process', surfaceRunId: 'surf-1' },
         );
 
         expect(logs.length).toBe(2);
@@ -279,7 +279,7 @@ describe('loggingMiddleware', () => {
         expect(logs[0]!.meta).toMatchObject({
             kind: 'wf',
             principal: 'user:alice',
-            tier: 'A',
+            transport: 'in-process',
             surfaceRunId: 'surf-1',
         });
         expect(logs[1]!.msg).toBe('dispatch end');

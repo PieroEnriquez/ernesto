@@ -15,7 +15,7 @@
 
 /**
  * Egress firewall declaration. Deny-all by default; only the listed
- * destinations are reachable from inside the VM. For the remote-vm tier
+ * destinations are reachable from inside the VM. For the remote-vm layer
  * the allowlist is exactly two hosts: the backend API (serving `/vm/*`)
  * and the Anthropic model endpoint. There is no third destination, so
  * full Bash + WebFetch inside the VM cannot exfiltrate.

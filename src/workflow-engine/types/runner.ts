@@ -10,7 +10,7 @@
  *   - `Principal` is the typed union (user vs service); the legacy
  *     `{userId, scopes}` bag is gone.
  *   - `DispatchOpts` carries the previously-untyped `context` blob as
- *     typed optional fields (`tier`, `parentRunId`, `surfaceRunId`,
+ *     typed optional fields (`transport`, `parentRunId`, `surfaceRunId`,
  *     `conversationKey`, `preallocatedRunId`).
  *   - The return is `Run<TOut>` — a handle with `events()` async-tail
  *     + `waitForTerminal()` + typed `output` / `error` / `usage`.
@@ -47,28 +47,28 @@ export type KindRef = string;
 /** Top-level dispatch options. Every field is optional with a sane
  *  default; positional arguments cover the load-bearing inputs. */
 export interface DispatchOpts {
-    /** Tier port that originated this dispatch — used by middleware
+    /** Transport that originated this dispatch — used by middleware
      *  to pick a renderer + model router defaults. */
-    tier?: 'A' | 'B' | 'C';
+    transport?: 'in-process' | 'mcp' | 'laptop' | 'vm';
     /** Parent run's id — set by middleware on recursive dispatch
      *  (subworkflow step, agent's `execute()` tool surface). */
     parentRunId?: string;
     /** UI anchor — defaults to runId at top-level; propagated AS-IS
-     *  through descendants so a tier port subscribes by a single id. */
+     *  through descendants so a transport port subscribes by a single id. */
     surfaceRunId?: string;
-    /** Long-lived conversation continuity key (workspace-tier
+    /** Long-lived conversation continuity key (persistent in-process
      *  sessions). When set, the runner reuses the session associated
      *  with this key (workdir, MCP servers, SDK session JSONL). */
     conversationKey?: string;
-    /** Caller-allocated runId — lets per-tier subscribers register
+    /** Caller-allocated runId — lets per-transport subscribers register
      *  state BEFORE dispatch begins emitting. Otherwise the runner
      *  mints one. */
     preallocatedRunId?: string;
     /** Parent abort signal. Cooperative cancellation cascades through
      *  the walker. */
     abortSignal?: AbortSignal;
-    /** Free-form context for tier-port-specific metadata that isn't
-     *  promoted to a typed field yet (slackThreadId, claudeAiConvId,
+    /** Free-form context for transport-specific metadata that isn't
+     *  promoted to a typed field yet (slackThreadId, mcpConvId,
      *  cliPid, etc.). Middleware reads keys defensively. */
     context?: Readonly<Record<string, unknown>>;
 }
@@ -151,7 +151,7 @@ export interface ResumeRunInput {
 }
 
 /** The runner surface — one `dispatch` function, plus the auxiliary
- *  primitives every tier port needs (subscribe, resume, abort, emit,
+ *  primitives every transport port needs (subscribe, resume, abort, emit,
  *  pause). */
 export interface WorkflowRunner {
     registerStepKind(kind: StepKind, handler: StepKindHandler<any>): void;

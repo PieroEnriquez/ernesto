@@ -342,7 +342,7 @@ export interface DynamicWorkflowStep extends BaseStep {
      * MCP servers the outer dispatcher session needs. The
      * `tool-surface-compose` middleware reads this field to decide
      * whether to invoke the composer; without it, no MCP gets attached
-     * and the handler's `mcp__ernesto-tier-a__execute` surface is empty.
+     * and the handler's `mcp__ernesto__execute` surface is empty.
      *
      * `'ernesto'` is the reserved logical name that triggers the
      * in-process ernesto MCP build supplied by the backend's
@@ -353,7 +353,7 @@ export interface DynamicWorkflowStep extends BaseStep {
      * The reader populates `['ernesto']` by default for every
      * `.workflow.js` since dynamic workflows that don't need to call
      * any ernesto route are vanishingly rare (and they'd just leave
-     * `mcp__ernesto-tier-a__execute` unused in allowedTools — cheap).
+     * `mcp__ernesto__execute` unused in allowedTools — cheap).
      */
     mcpServers?: string[];
 }

@@ -246,7 +246,7 @@ describe('validateWorkflow', () => {
                 a: { kind: 'route', uri: 'r://q', params: { x: '${{ inputs.product }}' }, next: 'b' },
                 b: {
                     kind: 'agent', model: 'm', systemPrompt: 'sys',
-                    prompt: '{{ steps.a.output }} for {{ context.tier }}',
+                    prompt: '{{ steps.a.output }} for {{ context.transport }}',
                     next: 'outputs.r',
                 },
             },

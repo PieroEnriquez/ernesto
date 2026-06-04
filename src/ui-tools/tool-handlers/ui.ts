@@ -144,8 +144,8 @@ export async function handleUi(
         return { ok: false, errors };
     }
 
-    // Per-tier attachment transformer pass. Lets the host (e.g. the
-    // Slack tier) rewrite `attachment` props before emit — most
+    // Per-transport attachment transformer pass. Lets the host (e.g. the
+    // Slack transport) rewrite `attachment` props before emit — most
     // commonly to rasterize SVG → PNG so Slack's file-preview card
     // renders inline. Failures surface here as tool errors so the
     // agent receives them synchronously and can pick a different
@@ -162,7 +162,7 @@ export async function handleUi(
                 result = await ctx.transformAttachment(c);
             } catch (err) {
                 // Hooks aren't supposed to throw; defensive catch so a
-                // tier bug doesn't crash the agent's turn.
+                // transport bug doesn't crash the agent's turn.
                 result = {
                     ok: false,
                     error: `attachment transformer threw: ${(err as Error).message}`,

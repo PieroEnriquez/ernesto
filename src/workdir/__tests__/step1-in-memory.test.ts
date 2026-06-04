@@ -30,7 +30,6 @@ describe('bootWorkdir — in-memory adapter pair (bytes mode)', () => {
 
         const result = await bootWorkdir({
             workdirId: 'wd1',
-            tier: 'remote-fs',
             workingTreeRoot: '/wt',
             fs, master,
             lock: makeInMemoryWorkdirLock('wd1'),
@@ -57,7 +56,6 @@ describe('bootWorkdir — in-memory adapter pair (bytes mode)', () => {
     it('produces a Workdir with branchRef = refs/workdirs/{wdid}', async () => {
         const { workdir } = await bootWorkdir({
             workdirId: 'wd-xyz',
-            tier: 'managed',
             workingTreeRoot: '/wt',
             fs: makeInMemoryFsAdapter(),
             master: makeInMemoryMasterFs({ bytes: new Map() }),
@@ -67,7 +65,6 @@ describe('bootWorkdir — in-memory adapter pair (bytes mode)', () => {
         });
         expect(workdir.branchRef).toBe('refs/workdirs/wd-xyz');
         expect(workdir.workdirId).toBe('wd-xyz');
-        expect(workdir.tier).toBe('managed');
     });
 
     it('skips entries that are not-found in master FS', async () => {
@@ -77,7 +74,7 @@ describe('bootWorkdir — in-memory adapter pair (bytes mode)', () => {
         });
 
         const result = await bootWorkdir({
-            workdirId: 'wd1', tier: 'remote-fs', workingTreeRoot: '/wt',
+            workdirId: 'wd1', workingTreeRoot: '/wt',
             fs, master, lock: makeInMemoryWorkdirLock('wd1'),
             visibleWorkspaces: ['hr'],
             layout: [
@@ -107,7 +104,7 @@ describe('bootWorkdir — in-memory adapter pair (hardlink mode)', () => {
         });
 
         const result = await bootWorkdir({
-            workdirId: 'wd1', tier: 'managed', workingTreeRoot: '/wt',
+            workdirId: 'wd1', workingTreeRoot: '/wt',
             fs, master, lock: makeInMemoryWorkdirLock('wd1'),
             visibleWorkspaces: ['hr'],
             layout: FIXTURE_LAYOUT,

@@ -3,7 +3,7 @@
  *
  * Each step kind's handler receives a typed `HandlerContext` carrying
  * the principal (user vs service), the typed routing surface
- * (tier/surfaceRunId/parentRunId/conversationKey + free-form context),
+ * (transport/surfaceRunId/parentRunId/conversationKey + free-form context),
  * a per-step `emit` for fact events, an abort signal, and a logger.
  * Handlers return one of three terminal shapes (`completed`,
  * `paused_human`, `error`).
@@ -90,7 +90,7 @@ export type EmitFactEventInput =
           /** Structured UI intent. Emitted by the `ui-tools/` MCP tool
            *  handlers when an agent invokes `ui.<kind>(...)`. The
            *  walker stamps `stepId` + `ts` and persists the event;
-           *  per-tier subscribers translate to native UI. */
+           *  per-transport subscribers translate to native UI. */
           type: 'fact.component';
           component: UiComponent;
           ts?: number;
@@ -110,9 +110,9 @@ export interface HandlerContext {
     /**
      * Per-run typed dispatch context. Carries the structured
      * fields previously buried in an untyped `routing` record:
-     * `tier`, `parentRunId`, `surfaceRunId`, `conversationKey`,
+     * `transport`, `parentRunId`, `surfaceRunId`, `conversationKey`,
      * plus the originating caller's free-form `context` blob for
-     * tier-port-specific metadata. Step handlers thread these
+     * transport-specific metadata. Step handlers thread these
      * into recursive dispatches so descendants inherit the surface.
      */
     routing: HandlerRouting;
@@ -146,7 +146,7 @@ export interface HandlerContext {
      *  still flow through the walker). */
     emit?: EmitFactEvent;
     /** Recursive dispatch back into the runner. Pre-bound by the
-     *  walker to inherit this run's principal + routing (tier,
+     *  walker to inherit this run's principal + routing (transport,
      *  parentRunId set to `ctx.runId`, surfaceRunId, conversationKey).
      *  Step handlers call this when a step needs to invoke another
      *  callable by URI — workflow-from-workflow, route-from-step,
@@ -178,22 +178,22 @@ export interface RecursiveDispatchResult {
 
 /** Typed routing — replaces the previously-untyped
  *  `Readonly<Record<string, unknown>>`. Workflow-substrate fields
- *  are explicit; tier-port-specific metadata lives in `context`. */
+ *  are explicit; transport-specific metadata lives in `context`. */
 export interface HandlerRouting {
-    /** Tier port that originated this dispatch chain. */
-    tier?: 'A' | 'B' | 'C';
+    /** Transport that originated this dispatch chain. */
+    transport?: 'in-process' | 'mcp' | 'laptop' | 'vm';
     /** UI anchor — top-level runId; propagates AS-IS through every
-     *  descendant of a dispatch tree. Tier ports filter events by
+     *  descendant of a dispatch tree. Transport ports filter events by
      *  this id to render the whole subtree in one surface. */
     surfaceRunId?: string;
     /** Parent run's id (set when this run is a recursive
      *  dispatch — subworkflow step or agent's `execute()` call). */
     parentRunId?: string;
-    /** Long-lived conversation continuity key (workspace-tier
+    /** Long-lived conversation continuity key (persistent in-process
      *  sessions). When set, the runner reuses session resources. */
     conversationKey?: string;
     /** Free-form metadata from the caller — slackThreadId,
-     *  claudeAiConvId, cliPid, etc. Subscriber-typed; the engine
+     *  mcpConvId, cliPid, etc. Subscriber-typed; the engine
      *  doesn't read keys here. */
     context: Readonly<Record<string, unknown>>;
 }

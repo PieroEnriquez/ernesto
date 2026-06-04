@@ -90,11 +90,8 @@ export interface MasterFsAdapter {
 
 export type WorkdirLock = <T>(fn: () => Promise<T>) => Promise<T>;
 
-export type WorkdirTier = 'managed' | 'remote-fs' | 'local-fs';
-
 export interface Workdir {
     readonly workdirId: string;
-    readonly tier: WorkdirTier;
     readonly workingTreeRoot: string;
     readonly branchRef: string;
     readonly fs: FsAdapter;
@@ -104,7 +101,6 @@ export interface Workdir {
 
 export interface WorkdirInput {
     workdirId: string;
-    tier: WorkdirTier;
     workingTreeRoot: string;
     fs: FsAdapter;
     master: MasterFsAdapter;

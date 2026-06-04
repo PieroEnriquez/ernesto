@@ -26,7 +26,7 @@ describe('commitTurn — lock serializes concurrent calls on the same workdirId'
 
     function buildWorkdir(workdirId: string) {
         return rehydrateWorkdir({
-            workdirId, tier: 'managed', workingTreeRoot: tmpRoot,
+            workdirId, workingTreeRoot: tmpRoot,
             fs: makeNodeFsAdapter(tmpRoot),
             master: { resolve: async () => ({ kind: 'not-found' }) },
             lock: makeInMemoryWorkdirLock(workdirId),

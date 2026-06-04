@@ -2,7 +2,7 @@
  * `loggingMiddleware` — observability hook around every dispatch.
  *
  * Emits a "dispatch start" log line on `before` and a "dispatch end"
- * line with status + durationMs + costUsd on `after`. Per-tier
+ * line with status + durationMs + costUsd on `after`. Per-transport
  * adapters can subscribe to the structured log output to populate
  * dashboards (Scalyr/Datadog/etc.) without touching the dispatch
  * code.
@@ -28,7 +28,7 @@ export interface LoggingMiddlewareOpts {
     /** Logger sink. Defaults to a no-op — callers wire in their
      *  per-file logger. */
     log?: Log;
-    /** Field-mask hook — callers can redact tier-specific fields
+    /** Field-mask hook — callers can redact transport-specific fields
      *  from the structured metadata before it ships. Default: pass
      *  through. */
     redact?: (meta: Record<string, unknown>) => Record<string, unknown>;
@@ -49,7 +49,7 @@ export function loggingMiddleware(
                 redact({
                     kind: ctx.kind,
                     principal: principalIdentity(ctx.principal),
-                    tier: ctx.opts.tier,
+                    transport: ctx.opts.transport,
                     surfaceRunId: ctx.opts.surfaceRunId,
                     parentRunId: ctx.opts.parentRunId,
                 }),

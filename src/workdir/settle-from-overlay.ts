@@ -3,8 +3,8 @@
  * server-side `main` with a real 3-way, then run the SAME lint → commit →
  * bot-push core as the other settle entry points.
  *
- * Why this is distinct from `settleFromPatch` (PROJECT.md §3.2): the Tier-C
- * laptop owns its working tree, so a stale patch is rebased ON THE LAPTOP
+ * Why this is distinct from `settleFromPatch` (PROJECT.md §3.2): the laptop
+ * transport owns its working tree, so a stale patch is rebased ON THE LAPTOP
  * (`fast_forward_required`). The EDITOR principal edits server-side — there is
  * no laptop to rebase on — so conflict resolution belongs here. We therefore
  * 3-way the overlay (authored against `patch.baseSha`) against current main and

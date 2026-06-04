@@ -58,7 +58,6 @@ afterAll(async () => {
 function makeFakeWorkdir(root?: string): Workdir {
     return {
         workdirId: 'wd1',
-        tier: 'managed',
         workingTreeRoot: root ?? SHARED_TMP_ROOT,
         branchRef: 'refs/workdirs/wd1',
         fs: {} as any,

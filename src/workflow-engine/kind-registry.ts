@@ -45,7 +45,8 @@ export interface KindPolicy {
      *  - `allowed[]` — explicit allowlist; absent means default
      *  - `disallowed[]` — denylist; complements allowed
      *  - `native` — whether SDK's Read/Write/Edit/Glob/Grep/Bash are
-     *    allowed (workspace-tier) or disallowed (server-tier MCP-only). */
+     *    allowed (in-process route kinds) or disallowed (server-side
+     *    route kinds, MCP-only). */
     tools?: {
         allowed?: string[];
         disallowed?: string[];
@@ -107,7 +108,7 @@ export class KindRegistry {
 
     /** Convenience: register a route kind. The policy defaults to
      *  `{ cwd: 'none', tools: { native: 'disallowed' }, hitl: 'never' }`
-     *  — the natural shape for server-tier MCP-only route handlers. */
+     *  — the natural shape for server-side MCP-only route handlers. */
     registerRoute(route: Route, policy?: KindPolicy): void {
         this.register({
             kind: 'route',

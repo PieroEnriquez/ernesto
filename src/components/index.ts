@@ -1,13 +1,13 @@
 /**
  * Component layer — declarative UI intent emitted by agents and route
- * steps, rendered by per-tier subscribers in their native UI.
+ * steps, rendered by per-transport subscribers in their native UI.
  *
  * Two-level taxonomy:
  *   - {@link UiComponent} — top-level kinds the `ui` MCP tool accepts.
  *   - {@link RenderableComponent} — nested inside `hitl.props.render`.
  *
  * See `agent-ops://workflows-unification/components.md` for the design
- * doc (taxonomy + per-tier render table + emission flow).
+ * doc (taxonomy + per-transport render table + emission flow).
  */
 
 export {

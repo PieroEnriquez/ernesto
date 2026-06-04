@@ -162,7 +162,7 @@ describe('tremendous E2E — unified runtime end-to-end', () => {
                 'product-enablement://pipeline',
                 { productId: 'P-12345' },
                 servicePrincipal('autofill-worker', 'req-1'),
-                { tier: 'A' },
+                { transport: 'in-process' },
             );
 
         expect(serviceRun.status).toBe('completed');
@@ -180,7 +180,7 @@ describe('tremendous E2E — unified runtime end-to-end', () => {
             { productId: 'P-67890' },
             userPrincipal('alice@example.com', ['product-enablement:write']),
             {
-                tier: 'A',
+                transport: 'in-process',
                 conversationKey: slackThreadId,
                 surfaceRunId: 'slack-surface-1',
             },

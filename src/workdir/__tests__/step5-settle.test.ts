@@ -36,7 +36,7 @@ describe('settleFromWorktree', () => {
     function buildWorkdir() {
         const fs = makeNodeFsAdapter(tmpRoot);
         return rehydrateWorkdir({
-            workdirId: 'wd1', tier: 'managed', workingTreeRoot: tmpRoot,
+            workdirId: 'wd1', workingTreeRoot: tmpRoot,
             fs, master: { resolve: async () => ({ kind: 'not-found' }) },
             lock: makeInMemoryWorkdirLock('wd1'),
         });
@@ -177,14 +177,14 @@ describe('settleFromWorktree', () => {
             workspaces: ['hr'],
             message: 'add hr',
             lint: allowAllLint,
-            trailers: { 'Workdir-Id': 'wd1', 'User': 'poc@example.com', 'Tier': 'A' },
+            trailers: { 'Workdir-Id': 'wd1', 'User': 'poc@example.com', 'Transport': 'in-process' },
         });
 
         const body = await runGit(tmpRoot, ['log', '-1', '--format=%B']);
         expect(body).toContain('add hr');
         expect(body).toContain('Workdir-Id: wd1');
         expect(body).toContain('User: poc@example.com');
-        expect(body).toContain('Tier: A');
+        expect(body).toContain('Transport: in-process');
     });
 
     it('relocates a workspace under a parent: stages the move, lints both rename endpoints', async () => {

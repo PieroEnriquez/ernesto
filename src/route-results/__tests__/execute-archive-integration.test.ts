@@ -24,7 +24,6 @@ afterAll(async () => {
 function makeWorkdir(): Workdir {
     return {
         workdirId: 'wd-int',
-        tier: 'managed',
         workingTreeRoot: WORKDIR_ROOT,
         branchRef: 'refs/workdirs/wd-int',
         fs: {} as any,

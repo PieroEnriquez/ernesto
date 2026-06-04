@@ -105,7 +105,7 @@ export interface SettleVerbContext {
     lint: LintFn;
     pushToMain: PushToMainFn;
     log: SettleVerbLogger;
-    /** Optional trailers added to the commit message (e.g. Workdir-Id, User, Tier). */
+    /** Optional trailers added to the commit message (e.g. Workdir-Id, User, Transport). */
     trailers?: Readonly<Record<string, string>>;
     hooks?: SettleVerbHooks;
 }

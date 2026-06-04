@@ -1,5 +1,5 @@
 /**
- * `VmRuntime` — the agent-runtime axis of the VM tier.
+ * `VmRuntime` — the agent-runtime axis of the VM layer.
  *
  * The microVM is a *placement* (where an agent process runs, with a FUSE
  * workdir + egress allowlist). WHICH agent runtime runs inside it — the

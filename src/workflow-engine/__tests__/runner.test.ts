@@ -54,7 +54,7 @@ describe('createRunner.dispatch', () => {
             'wf1',
             {},
             userPrincipal('u', ['x']),
-            { tier: 'A' },
+            { transport: 'in-process' },
         );
         expect(run.status).toBe('completed');
         expect(run.output).toEqual({ s1: { ok: true } });
@@ -101,12 +101,12 @@ describe('createRunner.dispatch', () => {
         });
     });
 
-    it('threads typed routing fields (tier, surfaceRunId, parentRunId) into the handler context', async () => {
+    it('threads typed routing fields (transport, surfaceRunId, parentRunId) into the handler context', async () => {
         const runner = createRunner();
-        let observed: { tier?: string; surfaceRunId?: string; parentRunId?: string } | undefined;
+        let observed: { transport?: string; surfaceRunId?: string; parentRunId?: string } | undefined;
         runner.registerStepKind('route', async (_step, ctx) => {
             observed = {
-                tier: ctx.routing.tier,
+                transport: ctx.routing.transport,
                 surfaceRunId: ctx.routing.surfaceRunId,
                 parentRunId: ctx.routing.parentRunId,
             };
@@ -125,14 +125,14 @@ describe('createRunner.dispatch', () => {
             {},
             userPrincipal('u', []),
             {
-                tier: 'A',
+                transport: 'in-process',
                 surfaceRunId: 'surface-123',
                 parentRunId: 'parent-456',
             },
         );
         expect(run.surfaceRunId).toBe('surface-123');
         expect(observed).toEqual({
-            tier: 'A',
+            transport: 'in-process',
             surfaceRunId: 'surface-123',
             parentRunId: 'parent-456',
         });

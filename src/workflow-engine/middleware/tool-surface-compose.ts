@@ -19,15 +19,15 @@
  *               // Build proxied external MCPs (mongo, slack, providers).
  *               // Build the ernesto MCP closed over principal + sessionId
  *               // — its `execute` tool calls back into runner.dispatch.
- *               // Build the ui MCP server (workspace-tier only).
+ *               // Build the ui MCP server (in-process transport only).
  *               return { mcpServers, teardown };
  *           },
  *       },
  *   }));
  *
- * The composer's lifecycle is session-scoped: workspace-tier kinds
+ * The composer's lifecycle is session-scoped: persistent kinds
  * with `policy.sessionContinuity: 'persistent'` get one MCP build per
- * conversation; server-tier kinds get a fresh build per dispatch
+ * conversation; ephemeral server-side kinds get a fresh build per dispatch
  * with the composer's `teardown` called in the after-hook.
  */
 
@@ -36,7 +36,7 @@ import type { Run } from '../types/runner';
 
 /** Backend-supplied composer. Implementation builds proxied MCP
  *  servers + the per-session ernesto MCP + the ui MCP for
- *  workspace-tier sessions. */
+ *  in-process sessions. */
 export interface ToolSurfaceComposer {
     compose(ctx: ToolSurfaceComposeInput): Promise<ToolSurfaceComposition>;
 }
@@ -44,8 +44,8 @@ export interface ToolSurfaceComposer {
 export interface ToolSurfaceComposeInput {
     kind: string;
     principal: DispatchPreContext['principal'];
-    /** Session id (workspace-tier reuses across dispatches; server-tier
-     *  is one per dispatch). */
+    /** Session id (persistent sessions reuse across dispatches;
+     *  ephemeral server-side kinds get one per dispatch). */
     sessionId: string;
     /** Workdir from the workspace-allocator middleware (if any). */
     workdirRoot?: string;
@@ -63,7 +63,7 @@ export interface ToolSurfaceComposition {
     disallowedToolsExtra?: ReadonlyArray<string>;
     systemPromptExtras?: ReadonlyArray<string>;
     /** Release function. Called in after-hook for ephemeral sessions;
-     *  skipped for persistent (workspace-tier) sessions. */
+     *  skipped for persistent (in-process) sessions. */
     teardown?: () => Promise<void> | void;
 }
 

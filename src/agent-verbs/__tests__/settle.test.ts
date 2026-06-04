@@ -42,7 +42,6 @@ describe('handleSettle', () => {
         const fs = makeNodeFsAdapter(tmpRoot);
         return rehydrateWorkdir({
             workdirId: 'wd1',
-            tier: 'managed',
             workingTreeRoot: tmpRoot,
             fs,
             master: { resolve: async () => ({ kind: 'not-found' }) },
@@ -321,13 +320,13 @@ describe('handleSettle', () => {
         await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# hr\n'));
 
         const ctx = makeCtx({
-            trailers: { 'Workdir-Id': 'wd1', 'User': 'u@b.com', 'Tier': 'A' },
+            trailers: { 'Workdir-Id': 'wd1', 'User': 'u@b.com', 'Transport': 'in-process' },
         });
 
         const r = await handleSettle(workdir, { message: 'add hr' }, ctx);
         expect(r.ok).toBe(true);
         const log = await runGit(tmpRoot, ['log', '-1', '--format=%B']);
         expect(log).toContain('Workdir-Id: wd1');
-        expect(log).toContain('Tier: A');
+        expect(log).toContain('Transport: in-process');
     });
 });

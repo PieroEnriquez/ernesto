@@ -36,7 +36,7 @@ describe('settleFromPatch', () => {
     function buildWorkdir() {
         const fs = makeNodeFsAdapter(tmpRoot);
         return rehydrateWorkdir({
-            workdirId: 'wd1', tier: 'local-fs', workingTreeRoot: tmpRoot,
+            workdirId: 'wd1', workingTreeRoot: tmpRoot,
             fs, master: { resolve: async () => ({ kind: 'not-found' }) },
             lock: makeInMemoryWorkdirLock('wd1'),
         });
@@ -251,7 +251,7 @@ describe('settleFromPatch', () => {
             parentSha: headSha,
             lint: allowAllLint,
             pushToMain: fakePush,
-            trailers: { Tier: 'C', User: 'trb' },
+            trailers: { Transport: 'laptop', User: 'trb' },
         });
 
         expect(r.ok).toBe(true);
@@ -260,7 +260,7 @@ describe('settleFromPatch', () => {
             expect(pushedSha).toBe(r.sha);
         }
         const commitMsg = await runGit(tmpRoot, ['log', '-1', '--format=%B']);
-        expect(commitMsg).toContain('Tier: C');
+        expect(commitMsg).toContain('Transport: laptop');
         expect(commitMsg).toContain('User: trb');
     });
 });

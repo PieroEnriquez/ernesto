@@ -8,8 +8,8 @@
  * - L2 platform-body append: reads `<cwd>/workspaces/_platform/WORKSPACE.md`,
  *   strips frontmatter, appends to the agent's own system prompt (both
  *   the string and preset shapes).
- * - Silent fallback when the platform body is absent or empty (Tier-C
- *   and scripts without a real clone keep working unchanged).
+ * - Silent fallback when the platform body is absent or empty (laptop
+ *   transport and scripts without a real clone keep working unchanged).
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs';
@@ -171,11 +171,11 @@ describe('compileAgent — L2 platform body append', () => {
     });
 });
 
-describe('compileAgent — tier-specific platform body', () => {
+describe('compileAgent — transport-specific platform body', () => {
     let tmp: string;
 
     beforeEach(() => {
-        tmp = mkdtempSync(join(tmpdir(), 'lib-compile-agent-tier-'));
+        tmp = mkdtempSync(join(tmpdir(), 'lib-compile-agent-transport-'));
         mkdirSync(join(tmp, 'workspaces', '_platform'), { recursive: true });
     });
 
@@ -187,31 +187,38 @@ describe('compileAgent — tier-specific platform body', () => {
         writeFileSync(join(tmp, 'workspaces', '_platform', name), body, 'utf8');
     }
 
-    it('appends universal body + in-process overlay when the surface is "A"', () => {
+    it('appends universal body + in-process overlay for transport "in-process"', () => {
         writePlatformFile('WORKSPACE.md', 'Universal rules.');
         writePlatformFile('in-process.md', 'In-process specifics.');
-        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, tier: 'A' });
+        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, transport: 'in-process' });
         expect(r.systemPrompt).toBe(
             'You are a test agent.\n\nUniversal rules.\n\nIn-process specifics.',
         );
     });
 
-    it('uses mcp.md when the surface is "B"', () => {
+    it('uses mcp.md for transport "mcp"', () => {
         writePlatformFile('WORKSPACE.md', 'Universal.');
         writePlatformFile('in-process.md', 'In-process only.');
         writePlatformFile('mcp.md', 'MCP only.');
-        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, tier: 'B' });
+        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, transport: 'mcp' });
         expect(r.systemPrompt).toBe('You are a test agent.\n\nUniversal.\n\nMCP only.');
     });
 
-    it('a laptop surface ("C") has no injected overlay — it carries its own', () => {
+    it('uses the in-process overlay for transport "vm" (VM shares the in-process substrate)', () => {
+        writePlatformFile('WORKSPACE.md', 'Universal.');
+        writePlatformFile('in-process.md', 'In-process specifics.');
+        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, transport: 'vm' });
+        expect(r.systemPrompt).toBe('You are a test agent.\n\nUniversal.\n\nIn-process specifics.');
+    });
+
+    it('a laptop transport has no injected overlay — it carries its own', () => {
         writePlatformFile('WORKSPACE.md', 'Universal.');
         writePlatformFile('in-process.md', 'In-process only.');
-        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, tier: 'C' });
+        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, transport: 'laptop' });
         expect(r.systemPrompt).toBe('You are a test agent.\n\nUniversal.');
     });
 
-    it('skips the overlay when the surface is omitted (legacy callers unaffected)', () => {
+    it('skips the overlay when the transport is omitted (legacy callers unaffected)', () => {
         writePlatformFile('WORKSPACE.md', 'Universal.');
         writePlatformFile('in-process.md', 'In-process only.');
         const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp } });
@@ -220,20 +227,20 @@ describe('compileAgent — tier-specific platform body', () => {
 
     it('missing overlay file falls back to universal only', () => {
         writePlatformFile('WORKSPACE.md', 'Universal.');
-        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, tier: 'A' });
+        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, transport: 'in-process' });
         expect(r.systemPrompt).toBe('You are a test agent.\n\nUniversal.');
     });
 
     it('missing universal but present overlay emits just the overlay body', () => {
         writePlatformFile('in-process.md', 'In-process solo.');
-        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, tier: 'A' });
+        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, transport: 'in-process' });
         expect(r.systemPrompt).toBe('You are a test agent.\n\nIn-process solo.');
     });
 
     it('strips frontmatter from the overlay too', () => {
         writePlatformFile('WORKSPACE.md', 'Universal.');
         writePlatformFile('in-process.md', '---\nname: in-process\n---\nFrontmatter-stripped overlay body.');
-        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, tier: 'A' });
+        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, transport: 'in-process' });
         expect(r.systemPrompt).toBe(
             'You are a test agent.\n\nUniversal.\n\nFrontmatter-stripped overlay body.',
         );
@@ -242,14 +249,14 @@ describe('compileAgent — tier-specific platform body', () => {
     it('composePlatformBody returns the concatenated body for direct (non-compileAgent) callers', () => {
         writePlatformFile('WORKSPACE.md', 'U.');
         writePlatformFile('in-process.md', 'P.');
-        expect(composePlatformBody(tmp, 'A')).toBe('U.\n\nP.');
+        expect(composePlatformBody(tmp, 'in-process')).toBe('U.\n\nP.');
     });
 
     it('composePlatformBody returns null when both files are absent', () => {
-        expect(composePlatformBody(tmp, 'A')).toBeNull();
+        expect(composePlatformBody(tmp, 'in-process')).toBeNull();
     });
 
     it('composePlatformBody returns null when cwd is undefined', () => {
-        expect(composePlatformBody(undefined, 'A')).toBeNull();
+        expect(composePlatformBody(undefined, 'in-process')).toBeNull();
     });
 });

@@ -3,7 +3,7 @@
  * engine has a focused, typed surface.
  *
  * The bus carries every `FactEvent` the runner emits; subscribers
- * (per-tier translators, audit pipelines, HTTP SSE bridges) attach
+ * (per-transport translators, audit pipelines, HTTP SSE bridges) attach
  * here.
  */
 

@@ -52,7 +52,7 @@ describe('bootWorkdir — node adapter ↔ in-memory parity', () => {
         const master = makeVolumeMasterFs(masterFsRoot);
 
         const result = await bootWorkdir({
-            workdirId: 'wd-real', tier: 'managed', workingTreeRoot,
+            workdirId: 'wd-real', workingTreeRoot,
             fs, master, lock: makeInMemoryWorkdirLock('wd-real'),
             visibleWorkspaces: ['hr', 'cs'],
             layout: LAYOUT,
@@ -73,7 +73,7 @@ describe('bootWorkdir — node adapter ↔ in-memory parity', () => {
         });
 
         const result = await bootWorkdir({
-            workdirId: 'wd-mem', tier: 'remote-fs', workingTreeRoot: '/wt',
+            workdirId: 'wd-mem', workingTreeRoot: '/wt',
             fs, master, lock: makeInMemoryWorkdirLock('wd-mem'),
             visibleWorkspaces: ['hr', 'cs'],
             layout: LAYOUT,
@@ -89,7 +89,7 @@ describe('bootWorkdir — node adapter ↔ in-memory parity', () => {
     it('parity: same fixtures + same layout → same byte content per path on both adapter pairs', async () => {
         const realFs = makeNodeFsAdapter(workingTreeRoot);
         await bootWorkdir({
-            workdirId: 'a', tier: 'managed', workingTreeRoot,
+            workdirId: 'a', workingTreeRoot,
             fs: realFs, master: makeVolumeMasterFs(masterFsRoot),
             lock: makeInMemoryWorkdirLock('a'),
             visibleWorkspaces: ['hr', 'cs'], layout: LAYOUT,
@@ -97,7 +97,7 @@ describe('bootWorkdir — node adapter ↔ in-memory parity', () => {
 
         const memFs = makeInMemoryFsAdapter();
         await bootWorkdir({
-            workdirId: 'b', tier: 'remote-fs', workingTreeRoot: '/wt',
+            workdirId: 'b', workingTreeRoot: '/wt',
             fs: memFs,
             master: makeInMemoryMasterFs({
                 bytes: new Map(FIXTURE.map(f => [f.path, enc(f.content)])),

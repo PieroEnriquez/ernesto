@@ -56,7 +56,7 @@ describe('settleFromWorktree — step 6 journal rebase', () => {
     function buildWorkdir() {
         const fs = makeNodeFsAdapter(workRoot);
         return rehydrateWorkdir({
-            workdirId: 'wd1', tier: 'managed', workingTreeRoot: workRoot,
+            workdirId: 'wd1', workingTreeRoot: workRoot,
             fs, master: { resolve: async () => ({ kind: 'not-found' }) },
             lock: makeInMemoryWorkdirLock('wd1'),
         });

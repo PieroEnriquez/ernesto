@@ -4,7 +4,7 @@
  * Validators are structural — they check the `kind` discriminator, the
  * `props` shape, and required-field presence. They don't validate
  * renderer-specific concerns (URL well-formedness, chart-data
- * cardinality, etc.); per-tier renderers do that.
+ * cardinality, etc.); per-transport renderers do that.
  *
  * Errors are descriptive strings the wire layer can surface to the
  * agent. Each error follows the format

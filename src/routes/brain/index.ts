@@ -10,19 +10,19 @@
  * workdir, workspaces stay workspaces — names the unnamed, don't
  * rename the named.
  *
- * **The collapse.** Tiers historically each had their own FS surface:
- * tier A used SDK built-in `Read`/`Write`/`Edit`/`Glob`/`Grep`; tier B
- * exposed bespoke `fs_*` MCP tools; tier C used Claude Code hooks for
- * sparse materialization. Three tool sets, three implementations.
- * The agent's prompt had to know which tier it was on.
+ * **The collapse.** Transports historically each had their own FS surface:
+ * the in-process transport used SDK built-in `Read`/`Write`/`Edit`/`Glob`/`Grep`;
+ * the mcp transport exposed bespoke `fs_*` MCP tools; the laptop transport
+ * used Claude Code hooks for sparse materialization. Three tool sets,
+ * three implementations. The agent's prompt had to know which transport it was on.
  *
  * This module makes FS a route family — same `brain://*` URIs across
- * every tier. Tier-specific renderers vary at the *dispatch* layer
- * (tier A: in-process; tier B: MCP-over-HTTP; tier C: Claude-Code-hook
+ * every transport. Transport-specific renderers vary at the *dispatch* layer
+ * (in-process: in-process; mcp: MCP-over-HTTP; laptop: Claude-Code-hook
  * with local materialization), but the contract, input/output
  * schemas, and path-security rules are shared.
  *
- * **What "renderer" means here.** A tier doesn't reimplement the
+ * **What "renderer" means here.** A transport doesn't reimplement the
  * primitive — it picks the most efficient transport for `execute({uri:
  * 'brain://read', ...})`. The agent never sees the difference.
  *
@@ -287,7 +287,7 @@ export function registerBrainRoutes(registry: RouteRegistry): void {
                 await fs.mkdir(dirname(resolved.abs), { recursive: true });
                 // Atomic write: tmp file + rename. Avoids partial reads
                 // mid-write from concurrent readers on the same workdir
-                // (tier A's hardlink-mirror sees the rename atomically).
+                // (the in-process transport's hardlink-mirror sees the rename atomically).
                 const tmp = `${resolved.abs}.tmp-${Date.now()}-${process.pid}`;
                 await fs.writeFile(tmp, input.content, 'utf8');
                 await fs.rename(tmp, resolved.abs);

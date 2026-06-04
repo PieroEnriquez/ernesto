@@ -3,9 +3,9 @@
  *
  * The agent-facing wrapper around the unified dispatch surface. Spec §9 / §30.
  *
- * Schema + description live here (not in the backend) so every tier-frontend
+ * Schema + description live here (not in the backend) so every transport frontend
  * uses the same wire shape. The lib stays free of transport (Anthropic SDK,
- * MCP server, Express); transport-binding happens in the per-tier frontends.
+ * MCP server, Express); transport-binding happens in the per-transport frontends.
  *
  * Dispatch path: every call goes through `ctx.dispatchByUri` (wired by the
  * backend's tool-surface composer to `runner.dispatch`). Routes and workflows
@@ -27,7 +27,7 @@ import type { VerbLogger, VerbUser } from './types';
 
 /**
  * `execute` opts into the bundled-UI side-channel via the optional
- * `ui?: UiComponent[]` field. When the per-tier MCP dispatch wrapper
+ * `ui?: UiComponent[]` field. When the per-transport MCP dispatch wrapper
  * sees `acceptsBundledUi: true` on the registration, the middleware
  * strips `ui` from args (validating + emitting each component) BEFORE
  * `handleExecute` runs. The handler therefore never sees `ui` and its
@@ -62,7 +62,7 @@ export const executeInputSchema = z.object({
     ui: bundledUiFieldSchema,
 });
 
-/** Tool-registration opt-in flag. Per-tier frontends that register
+/** Tool-registration opt-in flag. Per-transport frontends that register
  *  `execute` as an MCP tool should set `acceptsBundledUi: true` so the
  *  dispatch wrapper pre-processes `args.ui`. */
 export const EXECUTE_ACCEPTS_BUNDLED_UI = true;
@@ -117,7 +117,7 @@ export interface ExecuteVerbContext {
     /** `fact.component` emitter — wired from the workflow-engine's
      *  per-step stepEmit when this verb is invoked inside an agent
      *  step. Routes with a `render: [...]` manifest fire their
-     *  projected components here so the per-tier subscribers render
+     *  projected components here so the per-transport subscribers render
      *  automatically without the agent retyping. See
      *  `route/render.ts` + the tool-manifest design doc. */
     emitComponent?: (component: import('../route/render').ManifestComponent) => void;
@@ -127,10 +127,10 @@ export interface ExecuteVerbContext {
      *  synthetic id when absent. */
     runId?: string;
     /** Parent-run routing snapshot (slackThreadId, slackChannelId,
-     *  tier, parentRunId, …). Routes that fan out to child workflow
+     *  transport, parentRunId, …). Routes that fan out to child workflow
      *  runs propagate selected keys here onto the child's
      *  dispatchWorkflow context — the child inherits the parent's UI
-     *  surface and tier subscribers route the child's events via
+     *  surface and transport subscribers route the child's events via
      *  `parentRunId`. See `RouteContext.inheritedRouting`. */
     inheritedRouting?: Readonly<Record<string, unknown>>;
     /**

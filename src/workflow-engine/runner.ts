@@ -163,7 +163,7 @@ class Runner implements WorkflowRunner {
             preCtx.decl = declFromRegistry;
         } else if (workflowDecl.declaration) {
             // Reader-loaded workflow: synthesize a KindDecl with the same
-            // safety defaults `registerWorkflow` applies, so workspace-tier
+            // safety defaults `registerWorkflow` applies, so workspace-bound
             // middleware (notably `workspaceAllocatorMiddleware`) sees the
             // `cwd: 'workspace-workdir'` invariant for agent-main workflows
             // that arrive via the reader without going through the registry.
@@ -423,8 +423,8 @@ class Runner implements WorkflowRunner {
                 const childOpts: DispatchOpts = {
                     ...parent.routing.context,
                     parentRunId: parent.runId,
-                    ...(parent.routing.tier !== undefined
-                        ? { tier: parent.routing.tier }
+                    ...(parent.routing.transport !== undefined
+                        ? { transport: parent.routing.transport }
                         : {}),
                     ...(parent.routing.surfaceRunId !== undefined
                         ? { surfaceRunId: parent.routing.surfaceRunId }
@@ -601,8 +601,13 @@ function principalFromRouting(routing: Record<string, unknown>): Principal {
  *  map to typed opts; everything else is replayed as `context`. */
 function optsFromRouting(routing: Record<string, unknown>): DispatchOpts {
     const opts: DispatchOpts = {};
-    if (routing.tier === 'A' || routing.tier === 'B' || routing.tier === 'C') {
-        opts.tier = routing.tier;
+    if (
+        routing.transport === 'in-process' ||
+        routing.transport === 'mcp' ||
+        routing.transport === 'laptop' ||
+        routing.transport === 'vm'
+    ) {
+        opts.transport = routing.transport;
     }
     if (typeof routing.surfaceRunId === 'string') opts.surfaceRunId = routing.surfaceRunId;
     if (typeof routing.parentRunId === 'string') opts.parentRunId = routing.parentRunId;
@@ -610,7 +615,7 @@ function optsFromRouting(routing: Record<string, unknown>): DispatchOpts {
         opts.conversationKey = routing.conversationKey;
     }
     const RESERVED = new Set([
-        'tier',
+        'transport',
         'surfaceRunId',
         'parentRunId',
         'conversationKey',

@@ -44,12 +44,12 @@ describe('InMemoryStore', () => {
             workflow: 'wf',
             status: 'running',
             inputs: {},
-            routing: { tier: 'A' },
+            routing: { transport: 'in-process' },
             startedAt: 100,
         });
         const got = await s.getRunState('r-1');
         expect(got?.status).toBe('running');
-        expect(got?.routing).toEqual({ tier: 'A' });
+        expect(got?.routing).toEqual({ transport: 'in-process' });
     });
 
     it('listRuns filters by status + applies limit', async () => {

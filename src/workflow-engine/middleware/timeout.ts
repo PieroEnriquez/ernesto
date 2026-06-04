@@ -7,8 +7,8 @@
  * in-flight step's `await` and cascades through the dispatcher. The
  * subworkflow handler propagates the signal to children.
  *
- * Service-tier kinds with `timeoutMs: 60_000` get a hard 60s budget;
- * workspace-tier sessions usually omit timeoutMs (unbounded — bounded
+ * Service-level route kinds with `timeoutMs: 60_000` get a hard 60s budget;
+ * in-process sessions usually omit timeoutMs (unbounded — bounded
  * by the user's patience instead).
  */
 
