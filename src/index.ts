@@ -28,6 +28,7 @@ export type {
     Workdir, WorkdirLock,
     GrepOutputMode,
     SettleResult as WorkdirSettleResult,
+    SettleFromOverlayResult, SettleFromOverlayInput,
     LintFn, LintError, PushToMainFn,
     RedisLockClient,
 } from './workdir';
