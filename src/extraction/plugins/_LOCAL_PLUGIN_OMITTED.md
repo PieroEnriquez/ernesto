@@ -4,9 +4,8 @@ There is no `local.ts` extraction plugin, and there should not be one.
 
 ## What a "local" plugin would do
 
-The legacy backend `LocalSource`
-(`backend/src/ernesto/content/pipelines/sources/LocalSource.ts`) wraps
-`fs.readdirSync` / `fs.readFileSync`: given a root directory, it walks the
+A legacy host-side `LocalSource`
+wraps `fs.readdirSync` / `fs.readFileSync`: given a root directory, it walks the
 tree, filters by extension, detects content type from the extension, and
 returns `{ id, name, path, content }`.
 

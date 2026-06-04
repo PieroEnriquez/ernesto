@@ -1,15 +1,14 @@
 /**
  * Managed-agents type surface (§7).
  *
- * Pure data — no I/O, no SDK dependency, no transport binding. Backend
- * Tier-A wraps `CompiledAgent` into Anthropic SDK `Options`; Tier-C
- * laptop dispatches the same shape through HTTP; future Tier-B
- * (claude.ai integration) reads it the same way.
+ * Pure data — no I/O, no SDK dependency, no transport binding. The
+ * in-process transport wraps `CompiledAgent` into Anthropic SDK
+ * `Options`; the laptop transport dispatches the same shape through
+ * HTTP; the mcp transport (a remote MCP client) reads it the same way.
  *
- * Spec: `backend/src/ernesto/domains/workspaces/README.md` §7 (Managed
- * Agents). The §7.1 split between *declaration* and *invocation* lives
- * here; the §7.2 `AgentContext` is the single threaded value every
- * dispatcher passes through.
+ * The §7.1 split between *declaration* and *invocation* lives here; the
+ * §7.2 `AgentContext` is the single threaded value every dispatcher
+ * passes through.
  */
 
 /**
@@ -34,15 +33,15 @@ export interface JsonSchemaOutputFormat {
 }
 
 /**
- * Static description of an agent. Backend's `WorkflowConfig`
- * structurally satisfies this today; the same shape `managed-agents/<slug>.md`
- * frontmatter parses to when §7 stop 6 lands. Pure data — no runtime.
+ * Static description of an agent. The host application's workflow
+ * config structurally satisfies this today; the same shape
+ * `managed-agents/<slug>.md` frontmatter parses to when §7 stop 6
+ * lands. Pure data — no runtime.
  *
  * `mcpServers` is `string[]` rather than a strict id type
- * because the registry of legal ids lives on the *backend* side
- * (`MCP_SERVER_REGISTRY` in `backend/src/ernesto/server/http/mcp-servers.ts`).
- * The backend's own `WorkflowConfig.mcpServers: McpServerId[]` is the
- * stricter shape; lib accepts anything structurally and trusts the
+ * because the registry of legal ids lives in the host application,
+ * not in this lib. The host's own workflow config uses the stricter
+ * id-typed shape; lib accepts anything structurally and trusts the
  * caller to have type-checked.
  */
 export interface AgentDeclaration {
@@ -89,21 +88,24 @@ export interface AgentDeclaration {
 }
 
 /**
- * Tier the dispatcher is running on. Threaded through to `compileAgent`
- * so the per-tier `_platform/tier-{a|b|c}.md` body is appended on top
- * of the universal `_platform/WORKSPACE.md`. Absent ≡ skip the tier
- * append (legacy callers, tests, scripts without a workdir).
+ * The runtime surface the dispatcher is running on (the transport).
+ * Threaded through to `compileAgent` so the per-surface
+ * `_platform/<surface>.md` body is appended on top of the universal
+ * `_platform/WORKSPACE.md`. Absent ≡ skip the per-surface append
+ * (legacy callers, tests, scripts without a workdir).
  *
- * - `A` — server-side (Slack backend, cron, managed-agent runtime).
- * - `B` — claude.ai MCP integration.
- * - `C` — laptop CLI / Claude Code `/ernesto` skill.
+ * - `A` — the in-process transport (runs in the host process: chat
+ *   backend, cron, managed-agent runtime).
+ * - `B` — the mcp transport (a remote MCP client).
+ * - `C` — the laptop transport (a dev laptop with a synced checkout +
+ *   plugin).
  */
 export type TierId = 'A' | 'B' | 'C';
 
 /**
- * The single threaded value every dispatcher (Slack adapter, cron
- * scheduler, HTTP route, spawn-workflow script, Tier-C CLI) hands to
- * `compileAgent` / `invokeAgent`. §7.2.
+ * The single threaded value every dispatcher (chat adapter, cron
+ * scheduler, HTTP route, spawn-workflow script, the laptop transport)
+ * hands to `compileAgent` / `invokeAgent`. §7.2.
  *
  * Kept narrow on day one — `session.cwd` is the only field
  * `compileAgent` reads. Future stops widen: §7.3 needs
@@ -117,23 +119,24 @@ export interface AgentContext {
         cwd?: string;
     };
     /**
-     * Which tier frontend is composing this agent. Drives the
-     * `_platform/tier-{a|b|c}.md` append. Optional for backwards
-     * compatibility — callers that haven't migrated still get the
-     * universal body only.
+     * Which transport (runtime surface) is composing this agent. Drives
+     * the per-surface `_platform/<surface>.md` append. Optional for
+     * backwards compatibility — callers that haven't migrated still get
+     * the universal body only.
      */
     tier?: TierId;
 }
 
 /**
- * Result of `compileAgent`. Transport-agnostic — the per-tier
+ * Result of `compileAgent`. Transport-agnostic — the per-transport
  * frontend finishes the binding:
  *
- * - Backend Tier-A: wraps to Anthropic SDK `Options` (`env`, `hooks`,
- *   `abortController`, `cwd`, `persistSession`, `resume`,
+ * - the in-process transport: wraps to Anthropic SDK `Options` (`env`,
+ *   `hooks`, `abortController`, `cwd`, `persistSession`, `resume`,
  *   `forkSession`, `mcpServers` connection record).
- * - Tier-C laptop: forwards through HTTP to backend Tier-A.
- * - Future Tier-B: same wrapping, different transport.
+ * - the laptop transport: forwards through HTTP to the in-process
+ *   transport.
+ * - the mcp transport: same wrapping, different transport.
  */
 export interface CompiledAgent {
     model: string;

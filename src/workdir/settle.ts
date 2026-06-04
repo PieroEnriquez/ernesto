@@ -8,9 +8,9 @@ import { runSettleCore } from './settle-core';
 /**
  * Per-workspace subdirectories that are generated content (extraction worker,
  * attach route). They live as hard-link mirrors of master-fs placed at
- * session boot (deployer-owned — see backend's `ensureMasterFsOverlays`)
+ * session boot (deployer-owned — see the host's `ensureMasterFsOverlays`)
  * and must never enter the git index. settle excludes them from staging via
- * git pathspec, regardless of any `.gitignore` rules — the workspaces repo's
+ * git pathspec, regardless of any `.gitignore` rules — the workspaces tree's
  * `.gitignore` is deliberately empty of these because ripgrep (the engine
  * behind fs_glob/fs_grep) reads .gitignore and would silently skip them,
  * hiding master-fs-backed content from discovery. Keep this list in sync
@@ -33,15 +33,15 @@ const GENERATED_SUBDIRS = ['extracted', 'attached'] as const;
  * mid-session. Settle must not stage it — the bytes the agent might see
  * in git status are master-fs state, not author intent.
  *
- * Spec §3.5 describes the target state where `attachments.yaml` lives in
- * git (workdir-authored, settled normally). The route still writes the
- * yaml to master-fs today, so the exclusion stays until the route flip
- * lands; otherwise sibling-session attaches would leak via the overlay.
+ * The target state has `attachments.yaml` living in git (workdir-authored,
+ * settled normally). The route still writes the yaml to master-fs today, so
+ * the exclusion stays until the route flip lands; otherwise sibling-session
+ * attaches would leak via the overlay.
  *
  * `.derived-from-sha` is the per-workspace freshness sentinel written by
- * the derive worker into master-fs only (see
- * `tier-shared/master-fs-overlays.ts`'s `DERIVED_FROM_SHA_FILE` and the
- * worker at `tier-a/derive-worker.ts`). It is master-fs-canonical, must
+ * the derive worker into master-fs only (the `DERIVED_FROM_SHA_FILE`
+ * marker; the derive worker runs on the in-process transport). It is
+ * master-fs-canonical, must
  * not enter git, and was historically leaking in via `git add` because
  * the exclusion list omitted it — every refresh-from-main then conflicted
  * on every workspace as soon as the derive worker bumped the marker for
@@ -90,7 +90,7 @@ export interface SettleInput {
     /** If omitted, settle stops after the local commit and returns the sha;
      *  the caller (e.g. tests, or a deployer that runs lint-only) handles push. */
     pushToMain?: PushToMainFn;
-    /** Trailers to add to the commit (e.g. Workdir-Id, User, Tier). */
+    /** Trailers to add to the commit (e.g. Workdir-Id, User, transport). */
     trailers?: Readonly<Record<string, string>>;
 }
 
@@ -101,8 +101,9 @@ export type SettleResult =
     | { ok: false; error: 'merge_conflict' };
 
 /**
- * Tier A/B settle: stage `workspaces[]` from the working tree, run lint, commit
- * with trailers, optionally hand the resulting sha to the deployer's bot push.
+ * Worktree settle (in-process and mcp transports): stage `workspaces[]` from
+ * the working tree, run lint, commit with trailers, optionally hand the
+ * resulting sha to the deployer's bot push.
  *
  * The lib does NOT hold bot credentials or perform `git push origin main`
  * directly — the deployer's `pushToMain` callback is the only thing that
@@ -148,9 +149,9 @@ export async function settleFromWorktree(
         // Stage each resolved path minus its master-fs overlays. `extracted/`
         // and `attached/` (subdirs) and `attachments.yaml` (file) are
         // hard-link mirrors of master-fs placed at session boot (deployer-
-        // owned: backend's `ensureMasterFsOverlays`); they must never enter
+        // owned: the host's `ensureMasterFsOverlays`); they must never enter
         // the git index. Doing the exclusion here (instead of via the
-        // workspaces repo's `.gitignore`) keeps the working tree
+        // workspaces tree's `.gitignore`) keeps the working tree
         // discoverable to ripgrep-based tools (`fs_glob`, `fs_grep`) —
         // ripgrep reads .gitignore and would silently skip these paths,
         // hiding the mirrored master-fs content. Only git treats them as

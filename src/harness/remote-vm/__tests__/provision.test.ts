@@ -8,13 +8,13 @@ import {
 describe('buildProvisionSpec', () => {
     const base = {
         agentKey: 'conv-123',
-        backendBaseUrl: 'https://api.bitrefill.internal',
+        backendBaseUrl: 'https://api.example.internal',
     };
 
     it('derives the deny-all egress policy when none supplied', () => {
         const spec = buildProvisionSpec(base);
         expect(spec.networkPolicy.allowDomains).toEqual([
-            'api.bitrefill.internal',
+            'api.example.internal',
             'api.anthropic.com',
         ]);
     });

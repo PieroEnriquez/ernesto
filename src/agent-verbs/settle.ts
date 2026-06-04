@@ -5,9 +5,9 @@
  *
  * The verb's input is `{ message }` — workspaces are derived from the
  * working-tree diff vs `origin/main` so the agent never has to enumerate
- * them. The backend's HTTPS endpoint stays the source of truth for explicit
- * `workspaces[]` (Tier C ships a patch, where the set is known up-front);
- * the in-process verbs let the lib infer.
+ * them. The host application's settle endpoint stays the source of truth
+ * for explicit `workspaces[]` (the laptop transport ships a patch, where
+ * the set is known up-front); the in-process verbs let the lib infer.
  *
  * Side-effects (audit log + pubsub) are NOT performed here — they're
  * injected as `hooks` by the deployer. Hook failures are caught and logged
@@ -83,8 +83,9 @@ Call this exactly once when your work in this turn is complete and you have no f
 export type SettleVerbLogger = VerbLogger;
 
 export interface SettleVerbHooks {
-    /** Called after a successful settle (commit + push). Used by Tier A backend
-     *  to record audit log entry + publish workspaces.pushed pubsub. */
+    /** Called after a successful settle (commit + push). Used by the
+     *  in-process transport's host to record an audit log entry +
+     *  publish a workspaces.pushed pubsub. */
     onSettleSuccess?: (
         workspaces: ReadonlyArray<string>,
         sha: string,
@@ -295,8 +296,8 @@ async function deriveAffectedWorkspaces(workingTreeRoot: string): Promise<string
         if (match) {
             // Skip master-fs overlays. `extracted/`, `routes/`, `attached/`
             // subdirs AND the `attachments.yaml` file are hard-link mirrors
-            // of master-fs placed at session boot (deployer-owned: backend's
-            // `ensureMasterFsOverlays`) / mid-session (`remirrorFile`).
+            // of master-fs placed at session boot (host-owned overlay
+            // setup) / mid-session (`remirrorFile`).
             // Without this filter, every workspace whose mirror got
             // refreshed — or that the agent attached a file to via
             // `_platform://attach` — would show up as untracked in

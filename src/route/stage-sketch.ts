@@ -2,7 +2,7 @@
  * Staged-component sketch — compact, token-budget-aware serialization
  * of the components a route's render manifest emitted to the user.
  *
- * The renderer (Slack, claude.ai MCP, CLI) consumes the FULL component
+ * The renderer (Slack, a remote MCP client, the laptop transport) consumes the FULL component
  * payload from `ctx.emitComponent`. The agent, on its next turn, needs
  * to know **what the user already sees** so it can react (decide
  * whether to add insights, deepen the view, or move on) — but it does

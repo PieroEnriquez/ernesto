@@ -14,7 +14,7 @@ describe('commitTurn — lock serializes concurrent calls on the same workdirId'
     beforeEach(async () => {
         tmpRoot = await mkdtemp(path.join(tmpdir(), 'ernesto-commit-'));
         await runGit(tmpRoot, ['init', '-q', '-b', 'main']);
-        await runGit(tmpRoot, ['config', 'user.email', 'poc@bitrefill.com']);
+        await runGit(tmpRoot, ['config', 'user.email', 'poc@example.com']);
         await runGit(tmpRoot, ['config', 'user.name', 'PoC']);
         await runGit(tmpRoot, ['config', 'commit.gpgsign', 'false']);
         await runGit(tmpRoot, ['commit', '-q', '--allow-empty', '-m', 'init']);

@@ -7,19 +7,19 @@ import { scanWorkspaceBoundaries, boundaryForName } from '../workspaces/boundari
  * Stage + diff a unified patch for the named workspaces, with the
  * `extracted/` and `attached/` subtrees excluded via pathspec.
  *
- * This is the patch shape the Tier-C laptop sends across the wire to
- * `/ernesto/tier-c/settle`, and the same shape the server-side
- * `settleFromPatch` expects to apply under the bot identity. Future
- * Tier-B (claude.ai integration) will produce identical patches.
+ * This is the patch shape the laptop transport sends across the wire to
+ * the host's settle endpoint, and the same shape the server-side
+ * `settleFromPatch` expects to apply under the bot identity. The mcp
+ * transport (a remote MCP client) produces identical patches.
  *
- * Pathspec exclusions match the §22 settle gate: `extracted/` is rebuilt
+ * Pathspec exclusions match the settle gate: `extracted/` is rebuilt
  * by the derive worker, `attached/` is hard-linked from master-fs and
  * has its own routing (`_platform://attach`); neither belongs in the
  * dev's settle commit.
  *
  * Returns `parentSha` so the caller can send it alongside the patch —
  * the server uses it to detect fast-forward conflicts and respond with
- * `fast_forward_required` for the CLI to rebase and retry.
+ * `fast_forward_required` for the laptop transport to rebase and retry.
  */
 export async function buildSettlePatch(
     workingTreeRoot: string,
@@ -51,7 +51,7 @@ export async function buildSettlePatch(
         addArgs.push(p);
         addArgs.push(`:(exclude)${p}/extracted`);
         addArgs.push(`:(exclude)${p}/attached`);
-        // Master-fs-managed sentinel; never belongs in a Tier-C settle patch.
+        // Master-fs-managed sentinel; never belongs in a laptop-transport settle patch.
         // Keep in lockstep with `settle.ts`'s `GENERATED_FILES`.
         addArgs.push(`:(exclude)${p}/.derived-from-sha`);
     }

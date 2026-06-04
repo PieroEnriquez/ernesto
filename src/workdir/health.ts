@@ -13,8 +13,9 @@ import { runGit, tryRunGit } from './run-git';
  *                 and `/tmp/` are aperiodically pruned by the OS,
  *                 selectively deleting files untouched since clone).
  *
- * Both Tier-A (backend's `openManagedWorkdir`) and Tier-C (CLI's
- * `setupCmd`) hit this exact corruption and now share this probe.
+ * Both the in-process transport (backend's `openManagedWorkdir`) and the
+ * laptop transport (`setupCmd`) hit this exact corruption and now share
+ * this probe.
  */
 export type WorkdirHealth = 'missing' | 'healthy' | 'corrupted';
 
@@ -37,20 +38,20 @@ export async function probeWorkdirHealth(workingTreeRoot: string): Promise<Workd
 export interface BootstrapWorkdirInput {
     /** Absolute path the working tree should live at after this call returns. */
     workingTreeRoot: string;
-    /** Remote URL to clone from. Tier-specific (bot repo URL vs dev's GitHub PAT URL). */
+    /** Remote URL to clone from. Transport-specific (bot repo URL vs dev's GitHub PAT URL). */
     repoUrl: string;
     /** Branch to clone (typically `'main'`). */
     branch: string;
     /**
      * git config keys to apply post-clone, e.g.
-     * `{ 'user.email': 'ernesto-bot@bitrefill.com', 'commit.gpgsign': 'false' }`.
+     * `{ 'user.email': 'ernesto-bot@example.com', 'commit.gpgsign': 'false' }`.
      * Defaults to none — caller decides identity.
      */
     gitConfig?: Record<string, string>;
     /**
      * When set, passed to `git clone` as `--depth=<n>`. A depth of 1 makes
      * the clone shallow — no history, just the tip of `branch` — which is
-     * dramatically faster for throwaway workdirs (e.g. §7.12 subagent
+     * dramatically faster for throwaway workdirs (e.g. subagent
      * runs) that never need to walk history. Persistent session workdirs
      * leave this unset; they may later want `git log`, `git blame`, or
      * to settle a rebase that requires fetching common ancestors.
@@ -60,13 +61,13 @@ export interface BootstrapWorkdirInput {
 
 /**
  * Wipe + clone + apply post-clone git config. The shared bootstrap shape
- * used by both Tier-A's `openManagedWorkdir` (when its `isWorkdirHealthy`
- * probe fails) and Tier-C's `setupCmd --force`.
+ * used by both the in-process transport's `openManagedWorkdir` (when its
+ * `isWorkdirHealthy` probe fails) and the laptop transport's `setupCmd --force`.
  *
  * The *recovery policy* (silent self-heal vs fail-loud) stays in the
- * caller — Tier A wipes silently because its workdir is an ephemeral
- * lint-substrate with no user state to preserve; Tier C fails loud
- * without `--force` because the laptop's working tree can hold
+ * caller — the in-process transport wipes silently because its workdir is
+ * an ephemeral lint-substrate with no user state to preserve; the laptop
+ * transport fails loud without `--force` because the laptop's working tree can hold
  * uncommitted dev edits. The mechanics (wipe-recreate-clone-config)
  * are identical and live here.
  */

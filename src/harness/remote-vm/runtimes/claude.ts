@@ -4,13 +4,13 @@
  * Runs the Claude Agent SDK `query()` loop in the VM (what cas runs locally),
  * with the FULL tool surface:
  *   - native FS tools over the FUSE workdir (Read/Glob/Grep/Write/Edit/Bash);
- *   - an in-VM `ernesto` MCP: `execute` → POST {backend}/ernesto/vm/execute
- *     (route dispatch as the scoped user), `settle` → POST the eden control
- *     server (FUSE overlay → /vm/settle);
+ *   - an in-VM `ernesto` MCP: `execute` posts to the host's route-dispatch
+ *     endpoint (route dispatch as the scoped principal), `settle` posts to the
+ *     in-VM control server that ships the FUSE overlay;
  *   - an in-VM `ui` MCP: `ui` writes the component as a `__ernesto_ui__`
  *     marker line on stdout, which `mapLine` lifts into a `component`
- *     HarnessEvent → the host emits `fact.component` → per-tier renderers
- *     (Slack). This is the bridge that makes in-VM `ui` calls render.
+ *     HarnessEvent → the host emits `fact.component` → the per-transport
+ *     renderers. This is the bridge that makes in-VM `ui` calls render.
  *
  * SDKMessages stream as NDJSON and map via the SAME `cas/events` translator.
  */

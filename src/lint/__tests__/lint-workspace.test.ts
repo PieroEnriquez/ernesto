@@ -40,7 +40,7 @@ async function git(cwd: string, args: string[]): Promise<string> {
 
 async function initRepo(root: string): Promise<void> {
     await git(root, ['init', '-q', '-b', 'main']);
-    await git(root, ['config', 'user.email', 'test@bitrefill.com']);
+    await git(root, ['config', 'user.email', 'test@example.com']);
     await git(root, ['config', 'user.name', 'Test']);
     await git(root, ['config', 'commit.gpgsign', 'false']);
 }
@@ -378,7 +378,7 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
     it('public-default workspace: any principal can write prose', async () => {
         await seedWorkspace(root, 'hr', VALID_HR);
         await commitAll(root, 'seed');
-        const lint = makeLintWorkspace({ scopes: new Set([]), email: 'random@bitrefill.com' });
+        const lint = makeLintWorkspace({ scopes: new Set([]), email: 'random@example.com' });
         await writeStagedFile(root, 'workspaces/hr/note.md', '# n\n');
         const diff = diffAdd('workspaces/hr/note.md', '# n\n');
         const result = await lint({ diff, workspaces: ['hr'], workingTreeRoot: root });
@@ -396,7 +396,7 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
         ].join('\n');
         await seedWorkspace(root, 'hr', restricted);
         await commitAll(root, 'seed');
-        const lint = makeLintWorkspace({ scopes: new Set(['payments:read']), email: 'x@bitrefill.com' });
+        const lint = makeLintWorkspace({ scopes: new Set(['payments:read']), email: 'x@example.com' });
         await writeStagedFile(root, 'workspaces/hr/note.md', '# n\n');
         const diff = diffAdd('workspaces/hr/note.md', '# n\n');
         const result = await lint({ diff, workspaces: ['hr'], workingTreeRoot: root });
@@ -415,7 +415,7 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
         ].join('\n');
         await seedWorkspace(root, 'hr', restricted);
         await commitAll(root, 'seed');
-        const lint = makeLintWorkspace({ scopes: new Set(['hr-read']), email: 'x@bitrefill.com' });
+        const lint = makeLintWorkspace({ scopes: new Set(['hr-read']), email: 'x@example.com' });
         await writeStagedFile(root, 'workspaces/hr/note.md', '# n\n');
         const diff = diffAdd('workspaces/hr/note.md', '# n\n');
         const result = await lint({ diff, workspaces: ['hr'], workingTreeRoot: root });
@@ -432,7 +432,7 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
         ].join('\n');
         await seedWorkspace(root, 'hr', restricted);
         await commitAll(root, 'seed');
-        const lint = makeLintWorkspace({ scopes: new Set(['hr-write']), email: 'x@bitrefill.com' });
+        const lint = makeLintWorkspace({ scopes: new Set(['hr-write']), email: 'x@example.com' });
         await writeStagedFile(root, 'workspaces/hr/note.md', '# n\n');
         const diff = diffAdd('workspaces/hr/note.md', '# n\n');
         const result = await lint({ diff, workspaces: ['hr'], workingTreeRoot: root });
@@ -450,7 +450,7 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
         ].join('\n');
         await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', newFm);
         const diff = diffModify('workspaces/hr/WORKSPACE.md', VALID_HR, newFm);
-        const lint = makeLintWorkspace({ scopes: new Set([]), email: 'x@bitrefill.com' });
+        const lint = makeLintWorkspace({ scopes: new Set([]), email: 'x@example.com' });
         const result = await lint({ diff, workspaces: ['hr'], workingTreeRoot: root });
         const failed = expectErrors(result);
         expect(failed.errors.some(e => e.code === 'admin_denied')).toBe(true);
@@ -472,7 +472,7 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
         ].join('\n');
         await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', sameFmNewBody);
         const diff = diffModify('workspaces/hr/WORKSPACE.md', VALID_HR, sameFmNewBody);
-        const lint = makeLintWorkspace({ scopes: new Set([]), email: 'x@bitrefill.com' });
+        const lint = makeLintWorkspace({ scopes: new Set([]), email: 'x@example.com' });
         const result = await lint({ diff, workspaces: ['hr'], workingTreeRoot: root });
         expect(result).toEqual({ ok: true });
     });
@@ -488,7 +488,7 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
         ].join('\n');
         await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', newFm);
         const diff = diffModify('workspaces/hr/WORKSPACE.md', VALID_HR, newFm);
-        const lint = makeLintWorkspace({ scopes: new Set(['hr-admin']), email: 'x@bitrefill.com' });
+        const lint = makeLintWorkspace({ scopes: new Set(['hr-admin']), email: 'x@example.com' });
         const result = await lint({ diff, workspaces: ['hr'], workingTreeRoot: root });
         expect(result).toEqual({ ok: true });
     });
@@ -504,7 +504,7 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
         await commitAll(root, 'seed');
         const lint = makeLintWorkspace({
             scopes: new Set(['ernesto:agent-ops']),
-            email: 'ops@bitrefill.com',
+            email: 'ops@example.com',
         });
         const newFm = [
             '---',
@@ -529,12 +529,12 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
         await writeStagedFile(root, 'workspaces/newthing/WORKSPACE.md', newWs);
         const diff = diffAdd('workspaces/newthing/WORKSPACE.md', newWs);
 
-        const denied = makeLintWorkspace({ scopes: new Set([]), email: 'x@bitrefill.com' });
+        const denied = makeLintWorkspace({ scopes: new Set([]), email: 'x@example.com' });
         const fail = await denied({ diff, workspaces: ['newthing'], workingTreeRoot: root });
         const failed = expectErrors(fail);
         expect(failed.errors.some(e => e.code === 'admin_denied')).toBe(true);
 
-        const allowed = makeLintWorkspace({ scopes: new Set(['newthing-admin']), email: 'x@bitrefill.com' });
+        const allowed = makeLintWorkspace({ scopes: new Set(['newthing-admin']), email: 'x@example.com' });
         const ok = await allowed({ diff, workspaces: ['newthing'], workingTreeRoot: root });
         expect(ok).toEqual({ ok: true });
     });
@@ -548,7 +548,7 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
             'admin: ernesto:agent-ops',
             '---',
             '',
-            '# Bitrefill Agent Operating Guidelines',
+            '# Agent Operating Guidelines',
             '',
             'Original body.',
         ].join('\n');
@@ -560,13 +560,13 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
         await writeStagedFile(root, 'workspaces/_platform/WORKSPACE.md', newBody);
         const diff = diffModify('workspaces/_platform/WORKSPACE.md', platform, newBody);
 
-        const denied = makeLintWorkspace({ scopes: new Set([]), email: 'random@bitrefill.com' });
+        const denied = makeLintWorkspace({ scopes: new Set([]), email: 'random@example.com' });
         const fail = await denied({ diff, workspaces: ['_platform'], workingTreeRoot: root });
         const failed = expectErrors(fail);
         expect(failed.errors.some(e => e.code === 'write_denied' && e.workspace === '_platform')).toBe(true);
 
         // Same edit with agent-ops → passes.
-        const allowed = makeLintWorkspace({ scopes: new Set(['ernesto:agent-ops']), email: 'ops@bitrefill.com' });
+        const allowed = makeLintWorkspace({ scopes: new Set(['ernesto:agent-ops']), email: 'ops@example.com' });
         const ok = await allowed({ diff, workspaces: ['_platform'], workingTreeRoot: root });
         expect(ok).toEqual({ ok: true });
     });
@@ -586,7 +586,7 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
         // Without bypass: both files are rejected.
         const blocked = await makeLintWorkspace({
             scopes: new Set(['ernesto:agent-ops']),
-            email: 'ops@bitrefill.com',
+            email: 'ops@example.com',
         })({ diff, workspaces: ['hr'], workingTreeRoot: root });
         const blockedFailed = expectErrors(blocked);
         const blockedPaths = blockedFailed.errors
@@ -597,7 +597,7 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
 
         // With bypass: rule is skipped, settle passes.
         const lintBypass = makeLintWorkspace(
-            { scopes: new Set(['ernesto:agent-ops']), email: 'ops@bitrefill.com' },
+            { scopes: new Set(['ernesto:agent-ops']), email: 'ops@example.com' },
             { bypass: new Set(['forbidden_generated_path']) },
         );
         const ok = await lintBypass({ diff, workspaces: ['hr'], workingTreeRoot: root });
@@ -618,7 +618,7 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
         await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', swapAdmin);
         const diff = diffModify('workspaces/hr/WORKSPACE.md', VALID_HR, swapAdmin);
 
-        const lint = makeLintWorkspace({ scopes: new Set(['malicious-admin']), email: 'attacker@bitrefill.com' });
+        const lint = makeLintWorkspace({ scopes: new Set(['malicious-admin']), email: 'attacker@example.com' });
         const result = await lint({ diff, workspaces: ['hr'], workingTreeRoot: root });
         const failed = expectErrors(result);
         expect(failed.errors.some(e => e.code === 'admin_denied')).toBe(true);
@@ -662,13 +662,13 @@ describe('unregistered_extraction_source — registry-driven validation', () => 
 
         const newBody = makeMd('hr', [
             { source: 'clickup', target: 'team-handbook' },
-            { source: 'github', target: 'bitrefill/backend' },
+            { source: 'github', target: 'acme/backend' },
         ]);
         await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', newBody);
         const diff = diffModify('workspaces/hr/WORKSPACE.md', body, newBody);
 
         const lint = makeLintWorkspace(
-            { scopes: new Set(['ernesto:agent-ops']), email: 'ops@bitrefill.com' },
+            { scopes: new Set(['ernesto:agent-ops']), email: 'ops@example.com' },
             { getRegisteredSources: () => new Set(['clickup', 'github', 'slack']) },
         );
         const result = await lint({ diff, workspaces: ['hr'], workingTreeRoot: root });
@@ -688,7 +688,7 @@ describe('unregistered_extraction_source — registry-driven validation', () => 
         const diff = diffModify('workspaces/hr/WORKSPACE.md', body, newBody);
 
         const lint = makeLintWorkspace(
-            { scopes: new Set(['ernesto:agent-ops']), email: 'ops@bitrefill.com' },
+            { scopes: new Set(['ernesto:agent-ops']), email: 'ops@example.com' },
             { getRegisteredSources: () => new Set(['clickup', 'github']) },
         );
         const result = await lint({ diff, workspaces: ['hr'], workingTreeRoot: root });
@@ -712,7 +712,7 @@ describe('unregistered_extraction_source — registry-driven validation', () => 
         const diff = diffModify('workspaces/hr/WORKSPACE.md', body, newBody);
 
         const lint = makeLintWorkspace(
-            { scopes: new Set(['ernesto:agent-ops']), email: 'ops@bitrefill.com' },
+            { scopes: new Set(['ernesto:agent-ops']), email: 'ops@example.com' },
             { getRegisteredSources: () => new Set(['clickup']) },
         );
         const result = await lint({ diff, workspaces: ['hr'], workingTreeRoot: root });
@@ -748,7 +748,7 @@ describe('unregistered_extraction_source — registry-driven validation', () => 
         const diff = diffModify('workspaces/hr/WORKSPACE.md', body, newBody);
 
         const lint = makeLintWorkspace(
-            { scopes: new Set(['ernesto:agent-ops']), email: 'ops@bitrefill.com' },
+            { scopes: new Set(['ernesto:agent-ops']), email: 'ops@example.com' },
             {
                 getRegisteredSources: () => new Set(['clickup']),
                 bypass: new Set([UNREGISTERED_EXTRACTION_SOURCE]),
@@ -779,7 +779,7 @@ describe('unregistered_extraction_source — registry-driven validation', () => 
         const diff = diffModify('workspaces/hr/WORKSPACE.md', body, newBody);
 
         const lint = makeLintWorkspace(
-            { scopes: new Set(['ernesto:agent-ops']), email: 'ops@bitrefill.com' },
+            { scopes: new Set(['ernesto:agent-ops']), email: 'ops@example.com' },
             { getRegisteredSources: () => new Set(['clickup']) },
         );
         const result = await lint({ diff, workspaces: ['hr'], workingTreeRoot: root });

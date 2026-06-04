@@ -21,7 +21,7 @@ describe('settleFromWorktree', () => {
     beforeEach(async () => {
         tmpRoot = await mkdtemp(path.join(tmpdir(), 'ernesto-settle-'));
         await runGit(tmpRoot, ['init', '-q', '-b', 'main']);
-        await runGit(tmpRoot, ['config', 'user.email', 'poc@bitrefill.com']);
+        await runGit(tmpRoot, ['config', 'user.email', 'poc@example.com']);
         await runGit(tmpRoot, ['config', 'user.name', 'PoC']);
         await runGit(tmpRoot, ['config', 'commit.gpgsign', 'false']);
         await mkdir(path.join(tmpRoot, 'workspaces', 'hr'), { recursive: true });
@@ -177,13 +177,13 @@ describe('settleFromWorktree', () => {
             workspaces: ['hr'],
             message: 'add hr',
             lint: allowAllLint,
-            trailers: { 'Workdir-Id': 'wd1', 'User': 'poc@bitrefill.com', 'Tier': 'A' },
+            trailers: { 'Workdir-Id': 'wd1', 'User': 'poc@example.com', 'Tier': 'A' },
         });
 
         const body = await runGit(tmpRoot, ['log', '-1', '--format=%B']);
         expect(body).toContain('add hr');
         expect(body).toContain('Workdir-Id: wd1');
-        expect(body).toContain('User: poc@bitrefill.com');
+        expect(body).toContain('User: poc@example.com');
         expect(body).toContain('Tier: A');
     });
 

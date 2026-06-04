@@ -68,7 +68,7 @@ export interface FsAdapter {
     exists(path: string): Promise<boolean>;
     /** Create a hard link at `linkPath` pointing at the same inode as `sourcePath`.
      *  Used by `bootWorkdir` to surface master-fs content into the
-     *  working tree on Tier A/B. Symlinks were the v1 placement, but ripgrep (engine
+     *  working tree on the in-process and mcp transports. Symlinks were the v1 placement, but ripgrep (engine
      *  behind fs_glob/fs_grep) skips symlinks during traversal — hard links walk
      *  normally. The in-memory adapter implements this as a byte copy. */
     link(sourcePath: string, linkPath: string): Promise<void>;

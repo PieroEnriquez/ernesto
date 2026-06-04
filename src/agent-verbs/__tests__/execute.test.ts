@@ -75,7 +75,7 @@ function makeCtx(
         emitComponent?: ExecuteVerbContext['emitComponent'];
     } = {},
 ): ExecuteVerbContext {
-    const user = { id: 'u1', email: 'u1@bitrefill.com' };
+    const user = { id: 'u1', email: 'u1@example.com' };
     const scopeSet: ReadonlySet<string> = new Set(scopes);
     const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     const ctx: ExecuteVerbContext = {
@@ -269,7 +269,7 @@ describe('handleExecute', () => {
         const call = (ctx.log.info as any).mock.calls[0];
         expect(call[0]).toBe('execute verb');
         expect(call[1]).toEqual({ uri: 'test://echo', userId: 'u1' });
-        expect(JSON.stringify(call[1])).not.toContain('@bitrefill.com');
+        expect(JSON.stringify(call[1])).not.toContain('@example.com');
     });
 
     it('JSON-decodes stringified params (LLM serialization quirk on nested object params)', async () => {
@@ -301,8 +301,9 @@ describe('handleExecute', () => {
     });
 
     it('wire schema defaults `ui` to [] when omitted, accepts explicit array', () => {
-        // We keep the prose-side forcing function (tier-a.md tells the
-        // agent to ALWAYS consider what to bundle on every `execute`).
+        // We keep the prose-side forcing function (the in-process
+        // transport's guidance tells the agent to ALWAYS consider what
+        // to bundle on every `execute`).
         // Wire schema is lenient — omitting `ui` defaults to []
         // rather than failing. Trade-off: one fewer retry round-trip
         // when the agent forgets, at the cost of softer schema-level

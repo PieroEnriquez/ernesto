@@ -27,7 +27,7 @@
  * `workdirRoot` on the ctx (consumed by step handlers via
  * `ctx.workdirRoot`), and calls `release()` in the `after` hook.
  *
- * Persistent sessions (workspace-tier with `policy.sessionContinuity:
+ * Persistent sessions (`policy.sessionContinuity:
  * 'persistent'`) skip the release on terminal — the workdir is reused
  * across conversation turns. The session lifecycle manages its own
  * teardown.
@@ -36,8 +36,8 @@
 import type { DispatchMiddleware, DispatchPreContext } from '../middleware';
 import type { Run } from '../types/runner';
 
-/** Backend-supplied allocator. Implementation lives in
- *  `src/ernesto/domains/workspaces/tier-a/open-managed-workdir.ts`. */
+/** Backend-supplied allocator. Implementation lives in the host
+ *  application's in-process workdir module. */
 export interface WorkspaceAllocator {
     /** Allocate a workdir for this dispatch. May reuse an existing
      *  one if `ctx.opts.conversationKey` matches a live session. */

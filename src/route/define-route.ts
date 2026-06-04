@@ -5,10 +5,11 @@
  * input and output. Routes self-register into a `RouteRegistry`; dispatch then
  * looks up by URI, validates, scope-checks, and runs the handler.
  *
- * Spec: `domains/workspaces/README.md` §30 (Route / defineRoute / RouteContext).
- * This module is the minimal scaffolding ahead of B.6 backend wiring; it omits
- * the full `RouteContext` shape from §30 (`principal`, `tier`, `ernesto`,
- * `workdirId`) because none of those values exist yet on the lib side. The
+ * Spec: §30 (Route / defineRoute / RouteContext).
+ * This module is the minimal scaffolding ahead of backend wiring; it omits
+ * the full `RouteContext` shape from §30 (`principal`, the runtime surface
+ * (`ctx.tier`), `ernesto`, `workdirId`) because none of those values exist
+ * yet on the lib side. The
  * scaffolding context surfaces just what handlers can use today: `user`,
  * a live scope snapshot, an optional `workdirRoot`, and a logger.
  *
@@ -27,7 +28,7 @@ export interface RouteContext {
     scopes: ReadonlySet<RouteScope>;
     /** Path to the on-disk working tree when invoked inside a workdir. Absent
      *  for direct HTTP/dispatch paths that do not yet have a workdir bound
-     *  (e.g. early Tier B `tools/call` before workdir resolution, or unit
+     *  (e.g. early mcp-transport `tools/call` before workdir resolution, or unit
      *  tests). Handlers that require it must assert and surface a clear
      *  error — there is no implicit fallback. */
     workdirRoot?: string;
@@ -79,8 +80,9 @@ export interface RouteContext {
      * manifest AND the caller wires this callback, every entry that
      * resolves against the route's output fires a component event
      * here — typically routed through the workflow-engine's per-step
-     * `stepEmit` so the per-tier subscribers (Slack, claude.ai, CLI)
-     * render automatically without the agent having to retype.
+     * `stepEmit` so the per-transport subscribers (Slack, a remote MCP
+     * client, the laptop transport) render automatically without the
+     * agent having to retype.
      *
      * Absent / null → manifest is silent (handler's return value still
      * lands; the agent retypes as today). Wiring this hook is what
@@ -99,8 +101,8 @@ export interface RouteContext {
      * is dispatched from. Routes that fan out to child runs (notably
      * `_platform://task`) propagate selected keys here onto the child's
      * `dispatchWorkflow.context` so the child inherits the parent's UI
-     * surface — events from the child carry `parentRunId` + tier
-     * routing (slackThreadId/slackChannelId/…), and tier subscribers
+     * surface — events from the child carry `parentRunId` + transport
+     * routing (slackThreadId/slackChannelId/…), and transport subscribers
      * look up state via parentRunId fallback. Absent on routes called
      * from outside a workflow run (top-level HTTP, tests).
      */

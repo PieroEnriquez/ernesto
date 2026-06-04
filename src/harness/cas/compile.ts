@@ -7,14 +7,13 @@
  *     - `SystemPromptPreset` (claude_code preset + `excludeDynamicSections`)
  *     - `McpServerConfig`
  *
- * Ported from `backend/src/ernesto/server/http/workflows.ts:165
- *   workflowToSdkOptions`. The backend-specific bits stay in the
- * backend wrapper:
- *   - provider resolution (`providers.ts:resolveProviderEnv`)
- *     — backend-private. Pass `providerEnv` in if you need it.
- *   - sandbox hooks (`createWorkspaceSandboxHooks`) — backend-private.
- *     Compose into the returned `Options.hooks` post-call.
- *   - the cache-discipline `log.info` probe — backend-only observability.
+ * Ported from the host application's own SDK-options builder. The
+ * host-specific bits stay in the host wrapper:
+ *   - provider resolution — host-private. Pass `providerEnv` in if you
+ *     need it.
+ *   - sandbox hooks — host-private. Compose into the returned
+ *     `Options.hooks` post-call.
+ *   - the cache-discipline `log.info` probe — host-only observability.
  *
  * Cache-discipline knobs preserved verbatim:
  *   - `systemPrompt.excludeDynamicSections = true` on the preset branch
@@ -37,18 +36,18 @@ import type { CompiledAgent } from '../../managed-agents/types';
  *  validates at runtime. */
 export type SdkHooks = Record<string, unknown>;
 
-/** Compile context. The backend wrapper resolves provider env / sandbox
+/** Compile context. The host wrapper resolves provider env / sandbox
  *  hooks itself and threads what it needs through here. */
 export interface CompileContext {
     sessionId: string;
     cwd?: string;
     abortController?: AbortController;
-    /** Pre-resolved MCP server connection record. Backend-private
+    /** Pre-resolved MCP server connection record. Host-private
      *  registry; we accept the resolved shape. */
     mcpServers?: Record<string, McpServerConfig>;
-    /** Provider-resolved env vars (api key + base url). Backend's
-     *  `resolveProviderEnv(provider, model)` stays in backend; the lib
-     *  takes the already-resolved record. */
+    /** Provider-resolved env vars (api key + base url). Provider
+     *  resolution stays in the host application; the lib takes the
+     *  already-resolved record. */
     providerEnv?: Record<string, string>;
     /** Additional env merged on top of providerEnv. */
     env?: Record<string, string>;
@@ -61,9 +60,9 @@ export interface CompileContext {
      *  is absent. Note: `compileAgent` already merges its own
      *  `defaults.disallowedTools`; this is the harness-level fallback. */
     defaultDisallowedTools?: string[];
-    /** Backend-resolved sandbox hooks (e.g. workspace-anchored
+    /** Host-resolved sandbox hooks (e.g. workspace-anchored
      *  Read/Edit/Write guard). The lib treats this as opaque and
-     *  passes it through to `Options.hooks`. Backend wrappers compose
+     *  passes it through to `Options.hooks`. Host wrappers compose
      *  these themselves; the lib does not synthesize hooks. */
     hooks?: SdkHooks;
 }
@@ -80,8 +79,7 @@ export function compileAgentToSdkOptions(
     const baseEnv: Record<string, string> = {
         ...(ctx.providerEnv ?? {}),
         PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin',
-        // Safety net for SDK CLI subprocess inactivity (see backend
-        // workflows.ts:191 commentary).
+        // Safety net for SDK CLI subprocess inactivity.
         CLAUDE_CODE_STREAM_CLOSE_TIMEOUT: '120000',
     };
 
@@ -105,7 +103,8 @@ export function compileAgentToSdkOptions(
         ...(ctx.tools ? { tools: ctx.tools } : {}),
         // SDK isolation — do not auto-load `cwd/CLAUDE.md`. The
         // platform body is composed through `compileAgent` and lives in
-        // `systemPrompt`.
+        // `systemPrompt`. (Isolation here is the SDK setting-load mode,
+        // independent of vm/sandbox isolation.)
         settingSources: [],
         // `ctx.hooks` is intentionally structural — see `SdkHooks`
         // commentary. The SDK validates the nominal shape at runtime.

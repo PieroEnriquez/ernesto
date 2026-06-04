@@ -3,8 +3,8 @@
  * every settle entry point runs once its changes are STAGED in the index.
  *
  * Three entry points stage by different means and then converge here:
- *   - `settleFromWorktree` — stages the working tree (Tier A/B agent run).
- *   - `settleFromPatch`    — `git apply --index` of a laptop unified diff (Tier C).
+ *   - `settleFromWorktree` — stages the working tree (in-process / mcp transport agent run).
+ *   - `settleFromPatch`    — `git apply --index` of a laptop unified diff (laptop transport).
  *   - `settleFromOverlay`  — materializes a content-overlay into the tree and
  *                            stages it (editor server-side 3-way).
  *

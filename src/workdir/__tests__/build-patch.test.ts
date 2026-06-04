@@ -1,7 +1,7 @@
 /**
  * Unit tests for `buildSettlePatch` — the shared patch-construction shape
- * used by Tier-C (laptop CLI) today and Tier-B (claude.ai integration)
- * once it lands. Pathspec exclusions match the §22 settle gate:
+ * used by the laptop transport today and the mcp transport (a remote MCP
+ * client) once it lands. Pathspec exclusions match the §22 settle gate:
  * `extracted/` and `attached/` per-workspace subtrees never enter the
  * dev's settle commit (the derive worker owns one, master-fs owns the
  * other).

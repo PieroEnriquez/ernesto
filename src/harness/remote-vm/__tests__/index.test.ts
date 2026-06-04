@@ -83,7 +83,7 @@ describe('createRemoteVmHarness lifecycle', () => {
         const sandbox = new StubSandbox(RUN_LINES);
         const harness = createRemoteVmHarness({
             sandbox,
-            backendBaseUrl: 'https://api.bitrefill.internal',
+            backendBaseUrl: 'https://api.example.internal',
         });
         await harness.createAgent(
             { systemPrompt: 'test', model: 'claude-opus-4-7' },
@@ -103,7 +103,7 @@ describe('createRemoteVmHarness lifecycle', () => {
         const sandbox = new StubSandbox(RUN_LINES);
         const harness = createRemoteVmHarness({
             sandbox,
-            backendBaseUrl: 'https://api.bitrefill.internal',
+            backendBaseUrl: 'https://api.example.internal',
         });
         await harness.createAgent(
             { systemPrompt: 'test', model: 'm' },
@@ -111,7 +111,7 @@ describe('createRemoteVmHarness lifecycle', () => {
         );
         expect(sandbox.createdKey).toBe('conv-xyz');
         expect(sandbox.policy?.allowDomains).toEqual([
-            'api.bitrefill.internal',
+            'api.example.internal',
             'api.anthropic.com',
         ]);
     });
@@ -228,7 +228,7 @@ describe('createRemoteVmHarness lifecycle', () => {
         expect(mountEnv['TERM']).toBe('xterm');
     });
 
-    it('capabilities: full Bash tier (mcp/customFnTools off, resume on)', () => {
+    it('capabilities: full Bash transport (mcp/customFnTools off, resume on)', () => {
         const harness = createRemoteVmHarness({
             sandbox: new StubSandbox(RUN_LINES),
             backendBaseUrl: 'https://b.host',

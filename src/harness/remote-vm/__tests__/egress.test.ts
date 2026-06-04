@@ -3,8 +3,8 @@ import { buildEgressPolicy, hostOf } from '../egress';
 
 describe('hostOf', () => {
     it('parses https URLs to a bare hostname', () => {
-        expect(hostOf('https://api.bitrefill.internal/vm/manifest')).toBe(
-            'api.bitrefill.internal',
+        expect(hostOf('https://api.example.internal/vm/manifest')).toBe(
+            'api.example.internal',
         );
     });
     it('strips port from host:port', () => {
@@ -25,10 +25,10 @@ describe('hostOf', () => {
 describe('buildEgressPolicy', () => {
     it('produces exactly the backend host + Anthropic default, deny-all', () => {
         const p = buildEgressPolicy({
-            backendBaseUrl: 'https://api.bitrefill.internal',
+            backendBaseUrl: 'https://api.example.internal',
         });
         expect(p.allowDomains).toEqual([
-            'api.bitrefill.internal',
+            'api.example.internal',
             'api.anthropic.com',
         ]);
         // Deny-all is implied: no wildcard, exactly two entries.

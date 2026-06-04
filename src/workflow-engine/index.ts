@@ -3,10 +3,11 @@
  *
  * The runner exposes one entry point — `dispatch(kind, inputs,
  * principal, opts)` — that every caller of the AI runtime goes
- * through (HTTP route handlers, BullMQ workers, Slack subscribers,
- * claude.ai MCP, Tier-C CLI, recursive subagent calls). The runner
- * speaks `Principal` (user vs service) + typed `DispatchOpts`
- * natively — no untyped routing record, no `{userId, scopes}` shim.
+ * through (HTTP route handlers, background workers, Slack subscribers,
+ * the mcp transport (a remote MCP client), the laptop transport,
+ * recursive subagent calls). The runner speaks `Principal` (user vs
+ * service) + typed `DispatchOpts` natively — no untyped routing
+ * record, no `{userId, scopes}` shim.
  *
  *   - Construct via `createRunner({ ... })`.
  *   - Register per-step-kind handlers via `runner.registerStepKind(...)`
@@ -14,9 +15,9 @@
  *     `route`, `input`, `subworkflow`, `orchestration`).
  *   - Register the workspace workflow reader via
  *     `runner.registerWorkflowReader(...)`.
- *   - Per-tier subscribers (Slack, claude.ai MCP, CLI) attach via
- *     `runner.subscribeEvents(...)`. HITL resolvers call
- *     `runner.resumeRun(...)` to settle a paused run.
+ *   - Per-transport subscribers (Slack, a remote MCP client, the laptop
+ *     transport) attach via `runner.subscribeEvents(...)`. HITL resolvers
+ *     call `runner.resumeRun(...)` to settle a paused run.
  *
  * The lib is harness-agnostic — agent step handlers are passed in
  * by the caller, who picks which `Harness` (CAS, Cursor, fragua-pi,
@@ -198,8 +199,8 @@ export type {
 
 // ─── Built-in step-kind handlers ──────────────────────────────────
 // Lib-shipped handlers for step kinds whose dispatch logic is
-// portable across tiers. Backend boot registers them on the runner;
-// other tiers (Tier B / C MCP, future workers) can register the same
-// handlers without copying glue code.
+// portable across transports. The host's boot registers them on the
+// runner; other transports (the mcp and laptop transports, future
+// workers) can register the same handlers without copying glue code.
 export { makeRouteStepHandler } from './handlers/route-step';
 export type { RouteStepHandlerDeps } from './handlers/route-step';

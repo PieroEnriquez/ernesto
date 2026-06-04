@@ -28,12 +28,12 @@ import type {
  *                                                      in-process / mcp —
  *                                                      appended when set)
  *
- * Tier-specific files describe how the Ernesto system itself behaves
- * on that tier (workdir mechanics, settle pathway, what `execute`
- * looks like). The per-tier file is loaded *in addition to* the
- * universal body — never instead of it. Tier frontends pass
- * `ctx.tier = 'A' | 'B' | 'C'`. Frontends that haven't been migrated
- * (or scripts / tests without a workdir) keep working unchanged.
+ * The per-surface files describe how the Ernesto system itself behaves
+ * on that transport (workdir mechanics, settle pathway, what `execute`
+ * looks like). The per-surface file is loaded *in addition to* the
+ * universal body — never instead of it. Frontends pass the runtime
+ * surface (`ctx.tier = 'A' | 'B' | 'C'`). Frontends that haven't been
+ * migrated (or scripts / tests without a workdir) keep working unchanged.
  *
  * Stop 2 of §7 phase 1. Subsequent stops layer in:
  * - §7.3 L1-L5 cache discipline (returns layered fragments instead of
@@ -64,23 +64,24 @@ export function compileAgent(
 }
 
 /**
- * Compose the universal platform body + (optionally) the tier-specific
+ * Compose the universal platform body + (optionally) the per-surface
  * body from a bound workdir cwd. Returns the concatenated markdown or
  * `null` if neither file resolves to non-empty content.
  *
- * This is the single home for the composition across all three tier
- * frontends:
+ * This is the single home for the composition across all three
+ * transports:
  *
- * - **Tier A** (backend): `compileAgent` calls this; result becomes
- *   the SDK `Options.systemPrompt` append.
- * - **Tier B** (claude.ai MCP): the MCP server calls this directly;
- *   result becomes the `instructions:` field.
- * - **Tier C** (laptop CLI / Claude Code skill): the CLI calls this
- *   when regenerating `~/.claude/skills/ernesto/SKILL.md`.
+ * - **the in-process transport** (runs in the host process):
+ *   `compileAgent` calls this; result becomes the SDK
+ *   `Options.systemPrompt` append.
+ * - **the mcp transport** (a remote MCP client): the MCP server calls
+ *   this directly; result becomes the `instructions:` field.
+ * - **the laptop transport** (a dev laptop with a synced checkout +
+ *   plugin): the laptop calls this when regenerating its local skill.
  *
  * All three reach for the same files, so behavioral drift between
- * tiers can only come from authoring drift in the markdown — not from
- * the loaders interpreting things differently.
+ * transports can only come from authoring drift in the markdown — not
+ * from the loaders interpreting things differently.
  *
  * Frontmatter is stripped from each file. Empty/absent files are
  * skipped silently (callers don't need to branch).
@@ -98,7 +99,7 @@ export function composePlatformBody(
 /**
  * Read `<cwd>/workspaces/_platform/WORKSPACE.md` body, frontmatter
  * stripped. Sync on purpose — ~4 KB, one read per session boot,
- * sub-ms. Async would ripple through every Tier-frontend caller
+ * sub-ms. Async would ripple through every frontend caller
  * for no measurable win.
  *
  * Deliberately does NOT walk parent directories — the path is fixed

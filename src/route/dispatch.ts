@@ -1,9 +1,10 @@
 /**
  * Route dispatch.
  *
- * One body for all three tier-frontends (Tier A in-process, Tier B MCP, Tier C
- * HTTPS). Looks up by URI, gates on scope, Zod-validates input + output, runs
- * the handler, and shapes errors into a discriminated `DispatchResult`.
+ * One body for every transport (the in-process transport, the mcp transport,
+ * the laptop transport). Looks up by URI, gates on scope, Zod-validates input
+ * + output, runs the handler, and shapes errors into a discriminated
+ * `DispatchResult`.
  *
  * Spec deviation: the full signature in §30 is
  * `dispatchRoute(workdir, uri, params) → RouteResult`, where the Workdir

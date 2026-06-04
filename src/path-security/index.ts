@@ -2,9 +2,10 @@
  * Path-security primitives. Pure lexical operations on path strings — no
  * symlink following, no filesystem I/O.
  *
- * These are used at security boundaries (Tier A's Agent SDK PreToolUse
- * hooks, Tier B's MCP tool handlers, Tier C's CLI sandbox) to keep file
- * access inside per-workdir / per-workspace boundaries.
+ * These are used at security boundaries (the in-process transport's Agent
+ * SDK PreToolUse hooks, the mcp transport's tool handlers, the laptop
+ * transport's sandbox) to keep file access inside per-workdir /
+ * per-workspace boundaries.
  *
  * Why no `realpathSync`?
  *

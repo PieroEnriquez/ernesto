@@ -26,21 +26,20 @@ import { casCreateAgent } from './create';
 export type { SdkHooks } from './compile';
 
 /**
- * SDK re-exports — let CAS-aware backend code import these without
+ * SDK re-exports — let CAS-aware host code import these without
  * naming `@anthropic-ai/claude-agent-sdk` directly. Production code
  * shouldn't reach across the abstraction; tests still may.
  *
- * The union below is exactly what backend production code (under
- * `backend/src/ernesto/`) imports — no over-exporting. Anything not
- * on this list is either tests-only (which may keep importing the
- * SDK directly) or a CAS-internal concern that should not surface
- * to backend callers.
+ * The union below is exactly what the host's production code imports —
+ * no over-exporting. Anything not on this list is either tests-only
+ * (which may keep importing the SDK directly) or a CAS-internal
+ * concern that should not surface to host callers.
  *
  * Hook-shape note: we deliberately DO NOT re-export the SDK's nominal
- * `HookEvent` enum. The backend ships a different SDK minor (0.3.143)
+ * `HookEvent` enum. The host may ship a different SDK minor (0.3.143)
  * than this lib pins (0.3.148); pnpm's peer-dep resolution can land
  * two structurally-identical-but-nominally-distinct copies of
- * `HookEvent` in the same compilation, which won't unify. Backend
+ * `HookEvent` in the same compilation, which won't unify. Host
  * code that needs the "hooks blob shape" should use the structural
  * `SdkHooks` (`Record<string, unknown>`) exported by `./compile`
  * above. Leaf hook input/output types (`HookCallbackMatcher`,
@@ -60,7 +59,7 @@ export type {
 } from '@anthropic-ai/claude-agent-sdk';
 
 /**
- * Value re-exports — MCP-server-creation primitives the backend uses
+ * Value re-exports — MCP-server-creation primitives the host uses
  * to build in-process tools, plus the top-level `query` entry point.
  * These are CAS-specific today; Cursor / fragua will expose
  * analogous primitives shaped differently.
@@ -68,24 +67,27 @@ export type {
 export { tool, createSdkMcpServer, query } from '@anthropic-ai/claude-agent-sdk';
 
 /** Per-process env hooks the CAS adapter accepts at construction. The
- *  caller (backend) resolves provider creds itself and passes them in. */
+ *  caller (the host application) resolves provider creds itself and
+ *  passes them in. */
 export interface CasHarnessEnv {
     /** Pre-resolved provider env (api keys, base url). Threaded into
      *  every run's `Options.env`. */
     providerEnv?: Record<string, string>;
-    /** MCP server connection record. The backend's MCP registry resolves
+    /** MCP server connection record. The host's MCP registry resolves
      *  ids to connection configs; the harness just threads them. */
     mcpServers?: Record<string, McpServerConfig>;
     /** Default disallowed-tools fallback when the def doesn't specify. */
     defaults?: { disallowedTools?: string[] };
     /** Override capabilities (test seam). */
     capabilities?: Partial<HarnessCapabilities>;
-    /** Tier the harness is deployed under (`'A'` for the backend,
-     *  `'B'` for the claude.ai MCP, `'C'` for the laptop CLI). The
-     *  platform-body composer reads `_platform/tier-<lc>.md` and
-     *  appends it to the system prompt — without it the agent gets
-     *  no platform routing discipline (catalog lookup rules, sensitive
-     *  topics, citation requirements). Set once per process at boot. */
+    /** Which transport the harness is deployed under, carried on the
+     *  runtime surface (`ctx.tier`): `'A'` for the in-process transport,
+     *  `'B'` for the mcp transport (a remote MCP client), `'C'` for the
+     *  laptop transport. The platform-body composer selects the matching
+     *  platform body and appends it to the system prompt — without it the
+     *  agent gets no platform routing discipline (catalog lookup rules,
+     *  sensitive topics, citation requirements). Set once per process at
+     *  boot. */
     tier?: 'A' | 'B' | 'C';
 }
 
@@ -129,9 +131,9 @@ export function createCasHarness(env: CasHarnessEnv = {}): Harness {
         // narrow `Harness.createAgent` and call `casCreateAgent`
         // directly.
         // Per-call mcpServers (from CreateOptions) win on key collision
-        // with the harness's env-level defaults. Use case: tier-A
-        // injects a per-run `ernesto` MCP server closing over workdir +
-        // user + scopes alongside the boot-wired `ui` server.
+        // with the harness's env-level defaults. Use case: the in-process
+        // transport injects a per-run `ernesto` MCP server closing over
+        // workdir + user + scopes alongside the boot-wired `ui` server.
         const mergedMcpServers =
             opts.mcpServers !== undefined || env.mcpServers !== undefined
                 ? {

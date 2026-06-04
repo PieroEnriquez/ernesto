@@ -224,7 +224,7 @@ export interface InMemoryMasterFsOptions {
     /** path → bytes; populated entries resolve as `{ kind: 'bytes' }`. */
     bytes?: Map<string, Uint8Array>;
     /** When set, known paths resolve as `{ kind: 'hardlink'; sourcePath: `${hardlinkSourceRoot}/${path}` }`.
-     *  Used to simulate the Tier A/B volume case in unit tests — the in-memory
+     *  Used to simulate the in-process / mcp transport volume case in unit tests — the in-memory
      *  FsAdapter's `link()` copies bytes from `sourcePath`, so the test fixture
      *  must `writeFile` the source bytes at `${hardlinkSourceRoot}/${path}` beforehand. */
     hardlinkSourceRoot?: string;

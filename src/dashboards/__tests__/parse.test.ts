@@ -10,7 +10,7 @@ import { parseDashboard, DashboardSpecError } from '../parse';
 const MINIMAL_SPEC = `---
 slug: payments
 title: Payments
-owner: april@bitrefill.com
+owner: april@example.com
 filters:
   - id: dateRange
     kind: date-range

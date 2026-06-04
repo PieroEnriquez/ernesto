@@ -236,7 +236,7 @@ export async function appendHitlToTrail(
  * surface (Slack message, button click, MCP elicit response, CLI
  * input). Shape varies per kind; `metadata` is renderer-namespaced
  * extra context (Slack: channel id, requester email, attachments;
- * Tier-B: conversationId, etc.) the strategy hooks may consume.
+ * the mcp transport: conversationId, etc.) the strategy hooks may consume.
  */
 export type RendererInput =
     | {
@@ -321,7 +321,7 @@ export interface RendererPromptStrategy {
 /**
  * The action the renderer applies after consulting the state machine.
  * Carries the **materialized prompt** (composed via the strategy) so
- * the renderer's only remaining job is dispatch — no per-tier prompt
+ * the renderer's only remaining job is dispatch — no per-transport prompt
  * scaffolding lives outside the strategy hooks.
  */
 export type RendererAction =
@@ -362,7 +362,7 @@ function scalar(v: unknown): string {
 /**
  * Default strategy — sensible-but-spartan fallbacks. Renderers
  * override the hooks where they have surface-specific context to
- * inject (Slack: channel id + files block; Tier-B: convId; …).
+ * inject (Slack: channel id + files block; the mcp transport: convId; …).
  *
  * `forAwaitingInputResolved` defaults to inlining the lib's
  * `materializeResumePrompt` — that's the agent-authored template
@@ -431,7 +431,7 @@ export function composeStrategy(
  *       resumeSessionId: action.resumeSessionId,
  *   });
  *
- * — no per-tier state-machine duplication, no prompt scaffolding
+ * — no per-transport state-machine duplication, no prompt scaffolding
  * leaking out of the strategy module.
  */
 export function decideRendererAction(

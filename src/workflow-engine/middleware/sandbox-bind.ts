@@ -12,8 +12,8 @@
  *     across the repo)
  *
  * The actual hook implementation (path-security checks, traversal
- * rejection) is backend-specific and lives in
- * `src/ernesto/domains/workspaces/sandbox.ts`. The lib provides the
+ * rejection) is backend-specific and lives in the host application's
+ * sandbox module. The lib provides the
  * middleware framework + the contract for what the backend supplies:
  * a `SandboxBinder` that takes the resolved `workdirRoot` and returns
  * hook descriptors the agent step handler injects via createOpts.

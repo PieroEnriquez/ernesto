@@ -2,9 +2,8 @@
  * Workflows — unified declaration schema (§ unified-workflow).
  *
  * Pure data. Defines the YAML/JSON shape that subsumes both
- * managed-agents and dashboards. See
- * `workspaces/agent-ops/workflows-unification/schema.md` for the
- * canonical reference; the types below mirror that doc 1:1.
+ * managed-agents and dashboards. See the workflows-unification schema
+ * reference; the types below mirror that doc 1:1.
  *
  * All side-effecting concerns (route resolution, harness invocation,
  * subworkflow dispatch) live in downstream runtime layers — this
@@ -57,7 +56,7 @@ export interface WorkflowDeclaration {
      * Per the unification: an extraction is just a workflow with
      * `trigger: { cron: ... }` + a `route` step that calls an
      * `extract://<source>` route + a `brain://write` step that lands
-     * the result under `workspaces/<w>/extracted/`. The legacy
+     * the result under the workspace's `extracted/` tree. The legacy
      * `defineExtraction` + extraction-worker pair retires when every
      * plugin migrates.
      */
@@ -291,8 +290,8 @@ export interface GroupStep extends BaseStep {
  * agents, structured-output handoffs) is owned by Claude Code's
  * workflow runtime, not the DAG walker.
  *
- * Authoring: a `.workflow.js` file under
- * `workspaces/<w>/workflows/<name>.workflow.js`. The
+ * Authoring: a `.workflow.js` file under the workspace's `workflows/`
+ * tree. The
  * `workspaces-reader` parses the `export const meta = { ... }`
  * literal block to populate `meta` and wraps the file's body source
  * in `scriptSource`. The wire stays simple: ONE step
@@ -346,8 +345,8 @@ export interface DynamicWorkflowStep extends BaseStep {
      * and the handler's `mcp__ernesto-tier-a__execute` surface is empty.
      *
      * `'ernesto'` is the reserved logical name that triggers the
-     * in-process ernesto-tier-a MCP build (see
-     * `backend/.../tool-surface-composer-adapter.ts:356`). Other
+     * in-process ernesto MCP build supplied by the backend's
+     * tool-surface composer. Other
      * names are looked up in the stdio registry (e.g. `'ui'`,
      * `'playwright'`).
      *
@@ -382,8 +381,8 @@ export interface DynamicWorkflowMeta {
     model?: string;
     /**
      * When `true`, the dynamic-workflow handler prepends ernesto's
-     * platform body (`workspaces/_platform/WORKSPACE.md` + the matching
-     * `tier-{a|b|c}.md` body) to the outer dispatcher's `systemPrompt`.
+     * platform body (the shared workspace preamble + the body matching
+     * the active transport) to the outer dispatcher's `systemPrompt`.
      * Workflow subagents spawned via `agent()` inherit the session
      * context, so they gain full ernesto vocabulary — route URI
      * namespaces, scope semantics, citation discipline, settle audit,

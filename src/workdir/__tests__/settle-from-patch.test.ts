@@ -22,7 +22,7 @@ describe('settleFromPatch', () => {
     beforeEach(async () => {
         tmpRoot = await mkdtemp(path.join(tmpdir(), 'ernesto-patch-'));
         await runGit(tmpRoot, ['init', '-q', '-b', 'main']);
-        await runGit(tmpRoot, ['config', 'user.email', 'poc@bitrefill.com']);
+        await runGit(tmpRoot, ['config', 'user.email', 'poc@example.com']);
         await runGit(tmpRoot, ['config', 'user.name', 'PoC']);
         await runGit(tmpRoot, ['config', 'commit.gpgsign', 'false']);
         await mkdir(path.join(tmpRoot, 'workspaces'), { recursive: true });
@@ -64,8 +64,8 @@ describe('settleFromPatch', () => {
         // The new workdir's HEAD will be a different sha (different repo).
         // For the parentSha equality test below, we need to align them — so
         // the caller uses the workdir's actual HEAD as parentSha. We return
-        // a marker meaning "use workdir HEAD"; in the real flow the CLI
-        // captures parentSha from its own clone of the same origin.
+        // a marker meaning "use workdir HEAD"; in the real flow the laptop
+        // transport captures parentSha from its own clone of the same origin.
         void parentSha;
         return { patch, parentSha: '' };
     }
@@ -156,7 +156,7 @@ describe('settleFromPatch', () => {
      *   - At boot, `ensureMasterFsOverlays` hard-links master-fs's version
      *     (B0 + derive-injected auto-blocks ≈ B0') over the checked-out file.
      *     The on-disk content is now B0'; the git index/HEAD still points to B0.
-     *   - The laptop authored its patch against B0 (it has no overlay).
+     *   - The laptop transport authored its patch against B0 (it has no overlay).
      *   - `git apply --check --index` reads the on-disk pre-image B0' and
      *     compares it to the patch's pre-image B0 — mismatch → reject.
      *
@@ -178,7 +178,7 @@ describe('settleFromPatch', () => {
         await runGit(tmpRoot, ['commit', '-q', '-m', 'seed tier-c']);
         const headSha = (await runGit(tmpRoot, ['rev-parse', 'HEAD'])).trim();
 
-        // Build the laptop's patch in a staging clone whose HEAD matches B0.
+        // Build the laptop transport's patch in a staging clone whose HEAD matches B0.
         // It edits B0 → B1 (appends a line).
         const stagingDir = await mkdtemp(path.join(tmpdir(), 'ernesto-overlay-stage-'));
         await runGit(stagingDir, ['init', '-q', '-b', 'main']);

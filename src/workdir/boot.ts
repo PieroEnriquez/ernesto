@@ -12,11 +12,11 @@ import { BootInput, BootResult, Workdir, WorkdirInput } from './types';
  * Pure on adapters: no global state, no environment reads. The same input
  * produces byte-identical output across the in-memory and node adapter pairs.
  *
- * Note: on Tier A/B, the deployer (`ensureMasterFsOverlays` in the backend)
- * generally does the bulk subtree mirroring before this function is reached.
- * `bootWorkdir` covers the eager-set placement path (Tier C with HTTPS bytes,
- * plus tests). The `hardlink` branch is retained for parity with the volume
- * adapter contract.
+ * Note: on the in-process and mcp transports, the deployer generally does
+ * the bulk subtree mirroring before this function is reached.
+ * `bootWorkdir` covers the eager-set placement path (the laptop transport
+ * with HTTPS bytes, plus tests). The `hardlink` branch is retained for parity
+ * with the volume adapter contract.
  */
 export async function bootWorkdir(input: BootInput): Promise<BootResult> {
     const { fs, master, layout, visibleWorkspaces } = input;

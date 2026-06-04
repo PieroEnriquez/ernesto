@@ -9,7 +9,7 @@
  * sets `ctx.annotations.providerEnv` for the agent step handler to
  * pick up.
  *
- * Bitrefill ships two providers today: ANTHROPIC (Claude models) and
+ * The deployment ships two providers today: ANTHROPIC (Claude models) and
  * OPEN_ROUTER (kimi-k2.6 + other open-source models). The middleware
  * resolves provider → API-key env var from the process env. Missing
  * env keys abort with `ModelRouterError` BEFORE the SDK is spun up,

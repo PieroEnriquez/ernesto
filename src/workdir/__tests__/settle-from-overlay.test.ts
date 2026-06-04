@@ -21,7 +21,7 @@ describe('settleFromOverlay — server-side 3-way reconcile', () => {
     beforeEach(async () => {
         root = await mkdtemp(path.join(tmpdir(), 'ernesto-overlay-settle-'));
         await runGit(root, ['init', '-q', '-b', 'main']);
-        await runGit(root, ['config', 'user.email', 'poc@bitrefill.com']);
+        await runGit(root, ['config', 'user.email', 'poc@example.com']);
         await runGit(root, ['config', 'user.name', 'PoC']);
         await runGit(root, ['config', 'commit.gpgsign', 'false']);
         await mkdir(path.join(root, 'workspaces', 'hr'), { recursive: true });

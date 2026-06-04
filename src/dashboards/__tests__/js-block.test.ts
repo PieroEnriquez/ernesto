@@ -15,7 +15,7 @@ function specWith(body: string): string {
     return `---
 slug: derived
 title: Derived
-owner: tester@bitrefill.com
+owner: tester@example.com
 filters:
   - id: dateRange
     kind: date-range

@@ -200,10 +200,11 @@ export { createMockHarness } from './harness/mock';
 
 // ─── Brain FS routes (the universal primitive) ───────────────────────────
 // `brain://read|write|edit|glob|grep` — same route family on every
-// tier. Tiers register this once; the agent calls them via `execute`.
-// Per-tier specialization is in the dispatch transport (in-process,
-// MCP-over-HTTP, Claude-Code-hook), not in the contract. "The brain"
-// is Ernesto's master-fs — its canonical persistent state.
+// transport. Each transport registers this once; the agent calls them
+// via `execute`. Per-transport specialization is in the dispatch
+// transport (in-process, MCP-over-HTTP, laptop hook), not in the
+// contract. "The brain" is Ernesto's master-fs — its canonical
+// persistent state.
 export { registerBrainRoutes } from './routes/brain';
 
 // ─── Components (declarative UI intent) ──────────────────────────────────

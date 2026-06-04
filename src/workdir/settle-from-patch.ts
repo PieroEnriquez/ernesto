@@ -1,14 +1,14 @@
 /**
- * Tier-C settle path — apply a unified diff produced on the dev's laptop into
- * an ephemeral server-side workdir, run lint over the staged result, commit
- * with trailers, hand the resulting sha to the deployer's bot push.
+ * Laptop-transport settle path — apply a unified diff produced on the dev's
+ * laptop into an ephemeral host-side workdir, run lint over the staged result,
+ * commit with trailers, hand the resulting sha to the deployer's bot push.
  *
  * Contract:
  *   - The workdir's HEAD must equal `parentSha`. If not, we return
- *     `fast_forward_required` so the CLI can `git pull --rebase` on the
- *     laptop, regenerate the patch, and retry. We do NOT attempt to rebase
- *     server-side: the dev's working tree is on the laptop, the patch was
- *     authored against the laptop's view of main, and merging server-side
+ *     `fast_forward_required` so the laptop can `git pull --rebase`,
+ *     regenerate the patch, and retry. We do NOT attempt to rebase
+ *     host-side: the dev's working tree is on the laptop, the patch was
+ *     authored against the laptop's view of main, and merging host-side
  *     would silently drop conflict resolution that should be the dev's.
  *
  *   - `git apply --index` is used (no --3way). If the patch doesn't apply
@@ -21,8 +21,6 @@
  *   - Push is the deployer's bot credential, identical to settleFromWorktree.
  *
  * Always runs under `workdir.lock(…)`.
- *
- * Spec: `src/ernesto/domains/workspaces/README.md` §22 (Tier C settle flow).
  */
 
 import { writeFile, unlink } from 'fs/promises';
@@ -91,7 +89,7 @@ export async function settleFromPatch(
         let applyErr = '';
         try {
             // Restore tracked files in each touched workspace to HEAD before
-            // applying the patch. Reason: server-side workdirs run
+            // applying the patch. Reason: host-side workdirs run
             // `ensureMasterFsOverlays` at boot, which hard-links the master-fs
             // version of `WORKSPACE.md` (with derive-worker-injected
             // auto-blocks) over the git-checked-out file. The laptop's
@@ -104,7 +102,7 @@ export async function settleFromPatch(
             // the same byte sequence the laptop authored against.
             // Generated subtrees (`extracted/`, `attached/`) are skipped: the
             // laptop's patch never touches those (`:(exclude)` pathspecs in
-            // the CLI's settle), and they aren't tracked in git anyway.
+            // the laptop's settle), and they aren't tracked in git anyway.
             const checkoutArgs = ['checkout', 'HEAD', '--'];
             for (const ws of input.workspaces) {
                 checkoutArgs.push(`workspaces/${ws}`);
@@ -145,7 +143,7 @@ export async function settleFromPatch(
         // Steps 3–6 — converge on the shared lint → commit → push →
         // journal-rebase tail. The stage is already populated by
         // `git apply --index`; the core scopes the lint diff nesting-aware,
-        // commits with the caller's trailers (`Tier: C`, `User: …`), bot-pushes,
+        // commits with the caller's trailers (transport + user), bot-pushes,
         // and rebases the ephemeral workdir onto new main. A lint failure
         // hard-resets the ephemeral tree (it is per-request, not the dev's).
         return runSettleCore(workdir, {

@@ -34,7 +34,7 @@ function makeWorkdir(): Workdir {
 }
 
 function makeCtx(reg: RouteRegistry, workdir: Workdir): ExecuteVerbContext {
-    const user = { id: 'u1', email: 'u1@bitrefill.com' };
+    const user = { id: 'u1', email: 'u1@example.com' };
     const scopes = new Set(['test:read']);
     const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     return {

@@ -13,7 +13,7 @@ function buildSpec(overrides: Partial<DashboardSpec> = {}): DashboardSpec {
     const base = {
         slug: 'payments-revenue',
         title: 'Payments Revenue',
-        owner: 'april@bitrefill.com',
+        owner: 'april@example.com',
         description: 'Daily revenue + top users.',
         filters: [
             {
@@ -62,7 +62,7 @@ describe('compileDashboardSpecToWorkflow', () => {
         const wf = compileDashboardSpecToWorkflow(buildSpec());
         expect(wf.name).toBe('payments-revenue');
         expect(wf.tags).toEqual(['dashboard']);
-        expect(wf.owner).toBe('april@bitrefill.com');
+        expect(wf.owner).toBe('april@example.com');
         expect(Object.keys(wf.inputs ?? {})).toEqual(['dateRange', 'product']);
         expect(wf.inputs?.dateRange.type).toBe('date_range');
         expect(wf.inputs?.product.type).toBe('string');
@@ -132,7 +132,7 @@ describe('compileDashboardSpecToWorkflow', () => {
         const spec = dashboardSpecSchema.parse({
             slug: 'js-only',
             title: 'JS',
-            owner: 'x@bitrefill.com',
+            owner: 'x@example.com',
             filters: [],
             blocks: [
                 {

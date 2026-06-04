@@ -3,7 +3,7 @@ import { githubPlugin } from '../github';
 import type { ExtractionContext } from '../../define-extraction';
 
 const TOKEN = 'ghp_test_token_secret_value';
-const OWNER = 'bitrefill';
+const OWNER = 'acme';
 const REPO = 'backend';
 
 const makeCtx = (scopes: Iterable<string> = ['extraction:github:read']): ExtractionContext => ({
@@ -27,7 +27,7 @@ const samplePr = {
     merged: true,
     merged_at: '2026-04-21T15:30:00Z',
     created_at: '2026-04-20T10:00:00Z',
-    html_url: 'https://github.com/bitrefill/backend/pull/6298',
+    html_url: 'https://github.com/acme/backend/pull/6298',
     body: 'This PR adds a toggle for dark mode in the settings panel.',
     user: { login: 'johndoe' },
     commits: 3,
@@ -40,7 +40,7 @@ const samplePr = {
 
 const sampleCommit = {
     sha: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0',
-    html_url: 'https://github.com/bitrefill/backend/commit/a1b2c3d',
+    html_url: 'https://github.com/acme/backend/commit/a1b2c3d',
     commit: {
         message: 'Add user authentication\n\nImplemented JWT-based auth.',
         author: { name: 'John Doe', email: 'john@example.com', date: '2026-04-20T10:00:00Z' },
@@ -87,7 +87,7 @@ describe('githubPlugin – happy path per target kind', () => {
 
         expect(fetchMock).toHaveBeenCalledTimes(1);
         const [url, init] = fetchMock.mock.calls[0];
-        expect(url).toBe('https://api.github.com/repos/bitrefill/backend/pulls/6298');
+        expect(url).toBe('https://api.github.com/repos/acme/backend/pulls/6298');
         const headers = (init as RequestInit).headers as Record<string, string>;
         expect(headers.Authorization).toBe(`Bearer ${TOKEN}`);
         expect(headers.Accept).toBe('application/vnd.github+json');
@@ -114,7 +114,7 @@ describe('githubPlugin – happy path per target kind', () => {
 
         const [url] = fetchMock.mock.calls[0];
         expect(url).toBe(
-            'https://api.github.com/repos/bitrefill/backend/commits/a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0',
+            'https://api.github.com/repos/acme/backend/commits/a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0',
         );
 
         expect(result.entries).toHaveLength(1);
@@ -143,7 +143,7 @@ describe('githubPlugin – happy path per target kind', () => {
 
         const [url] = fetchMock.mock.calls[0];
         expect(url).toMatch(
-            /^https:\/\/api\.github\.com\/repos\/bitrefill\/backend\/pulls\?/,
+            /^https:\/\/api\.github\.com\/repos\/acme\/backend\/pulls\?/,
         );
         expect(url).toMatch(/state=closed/);
         expect(url).toMatch(/sort=created/);
@@ -169,7 +169,7 @@ describe('githubPlugin – happy path per target kind', () => {
 
         const [url] = fetchMock.mock.calls[0];
         expect(url).toMatch(
-            /^https:\/\/api\.github\.com\/repos\/bitrefill\/backend\/commits\?/,
+            /^https:\/\/api\.github\.com\/repos\/acme\/backend\/commits\?/,
         );
 
         expect(result.entries).toHaveLength(2);

@@ -29,7 +29,7 @@ describe('settleFromWorktree — step 6 journal rebase', () => {
         // Local seed clone to create the initial main commit, then push to bare.
         const seedRoot = await mkdtemp(path.join(tmpdir(), 'ernesto-step6-seed-'));
         await runGit(seedRoot, ['init', '-q', '-b', 'main']);
-        await runGit(seedRoot, ['config', 'user.email', 'poc@bitrefill.com']);
+        await runGit(seedRoot, ['config', 'user.email', 'poc@example.com']);
         await runGit(seedRoot, ['config', 'user.name', 'PoC']);
         await runGit(seedRoot, ['config', 'commit.gpgsign', 'false']);
         await runGit(seedRoot, ['commit', '-q', '--allow-empty', '-m', 'init']);
@@ -40,7 +40,7 @@ describe('settleFromWorktree — step 6 journal rebase', () => {
         // Working tree: clone bare, create journal branch from main.
         workRoot = await mkdtemp(path.join(tmpdir(), 'ernesto-step6-work-'));
         await runGit(workRoot, ['clone', '-q', '-b', 'main', bareRoot, '.']);
-        await runGit(workRoot, ['config', 'user.email', 'poc@bitrefill.com']);
+        await runGit(workRoot, ['config', 'user.email', 'poc@example.com']);
         await runGit(workRoot, ['config', 'user.name', 'PoC']);
         await runGit(workRoot, ['config', 'commit.gpgsign', 'false']);
         await runGit(workRoot, ['checkout', '-q', '-b', 'refs/workdirs/wd1']);

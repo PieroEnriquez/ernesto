@@ -5,15 +5,16 @@
  * `{ userId, scopes }`. That conflates two genuinely different identity
  * classes:
  *
- *   - **user principals** — a real Bitrefill user invoking a workflow
- *     from a tier port (Slack thread, claude.ai conversation, Tier-C CLI,
- *     HTTP request after auth). Has a `userId`, a non-empty scope set,
- *     can HITL, gets rendered events, billing attributed to the user.
+ *   - **user principals** — a real user invoking a workflow
+ *     over a transport (Slack thread, a remote MCP client conversation,
+ *     the laptop transport, HTTP request after auth). Has a `userId`, a
+ *     non-empty scope set, can HITL, gets rendered events, billing
+ *     attributed to the user.
  *
  *   - **service principals** — a backend worker invoking a workflow
  *     headlessly (BullMQ job, cron tick, internal sync code). Has a
  *     `workerId` + correlation `requestId`, an empty scope set (bypasses
- *     scope check via the service allowlist), no HITL, no tier-port
+ *     scope check via the service allowlist), no HITL, no transport
  *     rendering, billing attributed to the worker.
  *
  * Treating them as a typed union sharpens every middleware in the
@@ -24,7 +25,7 @@
  * The user variant carries scopes as a ReadonlySet for §7.4 narrowing
  * by recursive dispatch (subworkflow / `_platform://task`).
  *
- * See workspaces/agent-ops/unified-runtime/architecture.md.
+ * See the unified-runtime architecture reference.
  */
 
 export type Principal =

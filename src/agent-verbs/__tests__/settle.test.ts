@@ -26,7 +26,7 @@ describe('handleSettle', () => {
     beforeEach(async () => {
         tmpRoot = await mkdtemp(path.join(tmpdir(), 'ernesto-verbs-settle-'));
         await runGit(tmpRoot, ['init', '-q', '-b', 'main']);
-        await runGit(tmpRoot, ['config', 'user.email', 'poc@bitrefill.com']);
+        await runGit(tmpRoot, ['config', 'user.email', 'poc@example.com']);
         await runGit(tmpRoot, ['config', 'user.name', 'PoC']);
         await runGit(tmpRoot, ['config', 'commit.gpgsign', 'false']);
         await mkdir(path.join(tmpRoot, 'workspaces', 'hr'), { recursive: true });
@@ -271,7 +271,7 @@ describe('handleSettle', () => {
             const sideRoot = await mkdtemp(path.join(tmpdir(), 'ernesto-verbs-settle-side-'));
             try {
                 await runGit(sideRoot, ['clone', '-q', '-b', 'main', bareRoot, '.']);
-                await runGit(sideRoot, ['config', 'user.email', 'worker@bitrefill.com']);
+                await runGit(sideRoot, ['config', 'user.email', 'worker@example.com']);
                 await runGit(sideRoot, ['config', 'user.name', 'Worker']);
                 await runGit(sideRoot, ['config', 'commit.gpgsign', 'false']);
                 await runGit(sideRoot, ['commit', '-q', '--allow-empty', '-m', 'worker startup-sweep']);

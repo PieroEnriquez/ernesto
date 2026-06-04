@@ -1,7 +1,7 @@
 /**
  * Component taxonomy — declarative UI intent emitted by agents/workflow
- * steps and consumed by per-tier subscribers (Slack, claude.ai MCP,
- * CLI, fragua-web).
+ * steps and consumed by per-transport subscribers (Slack, the mcp
+ * transport's remote MCP client, the laptop transport, fragua-web).
  *
  * Two-level hierarchy:
  *
@@ -33,9 +33,10 @@
 // ─── Top-level: UiComponent ─────────────────────────────────────────
 
 /** Agent's reasoning. Subscribers MAY surface this collapsed by
- *  default (claude.ai's "inner thoughts" pattern, Slack's collapsible
- *  block, CLI's `chalk.gray`). Renderer-default rendered — not part
- *  of the uiTrail / canonical answer contract. */
+ *  default (a remote MCP client's "inner thoughts" pattern, Slack's
+ *  collapsible block, the laptop transport's `chalk.gray`).
+ *  Renderer-default rendered — not part of the uiTrail / canonical
+ *  answer contract. */
 export interface ThinkingComponent {
     kind: 'thinking';
     props: { text: string };

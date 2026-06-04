@@ -14,7 +14,7 @@
  * workspaces/agent-ops/unified-runtime/e2e.md but compressed: one
  * orchestration kind dispatched by both a service caller (autofill
  * worker) and a user caller (interactive Slack thread). Same kind,
- * different principal × tier, identical typed output.
+ * different principal and transport, identical typed output.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -156,7 +156,7 @@ describe('tremendous E2E — unified runtime end-to-end', () => {
         };
         runner.registerWorkflowReader(readerOf([pipeline]));
 
-        // ── M1: Service-tier dispatch (BullMQ worker style) ─────
+        // ── M1: Service-principal dispatch (background worker style) ─────
         const serviceRun: Run<{ logo: string; faq: string[]; faqFr: string[] }> =
             await runner.dispatch(
                 'product-enablement://pipeline',
@@ -173,12 +173,12 @@ describe('tremendous E2E — unified runtime end-to-end', () => {
         expect((serviceRun.output as any).main.faq).toEqual(['Q: A']);
         expect((serviceRun.output as any).main.faqFr).toEqual(['Q-fr: A-fr']);
 
-        // ── M1: User-tier dispatch (interactive Slack thread) ───
+        // ── M1: User-principal dispatch (interactive Slack thread) ───
         const slackThreadId = 'slack-thread-9999';
         const userRun: Run<{ logo: string }> = await runner.dispatch(
             'product-enablement://pipeline',
             { productId: 'P-67890' },
-            userPrincipal('alice@bitrefill.com', ['product-enablement:write']),
+            userPrincipal('alice@example.com', ['product-enablement:write']),
             {
                 tier: 'A',
                 conversationKey: slackThreadId,

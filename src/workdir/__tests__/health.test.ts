@@ -1,17 +1,17 @@
 /**
  * Unit tests for the shared workdir health probe + bootstrap.
  *
- * Same field bug pinned twice (once Tier-A, once Tier-C — see
- * `src/ernesto/domains/workspaces/README.md` §22 "the repos today"): on
- * macOS dev `/var/folders/.../T/` and `/tmp` get aperiodically pruned,
- * selectively deleting static `.git/` files (HEAD, config) while leaving
- * `FETCH_HEAD`/`ORIG_HEAD`/`index` intact. Git then rejects the directory
- * with "fatal: not a git repository," and any operation that runs
- * `git fetch` first dies with a misleading error.
+ * Same field bug pinned twice (once on the in-process transport, once on
+ * the laptop transport): on macOS dev `/var/folders/.../T/` and `/tmp` get
+ * aperiodically pruned, selectively deleting static `.git/` files (HEAD,
+ * config) while leaving `FETCH_HEAD`/`ORIG_HEAD`/`index` intact. Git then
+ * rejects the directory with "fatal: not a git repository," and any
+ * operation that runs `git fetch` first dies with a misleading error.
  *
- * The fix is one shared probe + one shared bootstrap in the lib; per-tier
- * recovery policy (silent self-heal on Tier A, fail-loud on Tier C
- * unless --force) sits at the call site.
+ * The fix is one shared probe + one shared bootstrap in the lib; the
+ * per-transport recovery policy (silent self-heal on the in-process
+ * transport, fail-loud on the laptop transport unless --force) sits at the
+ * call site.
  */
 import { describe, it, expect } from 'vitest';
 import { promises as fsp, mkdtempSync } from 'fs';
@@ -87,7 +87,7 @@ describe('bootstrapWorkdir', () => {
             repoUrl: origin,
             branch: 'main',
             gitConfig: {
-                'user.email': 'ernesto-bot@bitrefill.com',
+                'user.email': 'ernesto-bot@example.com',
                 'user.name': 'Ernesto',
                 'commit.gpgsign': 'false',
             },
@@ -95,7 +95,7 @@ describe('bootstrapWorkdir', () => {
 
         expect(await probeWorkdirHealth(root)).toBe('healthy');
         const email = (await git(root, ['config', 'user.email'])).trim();
-        expect(email).toBe('ernesto-bot@bitrefill.com');
+        expect(email).toBe('ernesto-bot@example.com');
         const sign = (await git(root, ['config', 'commit.gpgsign'])).trim();
         expect(sign).toBe('false');
     });
@@ -141,7 +141,7 @@ describe('bootstrapWorkdir', () => {
         const root = join(tmp, 'shallow');
         // Git silently ignores `--depth` for local-protocol clones. The
         // `file://` URL forces the remote protocol so the shallow flag
-        // actually applies — production uses https:// which respects it.
+        // actually applies — in production the https:// URL respects it.
         await bootstrapWorkdir({
             workingTreeRoot: root,
             repoUrl: `file://${origin}`,
