@@ -44,8 +44,11 @@ export interface DispatchPreContext {
     decl?: KindDecl;
     /** Workdir root — middleware (workspace-allocator) sets this. */
     workdirRoot?: string;
-    /** Session id — middleware (session-resolve) sets/reuses this. */
-    sessionId?: string;
+    /** Conversation-scope id — the tool-surface-compose middleware
+     *  sets/reuses this. Keyed by `conversationKey` for persistent
+     *  conversations, else the run id. Scopes the composed MCP
+     *  surfaces; NOT the SDK transcript id. */
+    conversationId?: string;
     /** Free-form per-middleware annotations — extension point for
      *  middleware to communicate with later middleware in the chain
      *  without polluting the public DispatchOpts surface. */

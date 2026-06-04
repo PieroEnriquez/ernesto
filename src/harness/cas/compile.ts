@@ -17,7 +17,7 @@
  *
  * Cache-discipline knobs preserved verbatim:
  *   - `systemPrompt.excludeDynamicSections = true` on the preset branch
- *     (strip per-session dynamic sections, see SDK sdk.d.ts).
+ *     (strip per-run dynamic sections, see SDK sdk.d.ts).
  *   - `settingSources = []` (SDK isolation mode — do not auto-load
  *     `cwd/CLAUDE.md`; the platform body comes through `compileAgent`).
  *   - `includePartialMessages = true` (stream `stream_event` partials
@@ -39,7 +39,9 @@ export type SdkHooks = Record<string, unknown>;
 /** Compile context. The host wrapper resolves provider env / sandbox
  *  hooks itself and threads what it needs through here. */
 export interface CompileContext {
-    sessionId: string;
+    /** The Agent SDK's conversation transcript id (its `session_id`).
+     *  Threaded for provider-cache identity. */
+    transcriptId: string;
     cwd?: string;
     abortController?: AbortController;
     /** Pre-resolved MCP server connection record. Host-private
@@ -51,9 +53,15 @@ export interface CompileContext {
     providerEnv?: Record<string, string>;
     /** Additional env merged on top of providerEnv. */
     env?: Record<string, string>;
-    persistSession?: boolean;
-    resumeSessionId?: string;
-    forkSession?: boolean;
+    /** Persist the Agent SDK's conversation transcript (its
+     *  `session_id`). Maps to the SDK's `persistSession` option. */
+    persistTranscript?: boolean;
+    /** Resume a prior transcript (the Agent SDK's `session_id`). Maps
+     *  to the SDK's `resume` option. */
+    resumeTranscript?: string;
+    /** Fork from `resumeTranscript`. Maps to the SDK's `forkSession`
+     *  option. */
+    forkTranscript?: boolean;
     /** Built-in tool whitelist (the SDK's `tools` option). */
     tools?: string[];
     /** Default disallowed-tools list applied when `compiled.disallowedTools`
@@ -83,7 +91,7 @@ export function compileAgentToSdkOptions(
         CLAUDE_CODE_STREAM_CLOSE_TIMEOUT: '120000',
     };
 
-    // Cache-fix: strip the SDK's per-session dynamic sections (cwd,
+    // Cache-fix: strip the SDK's per-run dynamic sections (cwd,
     // auto-memory, git status) from the cached system prompt when the
     // preset branch is in use. Source: sdk.d.ts ~line 1755.
     const systemPromptForSdk = withExcludeDynamicSections(compiled.systemPrompt);
@@ -111,9 +119,11 @@ export function compileAgentToSdkOptions(
         hooks: ctx.hooks as Options['hooks'],
         abortController: ctx.abortController,
         cwd: ctx.cwd,
-        persistSession: ctx.persistSession,
-        resume: ctx.resumeSessionId,
-        forkSession: ctx.forkSession,
+        // SDK option names (`persistSession`/`resume`/`forkSession`) are
+        // fixed by the Agent SDK; we map our transcript-named fields onto them.
+        persistSession: ctx.persistTranscript,
+        resume: ctx.resumeTranscript,
+        forkSession: ctx.forkTranscript,
         env: ctx.env ? { ...ctx.env, ...baseEnv } : baseEnv,
     };
 }

@@ -35,7 +35,7 @@ export interface RouteContext {
     log: Logger;
     /**
      * Slug of the agent currently running this dispatch — populated by
-     * the backend MCP server adapter at session creation time. Absent
+     * the backend MCP server adapter at agent-dispatch creation time. Absent
      * for HTTP/admin call sites where there is no "agent" running. The
      * §7.12 `_platform://task` route reads this to detect self-recursion
      * (rejecting same-slug subagent calls). */
@@ -69,7 +69,7 @@ export interface RouteContext {
     /**
      * Optional sink for subagent cost. `_platform://task` calls this
      * with `metadata.costUsd` after each subagent finishes so the
-     * parent's UI (Slack thinking-card) can show the *session* cost —
+     * parent's UI (Slack thinking-card) can show the *conversation* cost —
      * parent cost + sum of all subagent costs — instead of just the
      * parent's. Adapters that don't track cost can ignore it.
      */

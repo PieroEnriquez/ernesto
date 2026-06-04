@@ -235,12 +235,12 @@ export interface RunResult {
      *  `SDKResultMessage.result`. Avoids the lossy scrape from
      *  `finalAssistant`. */
     rawText?: string;
-    /** Backend-assigned session id of the underlying agent transcript.
-     *  CAS: the SDK's auto-generated session UUID (also the filename
-     *  under `~/.claude/projects/<cwd-enc>/<sessionId>.jsonl`). Callers
+    /** The Agent SDK's conversation transcript id (its `session_id`).
+     *  CAS: the SDK's auto-generated UUID (also the filename under
+     *  `~/.claude/projects/<cwd-enc>/<transcriptId>.jsonl`). Callers
      *  capture this to resume the same conversation on a later turn by
-     *  passing it as `CreateOptions.resumeSessionId`. */
-    sessionId?: string;
+     *  passing it as `CreateOptions.resumeTranscript`. */
+    transcriptId?: string;
     error?: { message: string; cause?: unknown };
 }
 
@@ -255,16 +255,18 @@ export interface CreateOptions {
     env?: Record<string, string>;
     /** Caller-controlled abort signal for the entire agent lifetime. */
     abortController?: AbortController;
-    /** Persist session state — backend-defined (CAS: SDK session id,
+    /** Persist the Agent SDK's conversation transcript (its
+     *  `session_id`) — backend-defined (CAS: SDK transcript id,
      *  fragua: durable event log). */
-    persistSession?: boolean;
-    /** Resume a prior session by id. Capability-gated (`resume`). */
-    resumeSessionId?: string;
-    /** Fork from `resumeSessionId` instead of continuing it. */
-    forkSession?: boolean;
+    persistTranscript?: boolean;
+    /** Resume a prior transcript by id — the Agent SDK's conversation
+     *  transcript id (its `session_id`). Capability-gated (`resume`). */
+    resumeTranscript?: string;
+    /** Fork from `resumeTranscript` instead of continuing it. */
+    forkTranscript?: boolean;
     /** Per-call MCP servers — merged on top of the harness env's
      *  defaults (call-level entries win on key collision). Lets each
-     *  workflow run hand the harness session-scoped tool surfaces
+     *  workflow run hand the harness conversation-scoped tool surfaces
      *  (e.g. the in-process transport's `ernesto` MCP closing over the run's workdir +
      *  user + scopes) without rebuilding the harness. */
     mcpServers?: Record<string, unknown>;
@@ -342,7 +344,7 @@ export interface AgentHandle {
      *  until the LLM stops, the agent halts, or `cancel()` is called. */
     send(msg: UserMessage, opts?: SendOptions): Promise<RunHandle>;
     /** Tear down this agent's backend resources — release a microVM,
-     *  close a session. Optional: harnesses with no external resource to
+     *  close a transcript. Optional: harnesses with no external resource to
      *  free omit it. Distinct from `RunHandle.cancel()` (a per-turn
      *  interrupt that keeps the agent warm for resume); `stop()` ends the
      *  agent. Each harness registers its own teardown, so a

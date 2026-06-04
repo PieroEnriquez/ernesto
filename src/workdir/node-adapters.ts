@@ -31,7 +31,7 @@ export function makeNodeFsAdapter(workingTreeRoot: string): FsAdapter {
         async link(sourcePath, linkPath) {
             // `sourcePath` is an absolute host-FS path (e.g. into master-fs);
             // `linkPath` is workdir-relative. Pre-empt any prior entry at the
-            // destination so re-mirroring on session boot is idempotent.
+            // destination so re-mirroring on host boot is idempotent.
             const a = abs(linkPath);
             await fsp.mkdir(path.dirname(a), { recursive: true });
             try {

@@ -88,7 +88,7 @@ export interface HarnessAdapterSpec<Raw> {
     mapMessage(msg: Raw, runId: string, state: unknown): HarnessEvent[];
     /** Enrich the common terminal fold with SDK-specific fields
      *  (`apiDurationMs`, `modelUsage`, `subtype`, `rawText`,
-     *  `structuredOutput`, `sessionId`, authoritative `durationMs`, …).
+     *  `structuredOutput`, `transcriptId`, authoritative `durationMs`, …).
      *  `raw` is the captured raw terminal message when `isResult`
      *  flagged one. The fold's `error` is already applied by the base
      *  unless the adapter overwrites it. May be async (cursor awaits the

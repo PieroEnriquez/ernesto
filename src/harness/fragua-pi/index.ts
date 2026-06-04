@@ -276,7 +276,7 @@ export function createFraguaPiHarness(
         opts: CreateOptions = {},
     ): Promise<AgentHandle> => {
         const createOpts: Parameters<typeof fraguaPiCreateAgent>[1] = {};
-        if (opts.agentId !== undefined) createOpts.sessionId = opts.agentId;
+        if (opts.agentId !== undefined) createOpts.transcriptId = opts.agentId;
         if (opts.cwd !== undefined) createOpts.cwd = opts.cwd;
         else if (env.cwd !== undefined) createOpts.cwd = env.cwd;
         if (opts.env !== undefined) createOpts.env = opts.env;

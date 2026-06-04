@@ -27,10 +27,9 @@
  * `workdirRoot` on the ctx (consumed by step handlers via
  * `ctx.workdirRoot`), and calls `release()` in the `after` hook.
  *
- * Persistent sessions (`policy.sessionContinuity:
- * 'persistent'`) skip the release on terminal — the workdir is reused
- * across conversation turns. The session lifecycle manages its own
- * teardown.
+ * Persistent conversations (`policy.continuity: 'persistent'`) skip
+ * the release on terminal — the workdir is reused across conversation
+ * turns. The backend's per-user handle manages its own teardown.
  */
 
 import type { DispatchMiddleware, DispatchPreContext } from '../middleware';
@@ -40,7 +39,7 @@ import type { Run } from '../types/runner';
  *  application's in-process workdir module. */
 export interface WorkspaceAllocator {
     /** Allocate a workdir for this dispatch. May reuse an existing
-     *  one if `ctx.opts.conversationKey` matches a live session. */
+     *  one if `ctx.opts.conversationKey` matches a live conversation. */
     allocate(ctx: DispatchPreContext): Promise<WorkspaceAllocation>;
 }
 
@@ -49,10 +48,10 @@ export interface WorkspaceAllocation {
      *  ctx.workdirRoot. */
     workdirRoot: string;
     /** Optional release function. Called on terminal unless the
-     *  policy declares persistent session continuity. */
+     *  policy declares persistent continuity. */
     release?: () => Promise<void> | void;
     /** Opaque handle the backend may use to identify the workdir
-     *  (e.g. session id, BullMQ job correlator). */
+     *  (e.g. workdir id, BullMQ job correlator). */
     handle?: unknown;
 }
 
@@ -84,9 +83,9 @@ export function workspaceAllocatorMiddleware(
                 | WorkspaceAllocation
                 | undefined;
             if (!allocation) return;
-            // Persistent sessions retain the workdir across runs.
-            const sessionContinuity = ctx.decl?.policy?.sessionContinuity;
-            if (sessionContinuity === 'persistent') return;
+            // Persistent conversations retain the workdir across runs.
+            const continuity = ctx.decl?.policy?.continuity;
+            if (continuity === 'persistent') return;
             if (allocation.release) {
                 await allocation.release();
             }

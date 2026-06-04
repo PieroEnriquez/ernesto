@@ -159,7 +159,7 @@ describe('decideRendererAction (strategy-driven)', () => {
         expect(action.kind).toBe('abort_then_continuation');
         if (action.kind === 'abort_then_continuation') {
             expect(action.abortRunId).toBe('run-1');
-            expect(action.resumeSessionId).toBe(SID);
+            expect(action.resumeTranscript).toBe(SID);
             expect(action.prompt).toContain('interrupted');
             expect(action.prompt).toContain('wait, change of plans');
         }
@@ -188,7 +188,7 @@ describe('decideRendererAction (strategy-driven)', () => {
         expect(action.kind).toBe('abort_then_continuation');
         if (action.kind === 'abort_then_continuation') {
             expect(action.abortRunId).toBe('run-1');
-            expect(action.resumeSessionId).toBe(SID);
+            expect(action.resumeTranscript).toBe(SID);
             expect(action.prompt).toContain('forget it, do X instead');
         }
     });
@@ -217,7 +217,7 @@ describe('decideRendererAction (strategy-driven)', () => {
         expect(action).toEqual({
             kind: 'dispatch_continuation',
             prompt: 'User chose approve. Proceed.',
-            resumeSessionId: SID,
+            resumeTranscript: SID,
             reason: 'hitl_resolved',
         });
     });
@@ -236,13 +236,13 @@ describe('decideRendererAction (strategy-driven)', () => {
         expect(action).toEqual({
             kind: 'dispatch_continuation',
             prompt: 'approve',
-            resumeSessionId: SID,
+            resumeTranscript: SID,
             reason: 'completed',
         });
     });
 
     it.each(['completed', 'errored', 'canceled'] as const)(
-        'clean continuation when status is %s (resumeSessionId carried)',
+        'clean continuation when status is %s (resumeTranscript carried)',
         (status) => {
             const action = decideRendererAction(
                 {
@@ -258,7 +258,7 @@ describe('decideRendererAction (strategy-driven)', () => {
             );
             expect(action.kind).toBe('dispatch_continuation');
             if (action.kind === 'dispatch_continuation') {
-                expect(action.resumeSessionId).toBe(SID);
+                expect(action.resumeTranscript).toBe(SID);
                 expect(action.reason).toBe(status);
                 expect(action.prompt).toContain('try again');
                 if (status === 'errored') {

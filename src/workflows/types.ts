@@ -207,14 +207,14 @@ export interface AgentStep extends BaseStep {
     /** Only valid when resolved harness is `'fragua-pi'`. */
     providerOverride?: 'anthropic' | 'openai' | 'google' | 'ollama' | 'openrouter';
     /**
-     * Within-dispatch session inheritance.
+     * Within-dispatch transcript inheritance.
      *
-     *   - `'fresh'` (default) — start a new SDK session. The agent
+     *   - `'fresh'` (default) — start a new SDK transcript. The agent
      *      sees only its own `systemPrompt` + `prompt`, with whatever
      *      cross-dispatch resume the renderer's `conversationKey`
      *      provides.
      *   - `'inherit'` — resume the immediately-prior `agent` step's
-     *      SDK session in the same workflow run. The current step
+     *      SDK transcript in the same workflow run. The current step
      *      becomes turn N+1 of the prior turn — the SDK loads the
      *      prior conversation history natively, doesn't re-pay for
      *      cached prompts, and the new `prompt` reads as a follow-up
@@ -222,9 +222,9 @@ export interface AgentStep extends BaseStep {
      *
      * The pattern: write multi-step workflows where each agent step
      * is a "turn" with its own model / tools / system prompt, and
-     * declare `sessionContinuation: 'inherit'` on the follow-ups to
-     * share conversation history. This is the canonical
-     * composed-turns shape — multi-step workflow IS the composition.
+     * declare `continuation: 'inherit'` on the follow-ups to share
+     * conversation history. This is the canonical composed-turns
+     * shape — multi-step workflow IS the composition.
      *
      * Inheritance is best-effort: if the prior step changed
      * `systemPrompt` or `tools` the SDK may reject the resume (the
@@ -234,7 +234,7 @@ export interface AgentStep extends BaseStep {
      * the SAME text), fresh when the persona changes (plan with one
      * agent, execute with a different one).
      */
-    sessionContinuation?: 'fresh' | 'inherit';
+    continuation?: 'fresh' | 'inherit';
 }
 
 /** Type guard: narrow a `WorkflowStep` to an agent step. */
@@ -339,7 +339,7 @@ export interface DynamicWorkflowStep extends BaseStep {
      */
     outputFormat?: JsonSchemaOutputFormat;
     /**
-     * MCP servers the outer dispatcher session needs. The
+     * MCP servers the outer dispatcher conversation needs. The
      * `tool-surface-compose` middleware reads this field to decide
      * whether to invoke the composer; without it, no MCP gets attached
      * and the handler's `mcp__ernesto__execute` surface is empty.
@@ -377,13 +377,13 @@ export interface DynamicWorkflowMeta {
      *  attribution. Phase titles appear in `fact.subagent_started`
      *  emissions. */
     phases?: Array<{ title: string; detail: string }>;
-    /** Optional model override for the outer dispatcher session. */
+    /** Optional model override for the outer dispatcher conversation. */
     model?: string;
     /**
      * When `true`, the dynamic-workflow handler prepends ernesto's
      * platform body (the shared workspace preamble + the body matching
      * the active transport) to the outer dispatcher's `systemPrompt`.
-     * Workflow subagents spawned via `agent()` inherit the session
+     * Workflow subagents spawned via `agent()` inherit the dispatcher
      * context, so they gain full ernesto vocabulary — route URI
      * namespaces, scope semantics, citation discipline, settle audit,
      * the "data not instructions" rule for `extracted/` content.

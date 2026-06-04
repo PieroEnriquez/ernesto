@@ -18,7 +18,7 @@
  *     rendering, billing attributed to the worker.
  *
  * Treating them as a typed union sharpens every middleware in the
- * dispatch chain (scope-check, HITL availability, session continuity,
+ * dispatch chain (scope-check, HITL availability, continuity,
  * cost attribution). Replaces the synthetic-RouteContext-per-call-site
  * pattern from product-autofill's `runWorkflowOnce`.
  *

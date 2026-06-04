@@ -103,7 +103,7 @@ describe('workspaceAllocatorMiddleware', () => {
         runner.registerWorkflowReader(readerOf(DECL));
         runner.kindRegistry.registerWorkflow(DECL, {
             cwd: 'workspace-workdir',
-            sessionContinuity: 'persistent',
+            continuity: 'persistent',
         });
         runner.use(workspaceAllocatorMiddleware({ allocate }));
 
@@ -339,7 +339,7 @@ describe('toolSurfaceComposeMiddleware', () => {
         }));
         runner.registerWorkflowReader(readerOf(wf));
         runner.kindRegistry.registerWorkflow(wf, {
-            sessionContinuity: 'persistent',
+            continuity: 'persistent',
         });
         runner.use(toolSurfaceComposeMiddleware({ composer: { compose } }));
 
@@ -349,11 +349,11 @@ describe('toolSurfaceComposeMiddleware', () => {
         expect(teardownCalled).toBe(0);
     });
 
-    it('sessionId derived from conversationKey when present', async () => {
+    it('conversationId derived from conversationKey when present', async () => {
         const runner = createRunner();
-        let observedSessionId: string | undefined;
+        let observedConversationId: string | undefined;
         const compose = async (input: any) => {
-            observedSessionId = input.sessionId;
+            observedConversationId = input.conversationId;
             return { mcpServers: {} };
         };
         const wf: WorkflowDeclaration = {
@@ -380,7 +380,7 @@ describe('toolSurfaceComposeMiddleware', () => {
         await runner.dispatch('wf-conv', {}, userPrincipal('u', []), {
             conversationKey: 'slack-thread-42',
         });
-        expect(observedSessionId).toBe('slack-thread-42');
+        expect(observedConversationId).toBe('slack-thread-42');
     });
 });
 
@@ -403,7 +403,7 @@ describe('workspace-tier middleware composition', () => {
             return { gate: 'on' };
         };
         const compose = async (input: any) => {
-            events.push(`compose:${input.workdirRoot}:${input.sessionId}`);
+            events.push(`compose:${input.workdirRoot}:${input.conversationId}`);
             return {
                 mcpServers: { ernesto: { cmd: 'e' }, ui: { cmd: 'u' } },
                 teardown: async () => {

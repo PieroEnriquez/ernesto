@@ -168,7 +168,7 @@ export class HitlController {
  * Materialize the agent-authored resume-prompt template with the
  * human's response. Renderers call this when they capture a HITL
  * result; the returned string becomes the next SDK agent turn's
- * user-message content (paired with `resume: <sessionId>`).
+ * user-message content (paired with `resume: <transcriptId>`).
  *
  * Substitution:
  *   - `{value}` is replaced with the response (objects + arrays are

@@ -193,7 +193,9 @@ export async function createUiMcpServer(
         callback,
     );
 
-    // Stateful transport — one session covers the agent's lifetime.
+    // Stateful transport — one MCP transport connection (its
+    // `sessionIdGenerator` is the MCP SDK's API name) covers the
+    // agent's lifetime.
     const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
     });

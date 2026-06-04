@@ -115,17 +115,15 @@ export type Isolation = 'none' | 'vm';
  * scheduler, HTTP route, spawn-workflow script, the laptop transport)
  * hands to `compileAgent` / `invokeAgent`. §7.2.
  *
- * Kept narrow on day one — `session.cwd` is the only field
- * `compileAgent` reads. Future stops widen: §7.3 needs
- * `session.workspaceName` for L3 layering; §7.5 adds `config` and
- * `platform` namespaces for the template resolver; §7.12 adds
- * `subagentDepth` for the depth cap.
+ * Kept narrow on day one — `cwd` is the only field `compileAgent`
+ * reads. Future stops widen: §7.3 needs a `workspaceName` for L3
+ * layering; §7.5 adds `config` and `platform` namespaces for the
+ * template resolver; §7.12 adds `subagentDepth` for the depth cap.
  */
 export interface AgentContext {
-    session: {
-        id: string;
-        cwd?: string;
-    };
+    /** The bound per-run workdir the agent reads its platform body
+     *  from (`<cwd>/workspaces/_platform/...`). */
+    cwd?: string;
     /**
      * Which transport is composing this agent. Drives the
      * per-transport `_platform/<transport>.md` append. Optional for

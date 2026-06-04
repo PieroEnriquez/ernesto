@@ -148,9 +148,9 @@ export function createCasHarness(env: CasHarnessEnv = {}): Harness {
             mcpServers: mergedMcpServers,
             providerEnv: env.providerEnv,
             env: opts.env,
-            persistSession: opts.persistSession,
-            resumeSessionId: opts.resumeSessionId,
-            forkSession: opts.forkSession,
+            persistTranscript: opts.persistTranscript,
+            resumeTranscript: opts.resumeTranscript,
+            forkTranscript: opts.forkTranscript,
             defaultDisallowedTools: env.defaults?.disallowedTools,
             ...(env.transport ? { transport: env.transport } : {}),
         });

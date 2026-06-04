@@ -16,8 +16,9 @@ export interface StepEmissionSummary {
     components: UiComponent[];
     /** Final assistant text (Layer-3 fallback signal). */
     finalAssistantText?: string;
-    /** SDK session UUID captured from the harness. */
-    sessionId?: string;
+    /** The Agent SDK's conversation transcript id (its `session_id`),
+     *  captured from the harness. */
+    transcriptId?: string;
 }
 
 /** Find the latest `hitl`-kind component in the emissions, if any. */

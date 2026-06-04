@@ -179,8 +179,8 @@ export async function wrapFnAsMcpServer(
     // Stateful transport: the MCP SDK's stateless mode requires a
     // fresh transport per request (otherwise message ids collide
     // across clients). Stateful mode lets one transport drive the
-    // whole agent lifetime; the session id is generated server-side
-    // on initialize.
+    // whole agent lifetime; the MCP transport's `sessionId` (the MCP
+    // SDK's API name) is generated server-side on initialize.
     const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
     });

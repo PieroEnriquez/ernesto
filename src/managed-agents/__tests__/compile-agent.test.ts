@@ -29,7 +29,7 @@ const baseDecl: AgentDeclaration = {
 };
 
 const baseCtx: AgentContext = {
-    session: { id: 'sess-1' },
+    cwd: undefined,
 };
 
 describe('compileAgent — pure passthrough', () => {
@@ -118,13 +118,13 @@ describe('compileAgent — L2 platform body append', () => {
 
     it('appends platform body to a string systemPrompt', () => {
         writePlatformBody('Editorial guardrails: be kind.');
-        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp } });
+        const r = compileAgent(baseDecl, { cwd: tmp });
         expect(r.systemPrompt).toBe('You are a test agent.\n\nEditorial guardrails: be kind.');
     });
 
     it('strips frontmatter before appending', () => {
         writePlatformBody('---\nname: _platform\n---\nBody text only.\n');
-        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp } });
+        const r = compileAgent(baseDecl, { cwd: tmp });
         expect(r.systemPrompt).toBe('You are a test agent.\n\nBody text only.\n');
     });
 
@@ -132,7 +132,7 @@ describe('compileAgent — L2 platform body append', () => {
         writePlatformBody('Platform note.');
         const r = compileAgent(
             { ...baseDecl, systemPrompt: { type: 'preset', preset: 'claude_code', append: 'Prior append.' } },
-            { session: { id: 'x', cwd: tmp } },
+            { cwd: tmp },
         );
         expect(r.systemPrompt).toEqual({
             type: 'preset',
@@ -145,7 +145,7 @@ describe('compileAgent — L2 platform body append', () => {
         writePlatformBody('Solo platform note.');
         const r = compileAgent(
             { ...baseDecl, systemPrompt: { type: 'preset', preset: 'claude_code' } },
-            { session: { id: 'x', cwd: tmp } },
+            { cwd: tmp },
         );
         expect(r.systemPrompt).toEqual({
             type: 'preset',
@@ -155,18 +155,18 @@ describe('compileAgent — L2 platform body append', () => {
     });
 
     it('absent _platform/WORKSPACE.md is a silent no-op', () => {
-        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp } });
+        const r = compileAgent(baseDecl, { cwd: tmp });
         expect(r.systemPrompt).toBe('You are a test agent.');
     });
 
     it('empty body after stripping frontmatter is treated as absent', () => {
         writePlatformBody('---\nname: _platform\n---\n\n  \n');
-        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp } });
+        const r = compileAgent(baseDecl, { cwd: tmp });
         expect(r.systemPrompt).toBe('You are a test agent.');
     });
 
     it('non-existent cwd is a silent no-op (not a throw)', () => {
-        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: '/definitely/not/a/real/path/zzz' } });
+        const r = compileAgent(baseDecl, { cwd: '/definitely/not/a/real/path/zzz' });
         expect(r.systemPrompt).toBe('You are a test agent.');
     });
 });
@@ -190,7 +190,7 @@ describe('compileAgent — transport-specific platform body', () => {
     it('appends universal body + in-process overlay for transport "in-process"', () => {
         writePlatformFile('WORKSPACE.md', 'Universal rules.');
         writePlatformFile('in-process.md', 'In-process specifics.');
-        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, transport: 'in-process' });
+        const r = compileAgent(baseDecl, { cwd: tmp, transport: 'in-process' });
         expect(r.systemPrompt).toBe(
             'You are a test agent.\n\nUniversal rules.\n\nIn-process specifics.',
         );
@@ -200,47 +200,47 @@ describe('compileAgent — transport-specific platform body', () => {
         writePlatformFile('WORKSPACE.md', 'Universal.');
         writePlatformFile('in-process.md', 'In-process only.');
         writePlatformFile('mcp.md', 'MCP only.');
-        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, transport: 'mcp' });
+        const r = compileAgent(baseDecl, { cwd: tmp, transport: 'mcp' });
         expect(r.systemPrompt).toBe('You are a test agent.\n\nUniversal.\n\nMCP only.');
     });
 
     it('uses the in-process overlay for transport "vm" (VM shares the in-process substrate)', () => {
         writePlatformFile('WORKSPACE.md', 'Universal.');
         writePlatformFile('in-process.md', 'In-process specifics.');
-        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, transport: 'vm' });
+        const r = compileAgent(baseDecl, { cwd: tmp, transport: 'vm' });
         expect(r.systemPrompt).toBe('You are a test agent.\n\nUniversal.\n\nIn-process specifics.');
     });
 
     it('a laptop transport has no injected overlay — it carries its own', () => {
         writePlatformFile('WORKSPACE.md', 'Universal.');
         writePlatformFile('in-process.md', 'In-process only.');
-        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, transport: 'laptop' });
+        const r = compileAgent(baseDecl, { cwd: tmp, transport: 'laptop' });
         expect(r.systemPrompt).toBe('You are a test agent.\n\nUniversal.');
     });
 
     it('skips the overlay when the transport is omitted (legacy callers unaffected)', () => {
         writePlatformFile('WORKSPACE.md', 'Universal.');
         writePlatformFile('in-process.md', 'In-process only.');
-        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp } });
+        const r = compileAgent(baseDecl, { cwd: tmp });
         expect(r.systemPrompt).toBe('You are a test agent.\n\nUniversal.');
     });
 
     it('missing overlay file falls back to universal only', () => {
         writePlatformFile('WORKSPACE.md', 'Universal.');
-        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, transport: 'in-process' });
+        const r = compileAgent(baseDecl, { cwd: tmp, transport: 'in-process' });
         expect(r.systemPrompt).toBe('You are a test agent.\n\nUniversal.');
     });
 
     it('missing universal but present overlay emits just the overlay body', () => {
         writePlatformFile('in-process.md', 'In-process solo.');
-        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, transport: 'in-process' });
+        const r = compileAgent(baseDecl, { cwd: tmp, transport: 'in-process' });
         expect(r.systemPrompt).toBe('You are a test agent.\n\nIn-process solo.');
     });
 
     it('strips frontmatter from the overlay too', () => {
         writePlatformFile('WORKSPACE.md', 'Universal.');
         writePlatformFile('in-process.md', '---\nname: in-process\n---\nFrontmatter-stripped overlay body.');
-        const r = compileAgent(baseDecl, { session: { id: 'x', cwd: tmp }, transport: 'in-process' });
+        const r = compileAgent(baseDecl, { cwd: tmp, transport: 'in-process' });
         expect(r.systemPrompt).toBe(
             'You are a test agent.\n\nUniversal.\n\nFrontmatter-stripped overlay body.',
         );

@@ -72,9 +72,10 @@ export interface FraguaPiCompileContext {
     getApiKey?: (
         provider: string,
     ) => Promise<string | undefined> | string | undefined;
-    /** Session id for provider-cache hints (Anthropic / OpenAI-Responses
-     *  use this). */
-    sessionId?: string;
+    /** The Agent SDK's conversation transcript id (its `session_id`),
+     *  used for provider-cache hints (Anthropic / OpenAI-Responses use
+     *  this). */
+    transcriptId?: string;
     /** Default disallowed-tools list applied when the declaration
      *  leaves it unset. Fn-shaped tools whose `name` is in the merged
      *  disallowed list are silently dropped. */
@@ -96,8 +97,9 @@ export interface CompiledFraguaPiOptions {
     getApiKey?: (
         provider: string,
     ) => Promise<string | undefined> | string | undefined;
-    /** Session id for provider-cache hints. */
-    sessionId?: string;
+    /** The Agent SDK's conversation transcript id (its `session_id`),
+     *  for provider-cache hints. */
+    transcriptId?: string;
     /** Diagnostic warnings emitted during compile — surfaced to the
      *  caller (typically appended to `agent.warning` events). */
     warnings: string[];
@@ -171,7 +173,7 @@ export function compileAgentToFraguaPiOptions(
         warnings,
     };
     if (ctx.getApiKey !== undefined) out.getApiKey = ctx.getApiKey;
-    if (ctx.sessionId !== undefined) out.sessionId = ctx.sessionId;
+    if (ctx.transcriptId !== undefined) out.transcriptId = ctx.transcriptId;
     return out;
 }
 

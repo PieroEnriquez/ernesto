@@ -296,8 +296,8 @@ async function deriveAffectedWorkspaces(workingTreeRoot: string): Promise<string
         if (match) {
             // Skip master-fs overlays. `extracted/`, `routes/`, `attached/`
             // subdirs AND the `attachments.yaml` file are hard-link mirrors
-            // of master-fs placed at session boot (host-owned overlay
-            // setup) / mid-session (`remirrorFile`).
+            // of master-fs placed at host boot (host-owned overlay
+            // setup) / mid-run (`remirrorFile`).
             // Without this filter, every workspace whose mirror got
             // refreshed — or that the agent attached a file to via
             // `_platform://attach` — would show up as untracked in

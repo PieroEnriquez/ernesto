@@ -190,7 +190,8 @@ export interface HandlerRouting {
      *  dispatch — subworkflow step or agent's `execute()` call). */
     parentRunId?: string;
     /** Long-lived conversation continuity key (persistent in-process
-     *  sessions). When set, the runner reuses session resources. */
+     *  conversations). When set, the runner reuses the conversation's
+     *  runtime/workdir resources across turns. */
     conversationKey?: string;
     /** Free-form metadata from the caller — slackThreadId,
      *  mcpConvId, cliPid, etc. Subscriber-typed; the engine

@@ -44,8 +44,9 @@ import { fraguaPiSend, type FraguaPiRunHandle } from './send';
 /** Strongly-typed fragua-pi create options. Superset of the canonical
  *  `CreateOptions`. */
 export interface FraguaPiCreateOptions {
-    /** Stable id propagated as the harness handle's `id`. */
-    sessionId?: string;
+    /** Stable id propagated as the harness handle's `id` and as the
+     *  Agent SDK's conversation transcript id (its `session_id`). */
+    transcriptId?: string;
     /** Working directory bound to this agent's runs. Currently
      *  informational — pi-agent-core has no `cwd` field of its own. */
     cwd?: string;
@@ -109,7 +110,7 @@ export async function fraguaPiCreateAgent(
     def: AgentDefinition,
     opts: FraguaPiCreateOptions = {},
 ): Promise<FraguaPiAgentHandle> {
-    const agentId = opts.sessionId ?? `fragua-pi-${randomUUID()}`;
+    const agentId = opts.transcriptId ?? `fragua-pi-${randomUUID()}`;
 
     // Compile harness IR → pi-agent-core init bits.
     const compileCtx: Parameters<
@@ -121,7 +122,7 @@ export async function fraguaPiCreateAgent(
     if (opts.defaultDisallowedTools !== undefined) {
         compileCtx.defaultDisallowedTools = opts.defaultDisallowedTools;
     }
-    if (opts.sessionId !== undefined) compileCtx.sessionId = opts.sessionId;
+    if (opts.transcriptId !== undefined) compileCtx.transcriptId = opts.transcriptId;
     // Resolve API keys per-call: explicit `getApiKey` wins, then a
     // single `apiKeyOverride` string applies to every provider, then
     // pi-ai's `getEnvApiKey` reads `<PROVIDER>_API_KEY` from the env.
@@ -141,8 +142,10 @@ export async function fraguaPiCreateAgent(
     if (compiled.getApiKey !== undefined) {
         agentOpts.getApiKey = compiled.getApiKey;
     }
-    if (compiled.sessionId !== undefined) {
-        agentOpts.sessionId = compiled.sessionId;
+    if (compiled.transcriptId !== undefined) {
+        // `agentOpts.sessionId` is pi-agent-core's `Agent` constructor
+        // field — keep that name; feed it our transcript id.
+        agentOpts.sessionId = compiled.transcriptId;
     }
     const piAgent = new Agent(agentOpts);
 

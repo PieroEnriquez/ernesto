@@ -52,7 +52,7 @@ export interface BootstrapWorkdirInput {
      * When set, passed to `git clone` as `--depth=<n>`. A depth of 1 makes
      * the clone shallow — no history, just the tip of `branch` — which is
      * dramatically faster for throwaway workdirs (e.g. subagent
-     * runs) that never need to walk history. Persistent session workdirs
+     * runs) that never need to walk history. Persistent conversation workdirs
      * leave this unset; they may later want `git log`, `git blame`, or
      * to settle a rebase that requires fetching common ancestors.
      */

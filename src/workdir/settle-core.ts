@@ -24,7 +24,7 @@ import type { LintFn, PushToMainFn, SettleResult } from './settle';
 /**
  * Per-workspace subdirectories that are generated content (extraction worker,
  * attach route). They live as hard-link mirrors of master-fs placed at
- * session boot (deployer-owned — see the host's `ensureMasterFsOverlays`)
+ * host boot (deployer-owned — see the host's `ensureMasterFsOverlays`)
  * and must never enter the git index. settle excludes them from staging via
  * git pathspec, regardless of any `.gitignore` rules — the workspaces tree's
  * `.gitignore` is deliberately empty of these because ripgrep (the engine
@@ -45,13 +45,13 @@ export const GENERATED_SUBDIRS = ['extracted', 'attached'] as const;
  * `GENERATED_SUBDIRS` but for individual files. `attachments.yaml` is
  * authored only by `_platform://attach` and `_platform://detach`, which
  * write atomically to master-fs; the workdir copy is a hard link mirrored
- * by `ensureMasterFsOverlays` at session boot and `remirrorFile`
- * mid-session. Settle must not stage it — the bytes the agent might see
+ * by `ensureMasterFsOverlays` at host boot and `remirrorFile`
+ * mid-run. Settle must not stage it — the bytes the agent might see
  * in git status are master-fs state, not author intent.
  *
  * The target state has `attachments.yaml` living in git (workdir-authored,
  * settled normally). The route still writes the yaml to master-fs today, so
- * the exclusion stays until the route flip lands; otherwise sibling-session
+ * the exclusion stays until the route flip lands; otherwise sibling-run
  * attaches would leak via the overlay.
  *
  * `.derived-from-sha` is the per-workspace freshness sentinel written by
@@ -128,7 +128,7 @@ export async function resolveWorkspaceStagePaths(
  * Build the `git add -- …` argument list that stages each path minus its
  * master-fs overlays. `extracted/` and `attached/` (subdirs) and
  * `attachments.yaml` + `.derived-from-sha` (files) are hard-link mirrors of
- * master-fs placed at session boot (deployer-owned: the host's
+ * master-fs placed at host boot (deployer-owned: the host's
  * `ensureMasterFsOverlays`); they must never enter the git index. Doing the
  * exclusion via pathspec here (instead of via the workspaces tree's
  * `.gitignore`) keeps the working tree discoverable to ripgrep-based tools

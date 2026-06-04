@@ -12,9 +12,10 @@
  *   - Renderers read it from any process / replica — no shared cache.
  *   - Survives backend restarts: pending HITL doesn't vanish when the
  *     node crashes.
- *   - Lives next to `.ernesto/session-id` (SDK session UUID) and the
- *     SDK's `.claude/` session JSONL — one filesystem, one ground
- *     truth per conversation. Master-fs already owns the workdir tree.
+ *   - Lives next to `.ernesto/session-id` (the SDK transcript UUID —
+ *     on-disk artifact name kept stable) and the SDK's `.claude/`
+ *     transcript JSONL — one filesystem, one ground truth per
+ *     conversation. Master-fs already owns the workdir tree.
  *
  * **Renderer contract**
  *
@@ -84,11 +85,16 @@ export interface ConversationState {
     /** Run id of the currently-active agent run, if any. Set when the
      *  status is `running` or `awaiting_input`; cleared on terminal. */
     activeRunId?: string;
-    /** SDK session UUID for this conversation — captured from
-     *  `RunResult.sessionId` and reused as `resumeSessionId` on the
-     *  next agent turn. One source of truth: the same atomic file
-     *  write that carries `status` also carries the resumable session
-     *  pointer, so the two can't disagree. */
+    /** The Agent SDK's conversation transcript id (its `session_id`)
+     *  for this conversation — captured from `RunResult.transcriptId`
+     *  and reused as `resumeTranscript` on the next agent turn. One
+     *  source of truth: the same atomic file write that carries
+     *  `status` also carries the resumable transcript pointer, so the
+     *  two can't disagree.
+     *
+     *  NOTE: the field name `sessionId` is the ON-DISK `state.json` key
+     *  (see `JSON.stringify(state)` below) — kept stable for
+     *  forward-compat with already-persisted files; do not rename. */
     sessionId?: string;
     /** Wall-clock ms of the last transition. Renderers may use it for
      *  staleness checks (e.g. "this run has been running >5 min, prompt
@@ -104,7 +110,7 @@ export interface ConversationState {
      * conversation. Renderer prompt strategies prepend a
      * `<previous_turn_rendered>` block built from this trail so the
      * model reads its own past renders as truth — bypassing the SDK
-     * `interrupted_turn` / `(resume)` noise on session resumption.
+     * `interrupted_turn` / `(resume)` noise on transcript resumption.
      *
      * Rolling cap of 50 entries (oldest dropped). The SDK conversation
      * tree is a cache of past tool-use; this is ground truth.
@@ -333,10 +339,11 @@ export type RendererAction =
     | {
           kind: 'dispatch_continuation';
           prompt: string;
-          /** SDK session id to resume; `undefined` only when there is
-           *  no prior session (degenerate — `dispatch_new` covers the
+          /** The Agent SDK's conversation transcript id (its
+           *  `session_id`) to resume; `undefined` only when there is no
+           *  prior transcript (degenerate — `dispatch_new` covers the
            *  normal first-turn case). */
-          resumeSessionId?: string;
+          resumeTranscript?: string;
           reason: ConversationStatus | 'hitl_resolved' | 'preempt_awaiting_input';
       }
     | {
@@ -344,7 +351,9 @@ export type RendererAction =
           /** Active run to abort first. */
           abortRunId: string;
           prompt: string;
-          resumeSessionId?: string;
+          /** The Agent SDK's conversation transcript id (its
+           *  `session_id`) to resume. */
+          resumeTranscript?: string;
           reason: 'preempt_running' | 'preempt_awaiting_input';
       };
 
@@ -428,7 +437,7 @@ export function composeStrategy(
  *       await engine.abortRun(action.abortRunId);
  *   await engine.dispatchAgentTurn({
  *       workdir, prompt: action.prompt,
- *       resumeSessionId: action.resumeSessionId,
+ *       resumeTranscript: action.resumeTranscript,
  *   });
  *
  * — no per-transport state-machine duplication, no prompt scaffolding
@@ -440,7 +449,9 @@ export function decideRendererAction(
     customStrategy?: RendererPromptStrategy,
 ): RendererAction {
     const strategy = composeStrategy(customStrategy);
-    const sessionId = state?.sessionId;
+    // Persisted on disk under the stable `sessionId` key; carried in
+    // actions as our `resumeTranscript`.
+    const transcriptId = state?.sessionId;
     // `prev` carries the authoritative ui trail so hooks can render
     // a `<previous_turn_rendered>` block from the engine's own ground
     // truth (not the SDK conversation tree's resumed-turn noise).
@@ -458,7 +469,7 @@ export function decideRendererAction(
             return {
                 kind: 'dispatch_continuation',
                 prompt: strategy.forAwaitingInputResolved(input, state.pendingHitl),
-                ...(sessionId !== undefined ? { resumeSessionId: sessionId } : {}),
+                ...(transcriptId !== undefined ? { resumeTranscript: transcriptId } : {}),
                 reason: 'hitl_resolved',
             };
         }
@@ -489,7 +500,7 @@ export function decideRendererAction(
             kind: 'abort_then_continuation',
             abortRunId: state.activeRunId,
             prompt: strategy.forRunningPreempted(input, prev),
-            ...(sessionId !== undefined ? { resumeSessionId: sessionId } : {}),
+            ...(transcriptId !== undefined ? { resumeTranscript: transcriptId } : {}),
             reason: 'preempt_running',
         };
     }
@@ -500,14 +511,14 @@ export function decideRendererAction(
                 kind: 'abort_then_continuation',
                 abortRunId: state.activeRunId,
                 prompt,
-                ...(sessionId !== undefined ? { resumeSessionId: sessionId } : {}),
+                ...(transcriptId !== undefined ? { resumeTranscript: transcriptId } : {}),
                 reason: 'preempt_awaiting_input',
             };
         }
         return {
             kind: 'dispatch_continuation',
             prompt,
-            ...(sessionId !== undefined ? { resumeSessionId: sessionId } : {}),
+            ...(transcriptId !== undefined ? { resumeTranscript: transcriptId } : {}),
             reason: 'preempt_awaiting_input',
         };
     }
@@ -521,7 +532,7 @@ export function decideRendererAction(
     return {
         kind: 'dispatch_continuation',
         prompt: continuationPrompt,
-        ...(sessionId !== undefined ? { resumeSessionId: sessionId } : {}),
+        ...(transcriptId !== undefined ? { resumeTranscript: transcriptId } : {}),
         reason: state.status,
     };
 }

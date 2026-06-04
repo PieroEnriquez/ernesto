@@ -8,7 +8,7 @@
  * subworkflow handler propagates the signal to children.
  *
  * Service-level route kinds with `timeoutMs: 60_000` get a hard 60s budget;
- * in-process sessions usually omit timeoutMs (unbounded — bounded
+ * in-process conversations usually omit timeoutMs (unbounded — bounded
  * by the user's patience instead).
  */
 

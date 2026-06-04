@@ -82,7 +82,7 @@ describe('fraguaPiCreateAgent', () => {
     });
 
     it('threads systemPrompt + model into Agent initialState', async () => {
-        await fraguaPiCreateAgent(baseDef, { sessionId: 'a1' });
+        await fraguaPiCreateAgent(baseDef, { transcriptId: 'a1' });
         expect(agentConstructorSpy).toHaveBeenCalledTimes(1);
         const opts = agentConstructorSpy.mock.calls[0]?.[0] as {
             initialState?: {
@@ -101,7 +101,7 @@ describe('fraguaPiCreateAgent', () => {
     it('parses bare model id with defaultProvider fallback', async () => {
         await fraguaPiCreateAgent(
             { ...baseDef, model: 'gpt-4o' },
-            { sessionId: 'a2', providerOverride: 'openai' },
+            { transcriptId: 'a2', providerOverride: 'openai' },
         );
         const opts = agentConstructorSpy.mock.calls[0]?.[0] as {
             initialState?: { model?: { id?: string; provider?: string } };
@@ -113,7 +113,7 @@ describe('fraguaPiCreateAgent', () => {
     it('parses provider-prefixed model id correctly', async () => {
         await fraguaPiCreateAgent(
             { ...baseDef, model: 'openrouter/anthropic/claude-3.5' },
-            { sessionId: 'a3' },
+            { transcriptId: 'a3' },
         );
         const opts = agentConstructorSpy.mock.calls[0]?.[0] as {
             initialState?: { model?: { id?: string; provider?: string } };
@@ -132,7 +132,7 @@ describe('fraguaPiCreateAgent', () => {
         };
         await fraguaPiCreateAgent(
             { ...baseDef, tools: [fnTool] },
-            { sessionId: 'a4' },
+            { transcriptId: 'a4' },
         );
         const opts = agentConstructorSpy.mock.calls[0]?.[0] as {
             initialState?: { tools?: Array<{ name: string }> };
@@ -145,7 +145,7 @@ describe('fraguaPiCreateAgent', () => {
         const tool: ToolSpec = { kind: 'mcp', serverName: 'github' };
         await fraguaPiCreateAgent(
             { ...baseDef, tools: [tool] },
-            { sessionId: 'a5' },
+            { transcriptId: 'a5' },
         );
         const opts = agentConstructorSpy.mock.calls[0]?.[0] as {
             initialState?: { tools?: unknown[] };
@@ -155,7 +155,7 @@ describe('fraguaPiCreateAgent', () => {
 
     it('threads apiKeyOverride into getApiKey resolver', async () => {
         await fraguaPiCreateAgent(baseDef, {
-            sessionId: 'a6',
+            transcriptId: 'a6',
             apiKeyOverride: 'sk-fake-key',
         });
         const opts = agentConstructorSpy.mock.calls[0]?.[0] as {
@@ -166,7 +166,7 @@ describe('fraguaPiCreateAgent', () => {
     });
 
     it('close() aborts the underlying Agent', async () => {
-        const handle = await fraguaPiCreateAgent(baseDef, { sessionId: 'a7' });
+        const handle = await fraguaPiCreateAgent(baseDef, { transcriptId: 'a7' });
         await handle.close();
         expect(fakeAgentInstance.abort).toHaveBeenCalled();
     });
@@ -188,7 +188,7 @@ describe('fraguaPiCreateAgent', () => {
         };
         await fraguaPiCreateAgent(
             { ...baseDef, tools: [allow, block] },
-            { sessionId: 'a8', defaultDisallowedTools: ['blocked'] },
+            { transcriptId: 'a8', defaultDisallowedTools: ['blocked'] },
         );
         const opts = agentConstructorSpy.mock.calls[0]?.[0] as {
             initialState?: { tools?: Array<{ name: string }> };

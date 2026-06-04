@@ -49,7 +49,7 @@ export function compileAgent(
     ctx: AgentContext,
     defaults: { disallowedTools?: string[] } = {},
 ): CompiledAgent {
-    const platformBody = composePlatformBody(ctx.session.cwd, ctx.transport);
+    const platformBody = composePlatformBody(ctx.cwd, ctx.transport);
     const systemPrompt = platformBody
         ? appendPlatformBody(decl.systemPrompt, platformBody)
         : decl.systemPrompt;
@@ -98,7 +98,7 @@ export function composePlatformBody(
 
 /**
  * Read `<cwd>/workspaces/_platform/WORKSPACE.md` body, frontmatter
- * stripped. Sync on purpose — ~4 KB, one read per session boot,
+ * stripped. Sync on purpose — ~4 KB, one read per agent boot,
  * sub-ms. Async would ripple through every frontend caller
  * for no measurable win.
  *

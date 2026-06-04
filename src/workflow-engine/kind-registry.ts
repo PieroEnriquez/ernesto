@@ -54,8 +54,10 @@ export interface KindPolicy {
     };
     /** HITL availability — service principals never HITL regardless. */
     hitl?: 'never' | 'available-if-user' | 'required';
-    /** Session reuse semantics. */
-    sessionContinuity?: 'ephemeral' | 'persistent';
+    /** Whether the conversation's runtime/workdir is reused across
+     *  turns: `'ephemeral'` tears down per dispatch; `'persistent'`
+     *  retains it keyed by `conversationKey`. */
+    continuity?: 'ephemeral' | 'persistent';
     /** Idempotency — middleware consults the event log for prior
      *  in-flight or completed runs keyed by this expression. */
     idempotent?: {

@@ -18,7 +18,7 @@
  *                                   `^[a-z][a-z0-9-]{0,39}$`. Reserved
  *                                   `_`-prefix: only `_platform` allowed.
  *   forbidden_generated_path      — `workspaces/{w}/{extracted,attached}/`
- *                                   is master-fs-mirrored at session boot;
+ *                                   is master-fs-mirrored at host boot;
  *                                   agents must not commit changes to it.
  *   forbidden_workspace_md_delete — `WORKSPACE.md` is the contract; never
  *                                   delete it.
@@ -522,7 +522,7 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
         }
 
         // forbidden_generated_path — `extracted/` and `attached/` are
-        // master-fs mirrors placed at session boot and must never enter the
+        // master-fs mirrors placed at host boot and must never enter the
         // git index. The lib's settleFromWorktree already excludes them via
         // pathspec, but the lint catches any path that slipped past (e.g.
         // a settleFromPatch with a hand-crafted diff).

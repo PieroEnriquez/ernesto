@@ -18,7 +18,7 @@ export type MaterializeResult =
  * the entry at `treePath` regardless of whether it's present.
  *
  * Why this exists: master-fs writes (extraction/derive workers) use atomic
- * temp+rename, which produces a *new* inode. Hard links placed at session
+ * temp+rename, which produces a *new* inode. Hard links placed at host
  * boot still point at the *old* inode and silently serve stale bytes. The
  * live-update path publishes the changed paths over pubsub; the subscriber
  * calls `remirrorFile` for each active workdir whose scope includes the

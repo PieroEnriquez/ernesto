@@ -38,13 +38,14 @@ import { casSendWithOptions } from './send';
  *  `CreateOptions` shape — the extra fields are CAS-private context the
  *  backend pre-resolves (provider creds, sandbox hooks, MCP record). */
 export interface CasCreateOptions {
-    /** Caller-supplied stable id; defaults to `cas-<uuid>`. Threaded
-     *  into the SDK as `sessionId` when present, otherwise the SDK
-     *  assigns its own. */
+    /** Caller-supplied stable id; defaults to `cas-<uuid>`. Used as the
+     *  transcript identity when `transcriptId` is absent, otherwise the
+     *  SDK assigns its own. */
     agentId?: string;
-    /** SDK session id — overrides `agentId` when both are set. Defaults
-     *  to a `no-session` sentinel when neither is supplied. */
-    sessionId?: string;
+    /** The Agent SDK's conversation transcript id (its `session_id`) —
+     *  overrides `agentId` when both are set. Falls back to `agentId`
+     *  when neither is supplied. */
+    transcriptId?: string;
     /** Working directory bound to the agent run. */
     cwd?: string;
     /** Abort controller shared with the run. */
@@ -60,13 +61,14 @@ export interface CasCreateOptions {
     /** Sandbox hooks — CAS-specific structural type, opaque to the lib
      *  and passed through to `Options.hooks`. */
     hooks?: SdkHooks;
-    /** Session persistence flag (pass-through to SDK). */
-    persistSession?: boolean;
-    /** Parent session id when forking/resuming. */
-    resumeSessionId?: string;
-    /** When true + `resumeSessionId`, forks a fresh session instead of
-     *  continuing the parent. */
-    forkSession?: boolean;
+    /** Transcript persistence flag (pass-through to SDK). */
+    persistTranscript?: boolean;
+    /** Parent transcript id (the Agent SDK's `session_id`) when
+     *  forking/resuming. */
+    resumeTranscript?: string;
+    /** When true + `resumeTranscript`, forks a fresh transcript instead
+     *  of continuing the parent. */
+    forkTranscript?: boolean;
     /** Built-in tool whitelist (SDK `Options.tools`). */
     tools?: string[];
     /** Default disallowed-tools list to apply when the declaration
@@ -117,19 +119,19 @@ export async function casCreateAgent(
 ): Promise<CasAgentHandle> {
     const compiled = coerceToCompiledAgent(def, opts);
     const agentId = opts.agentId ?? `cas-${randomUUID()}`;
-    const sessionId = opts.sessionId ?? agentId;
+    const transcriptId = opts.transcriptId ?? agentId;
 
     const sdkOptions = compileAgentToSdkOptions(compiled, {
-        sessionId,
+        transcriptId,
         cwd: opts.cwd,
         abortController: opts.abortController,
         mcpServers: opts.mcpServers,
         providerEnv: opts.providerEnv,
         env: opts.env,
         hooks: opts.hooks,
-        persistSession: opts.persistSession,
-        resumeSessionId: opts.resumeSessionId,
-        forkSession: opts.forkSession,
+        persistTranscript: opts.persistTranscript,
+        resumeTranscript: opts.resumeTranscript,
+        forkTranscript: opts.forkTranscript,
         tools: opts.tools,
         defaultDisallowedTools: opts.defaultDisallowedTools,
     });
@@ -208,10 +210,7 @@ function coerceToCompiledAgent(
         typeof def.model === 'string' ? def.model : def.model.id;
 
     const ctx: AgentContext = {
-        session: {
-            id: opts.agentId ?? opts.sessionId ?? 'no-session',
-            cwd: opts.cwd,
-        },
+        cwd: opts.cwd,
         transport: opts.transport,
     };
 

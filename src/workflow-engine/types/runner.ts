@@ -57,8 +57,9 @@ export interface DispatchOpts {
      *  through descendants so a transport port subscribes by a single id. */
     surfaceRunId?: string;
     /** Long-lived conversation continuity key (persistent in-process
-     *  sessions). When set, the runner reuses the session associated
-     *  with this key (workdir, MCP servers, SDK session JSONL). */
+     *  conversations). When set, the runner reuses the conversation
+     *  runtime associated with this key (workdir, MCP servers, the
+     *  SDK's transcript JSONL). */
     conversationKey?: string;
     /** Caller-allocated runId — lets per-transport subscribers register
      *  state BEFORE dispatch begins emitting. Otherwise the runner
