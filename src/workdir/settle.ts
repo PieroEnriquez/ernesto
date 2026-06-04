@@ -46,7 +46,17 @@ export interface SettleInput {
 }
 
 export type SettleResult =
-    | { ok: true; sha: string; pushed: boolean }
+    | {
+          ok: true;
+          sha: string;
+          pushed: boolean;
+          /** Tree-relative paths actually committed by this settle (the staged
+           *  scope). Path-granular ground truth — lets a caller forget exactly
+           *  the settled subset of a per-user draft (rather than the whole
+           *  draft) and is the seam a future finer-than-workspace settle hangs
+           *  off. */
+          committedPaths: ReadonlyArray<string>;
+      }
     | { ok: false; error: 'lint_failed'; errors: ReadonlyArray<LintError> }
     | { ok: false; error: 'fast_forward_required'; currentSha: string }
     | { ok: false; error: 'merge_conflict' };

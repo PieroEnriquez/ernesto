@@ -213,12 +213,21 @@ export async function runSettleCore(
         return { ok: false, error: 'lint_failed', errors: lintRes.errors };
     }
 
+    // Ground-truth committed scope: the staged paths within the lint scope, just
+    // before the commit. Path-granular so a caller can forget exactly the
+    // settled subset of a per-user draft (not the whole draft).
+    const committedPaths = (
+        await runGit(root, ['diff', '--cached', '--name-only', '-z', '--', ...scopedPaths])
+    )
+        .split('\0')
+        .filter((p) => p.length > 0);
+
     const commitMessage = formatCommitMessage(input.message, input.trailers);
     await runGit(root, ['commit', '-m', commitMessage]);
     const sha = (await runGit(root, ['rev-parse', 'HEAD'])).trim();
 
     if (!input.pushToMain) {
-        return { ok: true, sha, pushed: false };
+        return { ok: true, sha, pushed: false, committedPaths };
     }
 
     const push = await input.pushToMain({
@@ -239,5 +248,5 @@ export async function runSettleCore(
         console.warn('runSettleCore: post-push journal rebase failed', err);
     }
 
-    return { ok: true, sha: push.sha, pushed: true };
+    return { ok: true, sha: push.sha, pushed: true, committedPaths };
 }

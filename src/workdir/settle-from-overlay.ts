@@ -25,7 +25,7 @@ import { join } from 'path';
 import { Workdir } from './types';
 import { runGit, tryRunGit } from './run-git';
 import { SettleResult, LintFn, PushToMainFn } from './settle';
-import { runSettleCore } from './settle-core';
+import { runSettleCore, resolveScopedPaths } from './settle-core';
 import type { WorkspacePatch, PatchEntry } from '../workspaces/overlay';
 
 function isDeleted(e: PatchEntry): e is { deleted: true } {
@@ -58,7 +58,18 @@ export async function settleFromOverlay(
         const root = workdir.workingTreeRoot;
         const baseSha = (input.baseSha ?? input.patch.baseSha).trim();
 
-        const fileEntries = Object.entries(input.patch.files);
+        // Scope the overlay to the declared `workspaces[]`: a per-user draft is
+        // ONE overlay spanning every workspace the user has touched, but a settle
+        // commits only its declared scope. Applying out-of-scope entries here
+        // would over-commit them to main UNLINTED (the lint diff is scoped) and
+        // leave the caller unable to tell what landed. Filtering to scope makes
+        // settle honor its contract and yields a path-granular committed set the
+        // caller forgets from the draft. (The same `resolveScopedPaths` the lint
+        // core uses, so apply-scope and commit-scope can never drift.)
+        const scopedPaths = await resolveScopedPaths(root, input.workspaces);
+        const inScope = (p: string): boolean =>
+            scopedPaths.some((s) => p === s || p.startsWith(`${s}/`));
+        const fileEntries = Object.entries(input.patch.files).filter(([p]) => inScope(p));
         if (fileEntries.length === 0) {
             return { ok: false, error: 'patch_rejected', reason: 'empty_patch' };
         }
@@ -136,6 +147,7 @@ export async function settleFromOverlay(
             lint: input.lint,
             pushToMain: input.pushToMain,
             trailers: input.trailers,
+            scopedPaths,
             onLintFail: 'reset-hard',
         });
     });
