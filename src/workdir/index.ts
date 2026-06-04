@@ -25,6 +25,6 @@ export type {
 } from './settle';
 export { settleFromPatch } from './settle-from-patch';
 export type { SettleFromPatchInput, SettleFromPatchResult } from './settle-from-patch';
-export { overlayToDiff, diffToOverlay } from './overlay-to-diff';
-export { settleFromOverlay, writeOverlayFiles } from './settle-from-overlay';
+export { overlayToDiff } from './overlay-to-diff';
+export { settleFromOverlay } from './settle-from-overlay';
 export type { SettleFromOverlayInput, SettleFromOverlayResult } from './settle-from-overlay';

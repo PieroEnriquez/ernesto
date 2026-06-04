@@ -30,7 +30,7 @@ import { randomBytes } from 'crypto';
 import { Workdir } from './types';
 import { runGit } from './run-git';
 import { SettleResult, LintFn, PushToMainFn } from './settle';
-import { runSettleCore } from './settle-core';
+import { runSettleCore, GENERATED_SUBDIRS } from './settle-core';
 
 export interface SettleFromPatchInput {
     workspaces: ReadonlyArray<string>;
@@ -106,8 +106,9 @@ export async function settleFromPatch(
             const checkoutArgs = ['checkout', 'HEAD', '--'];
             for (const ws of input.workspaces) {
                 checkoutArgs.push(`workspaces/${ws}`);
-                checkoutArgs.push(`:(exclude)workspaces/${ws}/extracted`);
-                checkoutArgs.push(`:(exclude)workspaces/${ws}/attached`);
+                for (const sub of GENERATED_SUBDIRS) {
+                    checkoutArgs.push(`:(exclude)workspaces/${ws}/${sub}`);
+                }
             }
             try { await runGit(root, checkoutArgs); }
             catch { /* fall through; apply will surface the real error */ }

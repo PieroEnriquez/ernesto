@@ -91,6 +91,35 @@ describe('buildSettlePatch', () => {
         expect(r.patch).not.toContain('attached body');
     });
 
+    it('excludes the master-fs single-file overlays (attachments.yaml, .derived-from-sha)', async () => {
+        // Regression: the laptop-patch exclusion set must match the worktree
+        // settle gate. attachments.yaml and .derived-from-sha are master-fs
+        // mirrors and must never ride along in a laptop-transport patch a
+        // worktree settle would have stripped.
+        const { root } = await makeCloneWithWorkspaces();
+
+        await fsp.writeFile(
+            join(root, 'workspaces', 'alpha', 'WORKSPACE.md'),
+            '---\nname: alpha\n---\nreal edit\n',
+        );
+        await fsp.writeFile(
+            join(root, 'workspaces', 'alpha', 'attachments.yaml'),
+            'attachments:\n  - id: leaked\n',
+        );
+        await fsp.writeFile(
+            join(root, 'workspaces', 'alpha', '.derived-from-sha'),
+            'deadbeef\n',
+        );
+
+        const r = await buildSettlePatch(root, ['alpha']);
+        expect(r.patch).toContain('workspaces/alpha/WORKSPACE.md');
+        expect(r.patch).toContain('real edit');
+        expect(r.patch).not.toContain('attachments.yaml');
+        expect(r.patch).not.toContain('leaked');
+        expect(r.patch).not.toContain('.derived-from-sha');
+        expect(r.patch).not.toContain('deadbeef');
+    });
+
     it('stages multiple workspaces in one call', async () => {
         const { root } = await makeCloneWithWorkspaces();
         await fsp.writeFile(join(root, 'workspaces', 'alpha', 'WORKSPACE.md'), '---\nname: alpha\n---\nA changed\n');

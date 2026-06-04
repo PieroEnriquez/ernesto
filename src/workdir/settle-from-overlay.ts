@@ -20,8 +20,8 @@
  * for the shared lint+commit+push tail.
  */
 
-import { writeFile, mkdir, rm } from 'fs/promises';
-import { join, dirname } from 'path';
+import { rm } from 'fs/promises';
+import { join } from 'path';
 import { Workdir } from './types';
 import { runGit, tryRunGit } from './run-git';
 import { SettleResult, LintFn, PushToMainFn } from './settle';
@@ -139,25 +139,4 @@ export async function settleFromOverlay(
             onLintFail: 'reset-hard',
         });
     });
-}
-
-/** Materialize an overlay's present files into a directory tree (used by tests
- *  and by the backend's disposable-tree materialization). Tombstoned paths are
- *  removed if present. Returns the count of files written. */
-export async function writeOverlayFiles(
-    destRoot: string,
-    patch: WorkspacePatch,
-): Promise<number> {
-    let written = 0;
-    for (const [path, entry] of Object.entries(patch.files)) {
-        const abs = join(destRoot, path);
-        if (isDeleted(entry)) {
-            await rm(abs, { force: true });
-            continue;
-        }
-        await mkdir(dirname(abs), { recursive: true });
-        await writeFile(abs, entry.content, 'utf8');
-        written++;
-    }
-    return written;
 }

@@ -1,24 +1,8 @@
-import picomatch from 'picomatch';
 import {
     FsAdapter, MasterFsAdapter,
     GlobOptions, GrepOptions, GrepResult, GrepOutputMode,
 } from './types';
-
-/** Same compile flags as `node-adapters.ts` so prod / tests don't diverge. */
-function compileGlob(pattern: string): (p: string) => boolean {
-    return picomatch(pattern, { dot: true });
-}
-
-function safeSubpath(sub: string | undefined): string {
-    if (!sub) return '';
-    if (sub.startsWith('/') || sub.includes('\\')) {
-        throw new Error('invalid_path');
-    }
-    if (sub.split('/').some(seg => seg === '..')) {
-        throw new Error('parent_segment_not_allowed');
-    }
-    return sub.replace(/^\.\/+/, '').replace(/\/+$/, '');
-}
+import { compileGlob, safeSubpath } from './glob-util';
 
 export function makeInMemoryFsAdapter(): FsAdapter {
     // Single flat map. Hard links on a real FS are two directory entries pointing

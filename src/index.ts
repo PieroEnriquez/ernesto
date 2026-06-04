@@ -18,8 +18,8 @@ export {
     bootWorkdir, rehydrateWorkdir,
     commitTurn, remirrorFile, settleFromWorktree,
     settleFromPatch,
-    overlayToDiff, diffToOverlay,
-    settleFromOverlay, writeOverlayFiles,
+    overlayToDiff,
+    settleFromOverlay,
     RipgrepNotInstalledError,
 } from './workdir';
 export type {
