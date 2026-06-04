@@ -123,8 +123,8 @@ export type {
     UiTrailEntry,
 } from './conversation-state';
 
-export { HandlerDispatcher } from './dispatch';
-export { EventBus } from './event-bus';
+// `HandlerDispatcher` (./dispatch) and `EventBus` (./event-bus) are
+// internal engine primitives — not part of the public barrel surface.
 
 // ─── DAG engine expression helper ────────────────────────────────────
 // Resolves `${{ inputs.X }}` / `${{ steps.X.outputs.Y }}` tokens.

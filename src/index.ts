@@ -3,7 +3,6 @@
 // ─── Path security primitives ────────────────────────────────────────────
 export {
     resolvePath,
-    resolveAllowedDir,
     isPathWithin,
     containsParentSegment,
 } from './path-security';
@@ -15,7 +14,7 @@ export {
     makeInMemoryWorkdirLock,
     makeRedisWorkdirLock, WorkdirLockAcquireTimeout,
     makeNodeFsAdapter, makeVolumeMasterFs,
-    bootWorkdir, rehydrateWorkdir,
+    rehydrateWorkdir,
     commitTurn, remirrorFile, settleFromWorktree,
     settleFromPatch,
     overlayToDiff,
@@ -23,18 +22,12 @@ export {
     RipgrepNotInstalledError,
 } from './workdir';
 export type {
-    FsAdapter, MasterFsAdapter, MasterFsResolution,
-    Workdir, WorkdirInput, WorkdirLock,
-    LayoutEntry, BootInput, BootResult,
-    GlobOptions, GrepOptions, GrepResult, GrepOutputMode,
-    CommitTurnInput, CommitTurnResult,
-    MaterializeResult,
-    SettleInput, SettleResult as WorkdirSettleResult,
-    SettleFromPatchInput, SettleFromPatchResult,
-    SettleFromOverlayInput, SettleFromOverlayResult,
-    LintFn, LintInput, LintError, PushToMainFn,
+    FsAdapter, MasterFsAdapter,
+    Workdir, WorkdirLock,
+    GrepOutputMode,
+    SettleResult as WorkdirSettleResult,
+    LintFn, LintError, PushToMainFn,
     RedisLockClient,
-    WorkdirHealth, BootstrapWorkdirInput,
 } from './workdir';
 
 // ─── Lint (workspace settle gate) ────────────────────────────────────────
@@ -45,7 +38,7 @@ export {
     UNREGISTERED_EXTRACTION_SOURCE,
     RESERVED_SYSTEM_WORKSPACES,
 } from './lint';
-export type { LintPrincipal, MakeLintWorkspaceOptions } from './lint';
+export type { LintPrincipal } from './lint';
 
 // ─── Workspace boundary resolution (FS-derived identity → location) ──────
 export {
@@ -58,9 +51,6 @@ export type { WorkspaceBoundary } from './workspaces/boundaries';
 // ─── Workspace access model (single source of truth) ─────────────────────
 export {
     parseWorkspaceFrontmatter,
-    canRead,
-    canWrite,
-    canAdmin,
 } from './workspaces/access';
 export type { WorkspaceFrontmatter } from './workspaces/access';
 export { validateTreeRelPath } from './workspaces/path';
@@ -80,32 +70,25 @@ export {
 } from './workspaces/overlay';
 export type {
     WorkspacePatch,
-    PatchEntry,
     OverlayView,
     FsReader,
     FsReaderDirent,
-    ComputeOverlayVisibilityOptions,
 } from './workspaces/overlay';
 
 // ─── Workflows (declaration + composition + lint) ────────────────────────
 export {
     parseWorkflowYaml,
     compileManagedAgentMdToWorkflow,
-    compileDashboardSpecToWorkflow,
-    validateWorkflow,
     isAgentStep,
     isDynamicWorkflowStep,
     parseDynamicWorkflowJs,
     DynamicWorkflowParseError,
 } from './workflows';
 export type {
-    WorkflowDeclaration, WorkflowStep, RouteStep, InputStep,
-    AgentStep, AgentHarness,
-    GroupStep,
-    DynamicWorkflowStep, DynamicWorkflowMeta,
-    WorkflowInput, WorkflowOutput, StepKind,
-    WorkflowValidationResult, WorkflowValidationError, WorkflowLintCode,
-    WorkflowValidateContext,
+    WorkflowDeclaration, WorkflowStep, InputStep,
+    AgentStep,
+    DynamicWorkflowStep,
+    StepKind,
 } from './workflows';
 
 // ─── Routes ──────────────────────────────────────────────────────────────
@@ -117,39 +100,25 @@ export type {
 // chain + event store); the sync route primitive lives at
 // `ernesto/route` for tests + advanced internal use.
 export {
-    defineRoute, resolveRouteScope,
+    defineRoute,
     RouteRegistry,
 } from './route';
 export type {
-    Route, RouteConfig, RouteContext, RouteScope,
-    DynamicScope,
     DispatchResult, DispatchErrorCode,
-    RenderEntry, WhenClause, ManifestComponent,
-    StagedSketch,
+    RenderEntry,
 } from './route';
-export type { RouteCompactor } from './route/route-registry';
-
-// ─── Route results (archive + compact preview) ─────────────────────────
-export {
-    compactify,
-} from './route-results';
-export type {
-    ArchiveRouteResultInput, ArchiveFile, ArchiveLogger,
-    CompactArrayWrapper,
-} from './route-results';
 
 // ─── Managed agents (declaration + composition) ──────────────────────────
 export {
-    compileAgent, composePlatformBody,
+    composePlatformBody,
     parseManagedAgentMd, toAgentDeclaration,
     composeExtends, MAX_EXTENDS_DEPTH,
     gitBlobShaOf, verifyContentMatchesFileSha,
     resolveHarness,
 } from './managed-agents';
 export type {
-    AgentDeclaration, AgentContext, CompiledAgent,
     SystemPromptConfig, JsonSchemaOutputFormat,
-    ManagedAgentMd, ExtendsResolver, Transport, Isolation,
+    ManagedAgentMd, Transport, Isolation,
 } from './managed-agents';
 
 // ─── Agent verbs ─────────────────────────────────────────────────────────
@@ -158,44 +127,16 @@ export {
     settleInputSchema, SETTLE_DESCRIPTION, handleSettle,
 } from './agent-verbs';
 export type {
-    ExecuteInput, ExecuteVerbContext, ExecuteVerbLogger,
     SettleInput as SettleVerbInput,
-    SettleVerbContext, SettleVerbLogger, SettleVerbHooks, SettleVerbResult,
 } from './agent-verbs';
-
-// ─── Dashboards spec ─────────────────────────────────────────────────────
-export {
-    filterSchema,
-    isDataBlock,
-    parseDashboard,
-    substituteBinds,
-    DashboardSpecError,
-} from './dashboards';
-export type {
-    DashboardSpec,
-    ParsedDashboard,
-    Block,
-    SqlBlock,
-    JsBlock,
-    DataBlock,
-    Filter,
-    Format,
-    DateRangeDefault,
-    BoundQuery,
-    FilterValue,
-    FilterValues,
-    DateRangeValue,
-} from './dashboards';
 
 // ─── Harness (runtime abstraction) ───────────────────────────────────────
 export type {
     Harness, AgentHandle, RunHandle, HarnessEvent,
-    HarnessCapabilities, AgentDefinition, ToolSpec, ModelRef,
-    ModelInfo, AgentInfo, RunResult, HarnessMessage,
-    UserMessage, AssistantBlock, RunStatus,
-    CreateOptions, SendOptions, ListOptions, ListResult, SubagentDef,
+    AgentDefinition, RunResult,
+    CreateOptions, SubagentDef,
 } from './harness';
-export { createMockHarness } from './harness/mock';
+// Mock harness is sub-export only: import from 'ernesto/harness/mock'
 // CAS harness is sub-export only (peer dep): import from 'ernesto/harness/cas'
 
 // ─── Brain FS routes (the universal primitive) ───────────────────────────
@@ -208,39 +149,7 @@ export { createMockHarness } from './harness/mock';
 export { registerBrainRoutes } from './routes/brain';
 
 // ─── Components (declarative UI intent) ──────────────────────────────────
-export {
-    RENDERABLE_COMPONENT_KINDS,
-    validateUiComponent,
-    validateStatus,
-} from './components';
-export type {
-    UiComponent,
-    UiComponentKind,
-    ThinkingComponent,
-    StatusComponent,
-    ProgressComponent,
-    AttachmentComponent,
-    HitlComponent,
-    HitlExpect,
-    NextStep,
-    RenderableComponent,
-    RenderableComponentKind,
-    MarkdownProps,
-    DataRefProps,
-    FileLinkProps,
-    TableProps,
-    TableColumn,
-    TableRow,
-    MetricProps,
-    MetricDelta,
-    ChartProps,
-    CodeProps,
-    ImageProps,
-    LinkProps,
-    TreeProps,
-    TreeNode,
-    ValidationResult,
-} from './components';
+// Components are a sub-export only: import from 'ernesto/components'.
 
 // ─── Extractions ─────────────────────────────────────────────────────────
 export {
@@ -249,17 +158,7 @@ export {
     crowdinPlugin, devinPlugin, redshiftSchemaPlugin,
 } from './extraction';
 export type {
-    ExtractionPlugin, ExtractionPluginConfig, ExtractionContext,
-    ExtractionRequest, ExtractionResult, ExtractionEntry,
-    ExtractionScope,
-    DispatchExtractionResult, DispatchExtractionErrorCode,
-    ClickUpPluginOptions,
-    DrivePluginOptions,
-    QasePluginOptions,
-    GitHubPluginOptions,
-    SlackPluginOptions,
-    CrowdinPluginOptions,
-    DevinPluginOptions,
-    RedshiftSchemaPluginOptions,
-    RedshiftQueryFn,
+    ExtractionContext,
+    ExtractionRequest, ExtractionResult,
+    DispatchExtractionResult,
 } from './extraction';
