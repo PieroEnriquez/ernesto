@@ -7,6 +7,7 @@ import { settleFromWorktree, LintFn, PushToMainFn } from '../settle';
 import { runGit } from '../run-git';
 import { makeNodeFsAdapter } from '../node-adapters';
 import { makeInMemoryWorkdirLock } from '../lock';
+import { setupBareRepo, type BareRepo } from '../../__tests__/kit';
 
 const enc = (s: string) => new TextEncoder().encode(s);
 
@@ -18,24 +19,14 @@ const allowAllLint: LintFn = async () => ({ ok: true });
  * next settle is a fast-forward.
  */
 describe('settleFromWorktree — step 6 journal rebase', () => {
+    let bare: BareRepo;
     let bareRoot: string;
     let workRoot: string;
 
     beforeEach(async () => {
-        // Bare upstream repo (acts as `origin`).
-        bareRoot = await mkdtemp(path.join(tmpdir(), 'ernesto-step6-bare-'));
-        await runGit(bareRoot, ['init', '-q', '--bare', '-b', 'main']);
-
-        // Local seed clone to create the initial main commit, then push to bare.
-        const seedRoot = await mkdtemp(path.join(tmpdir(), 'ernesto-step6-seed-'));
-        await runGit(seedRoot, ['init', '-q', '-b', 'main']);
-        await runGit(seedRoot, ['config', 'user.email', 'poc@example.com']);
-        await runGit(seedRoot, ['config', 'user.name', 'PoC']);
-        await runGit(seedRoot, ['config', 'commit.gpgsign', 'false']);
-        await runGit(seedRoot, ['commit', '-q', '--allow-empty', '-m', 'init']);
-        await runGit(seedRoot, ['remote', 'add', 'origin', bareRoot]);
-        await runGit(seedRoot, ['push', '-q', 'origin', 'main']);
-        await rm(seedRoot, { recursive: true, force: true });
+        // Bare upstream repo (acts as `origin`), seeded with an initial main commit.
+        bare = await setupBareRepo();
+        bareRoot = bare.bareRoot;
 
         // Working tree: clone bare, create journal branch from main.
         workRoot = await mkdtemp(path.join(tmpdir(), 'ernesto-step6-work-'));
@@ -49,7 +40,7 @@ describe('settleFromWorktree — step 6 journal rebase', () => {
     });
 
     afterEach(async () => {
-        await rm(bareRoot, { recursive: true, force: true });
+        await bare.cleanup();
         await rm(workRoot, { recursive: true, force: true });
     });
 
