@@ -20,6 +20,7 @@ import type {
 } from '../types';
 import type { Transport } from '../../managed-agents/types';
 import { casCreateAgent } from './create';
+import type { SdkHooks } from './compile';
 
 // Adapter internals (compile/events/send/create) are not re-exported:
 // consumers use `createCasHarness`; the lib's own modules + tests reach
@@ -123,13 +124,16 @@ export function createCasHarness(env: CasHarnessEnv = {}): Harness {
         opts: CreateOptions = {},
     ): Promise<AgentHandle> => {
         // Single source of truth: route the harness-level create
-        // through `casCreateAgent`. The construction-time env this
-        // harness was built with (provider env, MCP servers,
-        // disallowed-tool defaults) is folded onto the per-call
-        // options the helper accepts. CAS-aware consumers that need
-        // finer control (e.g. per-call sandbox hooks) bypass the
-        // narrow `Harness.createAgent` and call `casCreateAgent`
-        // directly.
+        // through `casCreateAgent`, SPREADING the per-call `CreateOptions`
+        // straight through and folding the construction-time env
+        // (provider env, MCP servers, disallowed-tool defaults, transport)
+        // on top. We spread rather than re-list each field on purpose: a
+        // hand-maintained field list here is a second source of truth that
+        // drifts from `CreateOptions` — that is exactly how `hooks` was
+        // silently dropped (nullifying the FS sandbox on this path) until
+        // this was fixed. Per-call sandbox hooks now flow through the
+        // normal `Harness.createAgent` route; no need to reach for
+        // `casCreateAgent` directly.
         // Per-call mcpServers (from CreateOptions) win on key collision
         // with the harness's env-level defaults. Use case: the in-process
         // transport injects a per-run `ernesto` MCP server closing over
@@ -142,16 +146,14 @@ export function createCasHarness(env: CasHarnessEnv = {}): Harness {
                 }
                 : undefined;
         return casCreateAgent(def, {
-            agentId: opts.agentId,
-            cwd: opts.cwd,
-            abortController: opts.abortController,
+            ...opts,
+            // Env-derived overrides win over anything spread from opts.
             mcpServers: mergedMcpServers,
             providerEnv: env.providerEnv,
-            env: opts.env,
-            persistTranscript: opts.persistTranscript,
-            resumeTranscript: opts.resumeTranscript,
-            forkTranscript: opts.forkTranscript,
             defaultDisallowedTools: env.defaults?.disallowedTools,
+            // `hooks` is opaque `unknown` on the generic CreateOptions; CAS
+            // treats it as its structural `SdkHooks` pass-through to Options.
+            hooks: opts.hooks as SdkHooks | undefined,
             ...(env.transport ? { transport: env.transport } : {}),
         });
     };

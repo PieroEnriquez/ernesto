@@ -270,6 +270,13 @@ export interface CreateOptions {
      *  (e.g. the in-process transport's `ernesto` MCP closing over the run's workdir +
      *  user + scopes) without rebuilding the harness. */
     mcpServers?: Record<string, unknown>;
+    /** Host-resolved sandbox hooks (e.g. the workspace-anchored
+     *  PreToolUse path-guard). Opaque to the lib — passed straight
+     *  through to the SDK's `Options.hooks`. Per-call because the guard
+     *  closes over this run's workdir; the in-process transport sets it
+     *  from the sandbox-bind middleware. A harness that ignores hooks
+     *  (e.g. a non-SDK backend) simply drops it. */
+    hooks?: unknown;
 }
 
 /** Options accepted by `AgentHandle.send`. */

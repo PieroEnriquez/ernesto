@@ -9,11 +9,14 @@
  * `SdkHooks` (workspace sandbox), an MCP server connection record, etc.
  *
  * Gap-2 closure from `agent-ops://harness-abstraction/step-1-findings.md`:
- * the backend wrapper previously called `casSend` directly because
- * `CreateOptions` doesn't carry `providerEnv`/`hooks`. With this helper
- * the backend goes through `casCreateAgent(def, opts).send(prompt)` —
- * one compile per agent, not per send, and a single source of truth for
- * the create flow shared with `createCasHarness.createAgent`.
+ * the backend wrapper previously called `casSend` directly to thread
+ * CAS-private context. The backend now goes through
+ * `casCreateAgent(def, opts).send(prompt)` — one compile per agent, not
+ * per send. `createCasHarness.createAgent` spreads its `CreateOptions`
+ * (incl. the opaque `hooks` pass-through) straight into this helper, so
+ * the generic `Harness.createAgent` route and the direct `casCreateAgent`
+ * route are a single source of truth — no per-call field (notably the
+ * sandbox `hooks`) can be dropped on one path but not the other.
  */
 
 import { randomUUID } from 'crypto';

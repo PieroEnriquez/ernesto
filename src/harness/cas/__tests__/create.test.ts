@@ -25,6 +25,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
 // mock. The casCreateAgent helper itself is plain TS; only `casQuery`
 // inside `send.ts` triggers SDK resolution.
 import { casCreateAgent } from '../create';
+import { createCasHarness } from '../index';
 import type { AgentDefinition } from '../../types';
 
 function makeAsyncIterable(messages: unknown[]): AsyncIterable<unknown> & { interrupt: () => Promise<void> } {
@@ -197,5 +198,54 @@ describe('casCreateAgent (gap-2)', () => {
             options: { abortController?: AbortController };
         };
         expect(call.options.abortController).toBe(perCallAbort);
+    });
+});
+
+// A1 regression: the GENERIC Harness.createAgent route (what the in-process
+// transport actually uses) must forward per-call options — notably the sandbox
+// `hooks` — to the SDK. This route previously hand-re-listed fields and silently
+// dropped `hooks`, nullifying the FS sandbox for every in-process agent turn.
+// The existing suite only exercised `casCreateAgent` directly, so the gap shipped.
+describe('createCasHarness.createAgent route (A1 regression)', () => {
+    beforeEach(() => {
+        querySpy.mockReset();
+    });
+
+    it('forwards CreateOptions.hooks through to SDK Options.hooks', async () => {
+        querySpy.mockReturnValue(makeAsyncIterable([
+            { type: 'result', subtype: 'success', result: 'ok' },
+        ]));
+
+        const fakeHook = { PreToolUse: [{ hooks: [() => undefined] }] };
+        const harness = createCasHarness({});
+        const agent = await harness.createAgent(baseDef, {
+            agentId: 'wrap-1',
+            cwd: '/tmp/wd',
+            hooks: fakeHook,
+        });
+        const run = await agent.send('hello');
+        await run.wait();
+
+        const call = querySpy.mock.calls[0][0] as {
+            options: { hooks?: unknown; cwd?: string };
+        };
+        // The whole point of A1: hooks reach the SDK on the generic route.
+        expect(call.options.hooks).toBe(fakeHook);
+        // And the rest of the spread still flows (no field re-listing regressions).
+        expect(call.options.cwd).toBe('/tmp/wd');
+    });
+
+    it('a harness built with no hooks yields Options.hooks undefined (no accidental default)', async () => {
+        querySpy.mockReturnValue(makeAsyncIterable([
+            { type: 'result', subtype: 'success', result: 'ok' },
+        ]));
+
+        const harness = createCasHarness({});
+        const agent = await harness.createAgent(baseDef, { agentId: 'wrap-2' });
+        const run = await agent.send('hello');
+        await run.wait();
+
+        const call = querySpy.mock.calls[0][0] as { options: { hooks?: unknown } };
+        expect(call.options.hooks).toBeUndefined();
     });
 });
