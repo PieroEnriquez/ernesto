@@ -20,6 +20,7 @@ import { join } from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { probeWorkdirHealth, bootstrapWorkdir } from '../health';
+import { setupBareRepo } from '../../__tests__/kit';
 
 const pExecFile = promisify(execFile);
 
@@ -29,21 +30,10 @@ async function git(cwd: string, args: string[]): Promise<string> {
 }
 
 async function makeBareOrigin(): Promise<{ tmp: string; origin: string }> {
+    // Bare upstream seeded with a single README (kit). `tmp` hosts the clones
+    // the individual probes/bootstraps create.
+    const { bareRoot: origin } = await setupBareRepo({ 'README.md': 'init\n' });
     const tmp = mkdtempSync(join(tmpdir(), 'ernesto-lib-health-'));
-    const origin = join(tmp, 'origin.git');
-    await fsp.mkdir(origin, { recursive: true });
-    await git(origin, ['init', '--bare', '-b', 'main']);
-    const seed = join(tmp, 'seed');
-    await fsp.mkdir(seed, { recursive: true });
-    await git(seed, ['init', '-b', 'main']);
-    await git(seed, ['config', 'user.email', 't@b.com']);
-    await git(seed, ['config', 'user.name', 't']);
-    await git(seed, ['config', 'commit.gpgsign', 'false']);
-    await fsp.writeFile(join(seed, 'README.md'), 'init\n');
-    await git(seed, ['add', '-A']);
-    await git(seed, ['commit', '-q', '-m', 'init']);
-    await git(seed, ['remote', 'add', 'origin', origin]);
-    await git(seed, ['push', '-q', 'origin', 'main']);
     return { tmp, origin };
 }
 

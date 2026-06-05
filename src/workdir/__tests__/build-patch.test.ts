@@ -13,6 +13,7 @@ import { join } from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { buildSettlePatch } from '../build-patch';
+import { setupBareRepo } from '../../__tests__/kit';
 
 const pExecFile = promisify(execFile);
 
@@ -22,25 +23,18 @@ async function git(cwd: string, args: string[]): Promise<string> {
 }
 
 async function makeCloneWithWorkspaces(): Promise<{ root: string; parentSha: string }> {
+    // Bare upstream seeded with the two workspaces (kit), then a working-tree clone.
+    const { bareRoot } = await setupBareRepo({
+        'workspaces/alpha/WORKSPACE.md': '---\nname: alpha\n---\nseed\n',
+        'workspaces/beta/WORKSPACE.md': '---\nname: beta\n---\nseed\n',
+    });
     const tmp = mkdtempSync(join(tmpdir(), 'ernesto-lib-buildpatch-'));
-    const origin = join(tmp, 'origin.git');
     const root = join(tmp, 'clone');
-    await fsp.mkdir(origin, { recursive: true });
-    await git(origin, ['init', '--bare', '-b', 'main']);
     await fsp.mkdir(root, { recursive: true });
-    await git(root, ['init', '-b', 'main']);
+    await git(root, ['clone', '-q', '--branch', 'main', '--single-branch', bareRoot, '.']);
     await git(root, ['config', 'user.email', 't@b.com']);
     await git(root, ['config', 'user.name', 't']);
     await git(root, ['config', 'commit.gpgsign', 'false']);
-
-    await fsp.mkdir(join(root, 'workspaces', 'alpha'), { recursive: true });
-    await fsp.writeFile(join(root, 'workspaces', 'alpha', 'WORKSPACE.md'), '---\nname: alpha\n---\nseed\n');
-    await fsp.mkdir(join(root, 'workspaces', 'beta'), { recursive: true });
-    await fsp.writeFile(join(root, 'workspaces', 'beta', 'WORKSPACE.md'), '---\nname: beta\n---\nseed\n');
-    await git(root, ['add', '-A']);
-    await git(root, ['commit', '-q', '-m', 'seed']);
-    await git(root, ['remote', 'add', 'origin', origin]);
-    await git(root, ['push', '-q', 'origin', 'main']);
     const parentSha = (await git(root, ['rev-parse', 'HEAD'])).trim();
     return { root, parentSha };
 }

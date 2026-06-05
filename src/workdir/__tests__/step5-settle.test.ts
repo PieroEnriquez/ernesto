@@ -1,12 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm, mkdir } from 'fs/promises';
-import { tmpdir } from 'os';
+import { mkdir } from 'fs/promises';
 import * as path from 'path';
-import { rehydrateWorkdir } from '../boot';
 import { settleFromWorktree, LintFn, LintError, PushToMainFn } from '../settle';
 import { runGit } from '../run-git';
-import { makeNodeFsAdapter } from '../node-adapters';
-import { makeInMemoryWorkdirLock } from '../lock';
+import type { Workdir } from '../types';
+import { buildWorkdir as kitBuildWorkdir } from '../../__tests__/kit';
 
 const enc = (s: string) => new TextEncoder().encode(s);
 
@@ -17,29 +15,21 @@ const denyLint: (errors: ReadonlyArray<LintError>) => LintFn =
 
 describe('settleFromWorktree', () => {
     let tmpRoot: string;
+    let built: Awaited<ReturnType<typeof kitBuildWorkdir>>;
 
     beforeEach(async () => {
-        tmpRoot = await mkdtemp(path.join(tmpdir(), 'ernesto-settle-'));
-        await runGit(tmpRoot, ['init', '-q', '-b', 'main']);
-        await runGit(tmpRoot, ['config', 'user.email', 'poc@example.com']);
-        await runGit(tmpRoot, ['config', 'user.name', 'PoC']);
-        await runGit(tmpRoot, ['config', 'commit.gpgsign', 'false']);
+        built = await kitBuildWorkdir({ prefix: 'ernesto-settle-', workdirId: 'wd1' });
+        tmpRoot = built.root;
         await mkdir(path.join(tmpRoot, 'workspaces', 'hr'), { recursive: true });
         await mkdir(path.join(tmpRoot, 'workspaces', 'cs'), { recursive: true });
-        await runGit(tmpRoot, ['commit', '-q', '--allow-empty', '-m', 'init']);
     });
 
     afterEach(async () => {
-        await rm(tmpRoot, { recursive: true, force: true });
+        await built.cleanup();
     });
 
-    function buildWorkdir() {
-        const fs = makeNodeFsAdapter(tmpRoot);
-        return rehydrateWorkdir({
-            workdirId: 'wd1', workingTreeRoot: tmpRoot,
-            fs, master: { resolve: async () => ({ kind: 'not-found' }) },
-            lock: makeInMemoryWorkdirLock('wd1'),
-        });
+    function buildWorkdir(): Workdir {
+        return built.workdir;
     }
 
     it('lint-pass + no pushToMain → returns commit sha, pushed=false', async () => {

@@ -9,40 +9,35 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm, mkdir, writeFile } from 'fs/promises';
-import { tmpdir } from 'os';
+import { writeFile } from 'fs/promises';
 import * as path from 'path';
-import { makeNodeFsAdapter } from '../node-adapters';
 import { makeInMemoryFsAdapter } from '../in-memory-adapters';
+import { makeTempTree, type TempTree } from '../../__tests__/kit';
 
 const enc = (s: string) => new TextEncoder().encode(s);
 
-const FIXTURE: ReadonlyArray<{ path: string; content: string }> = [
-    { path: 'workspaces/hr/INDEX.md', content: '# hr\nleave: 25 days\nhealth: covered\n' },
-    { path: 'workspaces/hr/routes/_index.md', content: '# routes\n' },
-    { path: 'workspaces/hr/routes/a.ts', content: 'export const a = 1;\n' },
-    { path: 'workspaces/hr/routes/b.tsx', content: 'export const b = 2;\n' },
-    { path: 'workspaces/hr/routes/c.js', content: 'module.exports = 3;\n' },
-    { path: 'workspaces/cs/INDEX.md', content: '# cs\nLEAVE: rare\n' },
-    { path: 'workspaces/legal/INDEX.md', content: '# legal\n' },
-];
+const FIXTURE: Record<string, string> = {
+    'workspaces/hr/INDEX.md': '# hr\nleave: 25 days\nhealth: covered\n',
+    'workspaces/hr/routes/_index.md': '# routes\n',
+    'workspaces/hr/routes/a.ts': 'export const a = 1;\n',
+    'workspaces/hr/routes/b.tsx': 'export const b = 2;\n',
+    'workspaces/hr/routes/c.js': 'module.exports = 3;\n',
+    'workspaces/cs/INDEX.md': '# cs\nLEAVE: rare\n',
+    'workspaces/legal/INDEX.md': '# legal\n',
+};
 
 describe('Node FsAdapter — glob (picomatch)', () => {
-    let root: string;
+    let tree: TempTree;
+    let fs: TempTree['fs'];
     beforeEach(async () => {
-        root = await mkdtemp(path.join(tmpdir(), 'glob-grep-test-'));
-        for (const f of FIXTURE) {
-            const abs = path.join(root, f.path);
-            await mkdir(path.dirname(abs), { recursive: true });
-            await writeFile(abs, f.content);
-        }
+        tree = await makeTempTree(FIXTURE, 'glob-grep-test-');
+        fs = tree.fs;
     });
     afterEach(async () => {
-        await rm(root, { recursive: true, force: true });
+        await tree.cleanup();
     });
 
     it('matches `**` recursive', async () => {
-        const fs = makeNodeFsAdapter(root);
         const out = await fs.glob('workspaces/**/*.md');
         expect(out.sort()).toEqual([
             'workspaces/cs/INDEX.md',
@@ -53,7 +48,6 @@ describe('Node FsAdapter — glob (picomatch)', () => {
     });
 
     it('supports brace expansion {ts,tsx}', async () => {
-        const fs = makeNodeFsAdapter(root);
         const out = await fs.glob('workspaces/hr/routes/*.{ts,tsx}');
         expect(out.sort()).toEqual([
             'workspaces/hr/routes/a.ts',
@@ -62,7 +56,6 @@ describe('Node FsAdapter — glob (picomatch)', () => {
     });
 
     it('supports character classes [a-b]', async () => {
-        const fs = makeNodeFsAdapter(root);
         const out = await fs.glob('workspaces/hr/routes/[a-b].ts*');
         expect(out.sort()).toEqual([
             'workspaces/hr/routes/a.ts',
@@ -71,42 +64,35 @@ describe('Node FsAdapter — glob (picomatch)', () => {
     });
 
     it('honors `path` to restrict the search subtree', async () => {
-        const fs = makeNodeFsAdapter(root);
         // Pattern is workdir-relative; `path` limits the walk root.
         const out = await fs.glob('workspaces/hr/**/*.ts', { path: 'workspaces/hr' });
         expect(out.sort()).toEqual(['workspaces/hr/routes/a.ts']);
     });
 
     it('rejects `..` segments in `path`', async () => {
-        const fs = makeNodeFsAdapter(root);
         await expect(fs.glob('**/*', { path: '../etc' })).rejects.toThrow('parent_segment_not_allowed');
     });
 
     it('returns newest-first by mtime', async () => {
-        const fs = makeNodeFsAdapter(root);
         // Touch one file last so it has the newest mtime.
-        await writeFile(path.join(root, 'workspaces/hr/INDEX.md'), '# hr v2\n');
+        await writeFile(path.join(tree.dir, 'workspaces/hr/INDEX.md'), '# hr v2\n');
         const out = await fs.glob('workspaces/**/INDEX.md');
         expect(out[0]).toBe('workspaces/hr/INDEX.md');
     });
 });
 
 describe('Node FsAdapter — grep (ripgrep)', () => {
-    let root: string;
+    let tree: TempTree;
+    let fs: TempTree['fs'];
     beforeEach(async () => {
-        root = await mkdtemp(path.join(tmpdir(), 'glob-grep-test-'));
-        for (const f of FIXTURE) {
-            const abs = path.join(root, f.path);
-            await mkdir(path.dirname(abs), { recursive: true });
-            await writeFile(abs, f.content);
-        }
+        tree = await makeTempTree(FIXTURE, 'glob-grep-test-');
+        fs = tree.fs;
     });
     afterEach(async () => {
-        await rm(root, { recursive: true, force: true });
+        await tree.cleanup();
     });
 
     it('default mode is files_with_matches', async () => {
-        const fs = makeNodeFsAdapter(root);
         const r = await fs.grep({ pattern: 'leave' });
         expect(r.mode).toBe('files_with_matches');
         // Case-sensitive default: only hr matches (cs has uppercase).
@@ -114,7 +100,6 @@ describe('Node FsAdapter — grep (ripgrep)', () => {
     });
 
     it('case-insensitive flag matches both cases', async () => {
-        const fs = makeNodeFsAdapter(root);
         const r = await fs.grep({ pattern: 'leave', caseInsensitive: true });
         expect(r.lines.sort()).toEqual([
             'workspaces/cs/INDEX.md',
@@ -123,26 +108,22 @@ describe('Node FsAdapter — grep (ripgrep)', () => {
     });
 
     it('content mode emits `path:line:text`', async () => {
-        const fs = makeNodeFsAdapter(root);
         const r = await fs.grep({ pattern: 'leave: [0-9]+', outputMode: 'content' });
         expect(r.lines.some(l => /workspaces\/hr\/INDEX\.md:\d+:leave: 25 days/.test(l))).toBe(true);
     });
 
     it('count mode emits `path:n`', async () => {
-        const fs = makeNodeFsAdapter(root);
         const r = await fs.grep({ pattern: 'leave', outputMode: 'count', caseInsensitive: true });
         expect(r.lines.length).toBe(2);
         expect(r.lines.every(l => /:\d+$/.test(l))).toBe(true);
     });
 
     it('glob filter restricts file set', async () => {
-        const fs = makeNodeFsAdapter(root);
         const r = await fs.grep({ pattern: 'export', glob: '*.tsx', outputMode: 'files_with_matches' });
         expect(r.lines).toEqual(['workspaces/hr/routes/b.tsx']);
     });
 
     it('type filter restricts to ripgrep type set', async () => {
-        const fs = makeNodeFsAdapter(root);
         const r = await fs.grep({ pattern: 'export', type: 'ts', outputMode: 'files_with_matches' });
         expect(r.lines.sort()).toEqual([
             'workspaces/hr/routes/a.ts',
@@ -151,7 +132,6 @@ describe('Node FsAdapter — grep (ripgrep)', () => {
     });
 
     it('context-after lines surface in content mode', async () => {
-        const fs = makeNodeFsAdapter(root);
         const r = await fs.grep({
             pattern: 'leave: 25',
             outputMode: 'content',
@@ -162,7 +142,6 @@ describe('Node FsAdapter — grep (ripgrep)', () => {
     });
 
     it('headLimit caps and marks truncated', async () => {
-        const fs = makeNodeFsAdapter(root);
         const r = await fs.grep({
             pattern: '.',
             outputMode: 'content',
@@ -173,13 +152,11 @@ describe('Node FsAdapter — grep (ripgrep)', () => {
     });
 
     it('path restricts the search', async () => {
-        const fs = makeNodeFsAdapter(root);
         const r = await fs.grep({ pattern: 'export', path: 'workspaces/hr/routes' });
         expect(r.lines.every(l => l.startsWith('workspaces/hr/routes/'))).toBe(true);
     });
 
     it('empty result set is not an error', async () => {
-        const fs = makeNodeFsAdapter(root);
         const r = await fs.grep({ pattern: 'absolutely-nowhere-token' });
         expect(r.lines).toEqual([]);
         expect(r.truncated).toBe(false);
@@ -191,8 +168,8 @@ describe('InMemory FsAdapter — glob / grep parity', () => {
         const fs = makeInMemoryFsAdapter();
         // Use awaitless sequencing inline.
         return (async () => {
-            for (const f of FIXTURE) {
-                await fs.writeFile(f.path, enc(f.content));
+            for (const [p, content] of Object.entries(FIXTURE)) {
+                await fs.writeFile(p, enc(content));
             }
             return fs;
         })();

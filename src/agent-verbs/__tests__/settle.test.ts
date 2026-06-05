@@ -2,13 +2,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, rm, mkdir } from 'fs/promises';
 import { tmpdir } from 'os';
 import * as path from 'path';
-import { rehydrateWorkdir } from '../../workdir/boot';
 import { runGit } from '../../workdir/run-git';
-import { makeNodeFsAdapter } from '../../workdir/node-adapters';
-import { makeInMemoryWorkdirLock } from '../../workdir/lock';
 import type { LintFn, LintError, PushToMainFn, Workdir } from '../../workdir';
 import { handleSettle } from '../settle';
 import type { SettleVerbContext } from '../settle';
+import { buildWorkdir as kitBuildWorkdir } from '../../__tests__/kit';
 
 const enc = (s: string) => new TextEncoder().encode(s);
 
@@ -22,31 +20,21 @@ function makeLog() {
 
 describe('handleSettle', () => {
     let tmpRoot: string;
+    let built: Awaited<ReturnType<typeof kitBuildWorkdir>>;
 
     beforeEach(async () => {
-        tmpRoot = await mkdtemp(path.join(tmpdir(), 'ernesto-verbs-settle-'));
-        await runGit(tmpRoot, ['init', '-q', '-b', 'main']);
-        await runGit(tmpRoot, ['config', 'user.email', 'poc@example.com']);
-        await runGit(tmpRoot, ['config', 'user.name', 'PoC']);
-        await runGit(tmpRoot, ['config', 'commit.gpgsign', 'false']);
+        built = await kitBuildWorkdir({ prefix: 'ernesto-verbs-settle-', workdirId: 'wd1' });
+        tmpRoot = built.root;
         await mkdir(path.join(tmpRoot, 'workspaces', 'hr'), { recursive: true });
         await mkdir(path.join(tmpRoot, 'workspaces', 'cs'), { recursive: true });
-        await runGit(tmpRoot, ['commit', '-q', '--allow-empty', '-m', 'init']);
     });
 
     afterEach(async () => {
-        await rm(tmpRoot, { recursive: true, force: true });
+        await built.cleanup();
     });
 
     function buildWorkdir(): Workdir {
-        const fs = makeNodeFsAdapter(tmpRoot);
-        return rehydrateWorkdir({
-            workdirId: 'wd1',
-            workingTreeRoot: tmpRoot,
-            fs,
-            master: { resolve: async () => ({ kind: 'not-found' }) },
-            lock: makeInMemoryWorkdirLock('wd1'),
-        });
+        return built.workdir;
     }
 
     function makeCtx(overrides: Partial<SettleVerbContext> = {}): SettleVerbContext {

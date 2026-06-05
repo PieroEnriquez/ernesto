@@ -1,14 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm, mkdir, writeFile } from 'fs/promises';
-import { tmpdir } from 'os';
+import { mkdir, writeFile } from 'fs/promises';
 import * as path from 'path';
-import { rehydrateWorkdir } from '../boot';
 import { LintFn, LintError, PushToMainFn } from '../settle';
 import { settleFromOverlay } from '../settle-from-overlay';
 import { runGit } from '../run-git';
-import { makeNodeFsAdapter } from '../node-adapters';
-import { makeInMemoryWorkdirLock } from '../lock';
+import type { Workdir } from '../types';
 import type { WorkspacePatch } from '../../workspaces/overlay';
+import { buildWorkdir as kitBuildWorkdir } from '../../__tests__/kit';
 
 const allowAllLint: LintFn = async () => ({ ok: true });
 const denyLint: (errors: ReadonlyArray<LintError>) => LintFn =
@@ -17,13 +15,11 @@ const denyLint: (errors: ReadonlyArray<LintError>) => LintFn =
 describe('settleFromOverlay — server-side 3-way reconcile', () => {
     let root: string;
     let baseSha: string;
+    let built: Awaited<ReturnType<typeof kitBuildWorkdir>>;
 
     beforeEach(async () => {
-        root = await mkdtemp(path.join(tmpdir(), 'ernesto-overlay-settle-'));
-        await runGit(root, ['init', '-q', '-b', 'main']);
-        await runGit(root, ['config', 'user.email', 'poc@example.com']);
-        await runGit(root, ['config', 'user.name', 'PoC']);
-        await runGit(root, ['config', 'commit.gpgsign', 'false']);
+        built = await kitBuildWorkdir({ prefix: 'ernesto-overlay-settle-', workdirId: 'wd1' });
+        root = built.root;
         await mkdir(path.join(root, 'workspaces', 'hr'), { recursive: true });
         await writeFile(path.join(root, 'workspaces', 'hr', 'WORKSPACE.md'), '---\nname: hr\n---\n');
         await writeFile(path.join(root, 'workspaces', 'hr', 'handbook.md'), 'base line\n');
@@ -33,16 +29,11 @@ describe('settleFromOverlay — server-side 3-way reconcile', () => {
     });
 
     afterEach(async () => {
-        await rm(root, { recursive: true, force: true });
+        await built.cleanup();
     });
 
-    function buildWorkdir() {
-        const fs = makeNodeFsAdapter(root);
-        return rehydrateWorkdir({
-            workdirId: 'wd1', workingTreeRoot: root,
-            fs, master: { resolve: async () => ({ kind: 'not-found' }) },
-            lock: makeInMemoryWorkdirLock('wd1'),
-        });
+    function buildWorkdir(): Workdir {
+        return built.workdir;
     }
 
     it('clean apply: overlay reconciles against current main, lints, commits', async () => {
