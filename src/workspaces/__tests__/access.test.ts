@@ -4,6 +4,7 @@ import {
     canRead,
     canWrite,
     canAdmin,
+    type WorkspaceFrontmatter,
 } from '../access';
 
 const scopes = (...xs: string[]): ReadonlySet<string> => new Set(xs);
@@ -18,24 +19,6 @@ describe('parseWorkspaceFrontmatter', () => {
         expect(fm.owns).toEqual(['pricing://esim']);
     });
 
-    it('returns {} when there is no frontmatter', () => {
-        expect(parseWorkspaceFrontmatter('# just prose\n')).toEqual({});
-    });
-
-    it('returns {} on an unterminated block', () => {
-        expect(parseWorkspaceFrontmatter('---\nname: x\n')).toEqual({});
-    });
-
-    it('returns {} on invalid YAML', () => {
-        // Unterminated double-quote — yaml.load throws.
-        expect(parseWorkspaceFrontmatter('---\nfoo: "bar\n---\n')).toEqual({});
-    });
-
-    it('returns {} when the frontmatter is a scalar or array, not a mapping', () => {
-        expect(parseWorkspaceFrontmatter('---\n- a\n- b\n---\n')).toEqual({});
-        expect(parseWorkspaceFrontmatter('---\njust a string\n---\n')).toEqual({});
-    });
-
     it('drops wrong-typed fields', () => {
         const fm = parseWorkspaceFrontmatter('---\nread:\n  - not-a-string\nowns: nope\n---\n');
         expect(fm.read).toBeUndefined();
@@ -45,55 +28,73 @@ describe('parseWorkspaceFrontmatter', () => {
     it('tolerates a UTF-8 BOM before the opening fence', () => {
         expect(parseWorkspaceFrontmatter('﻿---\nname: x\n---\n').name).toBe('x');
     });
+
+    // Inputs that must parse to an empty object: no fence, unterminated block,
+    // invalid YAML, and non-mapping (scalar / array) document bodies.
+    const emptyCases: ReadonlyArray<[string, string]> = [
+        ['returns {} when there is no frontmatter', '# just prose\n'],
+        ['returns {} on an unterminated block', '---\nname: x\n'],
+        // Unterminated double-quote — yaml.load throws.
+        ['returns {} on invalid YAML', '---\nfoo: "bar\n---\n'],
+        ['returns {} when the frontmatter is an array, not a mapping', '---\n- a\n- b\n---\n'],
+        ['returns {} when the frontmatter is a scalar string, not a mapping', '---\njust a string\n---\n'],
+    ];
+
+    it.each(emptyCases)('%s', (_label, raw) => {
+        expect(parseWorkspaceFrontmatter(raw)).toEqual({});
+    });
 });
 
+type AccessCase = [string, WorkspaceFrontmatter, ReadonlySet<string>, boolean];
+
 describe('canRead', () => {
-    it('is public when no read is declared', () => {
-        expect(canRead({}, scopes())).toBe(true);
-    });
+    const cases: ReadonlyArray<AccessCase> = [
+        // is public when no read is declared.
+        ['public when no read is declared', {}, scopes(), true],
+        // requires the read scope once declared.
+        ['denied without the declared read scope', { read: 'pricing:read' }, scopes(), false],
+        ['granted with the declared read scope', { read: 'pricing:read' }, scopes('pricing:read'), true],
+        // also grants read to holders of the write or admin scope.
+        ['granted via the write scope', { read: 'r', write: 'w' }, scopes('w'), true],
+        ['granted via the admin scope', { read: 'r', admin: 'a' }, scopes('a'), true],
+        // treats a blank read string as not-declared (public).
+        ['blank read string is treated as public', { read: '   ' }, scopes(), true],
+    ];
 
-    it('requires the read scope once declared', () => {
-        expect(canRead({ read: 'pricing:read' }, scopes())).toBe(false);
-        expect(canRead({ read: 'pricing:read' }, scopes('pricing:read'))).toBe(true);
-    });
-
-    it('also grants read to holders of the write or admin scope', () => {
-        expect(canRead({ read: 'r', write: 'w' }, scopes('w'))).toBe(true);
-        expect(canRead({ read: 'r', admin: 'a' }, scopes('a'))).toBe(true);
-    });
-
-    it('treats a blank read string as not-declared (public)', () => {
-        expect(canRead({ read: '   ' }, scopes())).toBe(true);
+    it.each(cases)('%s', (_label, fm, held, expected) => {
+        expect(canRead(fm, held)).toBe(expected);
     });
 });
 
 describe('canWrite', () => {
-    it('is public when neither write nor read is declared', () => {
-        expect(canWrite({}, scopes())).toBe(true);
-    });
+    const cases: ReadonlyArray<AccessCase> = [
+        // is public when neither write nor read is declared.
+        ['public when neither write nor read is declared', {}, scopes(), true],
+        // defaults to the read scope when no write is declared.
+        ['defaults to read scope (held)', { read: 'r' }, scopes('r'), true],
+        ['defaults to read scope (missing)', { read: 'r' }, scopes(), false],
+        // uses the write scope over read when declared.
+        ['read scope does not satisfy a declared write', { read: 'r', write: 'w' }, scopes('r'), false],
+        ['write scope satisfies a declared write', { read: 'r', write: 'w' }, scopes('w'), true],
+        // grants write to the admin scope.
+        ['granted via the admin scope', { write: 'w', admin: 'a' }, scopes('a'), true],
+    ];
 
-    it('defaults to the read scope when no write is declared', () => {
-        expect(canWrite({ read: 'r' }, scopes('r'))).toBe(true);
-        expect(canWrite({ read: 'r' }, scopes())).toBe(false);
-    });
-
-    it('uses the write scope over read when declared', () => {
-        expect(canWrite({ read: 'r', write: 'w' }, scopes('r'))).toBe(false);
-        expect(canWrite({ read: 'r', write: 'w' }, scopes('w'))).toBe(true);
-    });
-
-    it('grants write to the admin scope', () => {
-        expect(canWrite({ write: 'w', admin: 'a' }, scopes('a'))).toBe(true);
+    it.each(cases)('%s', (_label, fm, held, expected) => {
+        expect(canWrite(fm, held)).toBe(expected);
     });
 });
 
 describe('canAdmin', () => {
-    it('is false when no admin is declared (no default)', () => {
-        expect(canAdmin({ read: 'r' }, scopes('r'))).toBe(false);
-    });
+    const cases: ReadonlyArray<AccessCase> = [
+        // is false when no admin is declared (no default).
+        ['false when no admin is declared', { read: 'r' }, scopes('r'), false],
+        // is true only when the admin scope is held.
+        ['false without the admin scope', { admin: 'a' }, scopes(), false],
+        ['true with the admin scope', { admin: 'a' }, scopes('a'), true],
+    ];
 
-    it('is true only when the admin scope is held', () => {
-        expect(canAdmin({ admin: 'a' }, scopes())).toBe(false);
-        expect(canAdmin({ admin: 'a' }, scopes('a'))).toBe(true);
+    it.each(cases)('%s', (_label, fm, held, expected) => {
+        expect(canAdmin(fm, held)).toBe(expected);
     });
 });
