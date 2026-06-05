@@ -37,20 +37,20 @@ export interface RouteContext {
      * Slug of the agent currently running this dispatch — populated by
      * the backend MCP server adapter at agent-dispatch creation time. Absent
      * for HTTP/admin call sites where there is no "agent" running. The
-     * §7.12 `_platform://task` route reads this to detect self-recursion
+     * §7.12 `_ernesto://task` route reads this to detect self-recursion
      * (rejecting same-slug subagent calls). */
     agentSlug?: string;
     /**
      * §7.12 — how many `task()` invocations deep this dispatch is.
      * 0 (or absent) means the call is from the top-level agent;
      * incremented by the task route before spawning the subagent. Hard
-     * cap of 2 enforced in `_platform://task` — beyond that, `task()`
+     * cap of 2 enforced in `_ernesto://task` — beyond that, `task()`
      * returns `"subagent failed: max_depth"` without invocation.
      */
     subagentDepth?: number;
     /**
      * Optional heartbeat that long-running routes (notably
-     * `_platform://task`) call when they observe internal activity. The
+     * `_ernesto://task`) call when they observe internal activity. The
      * Slack adapter wires this into its inactivity watchdog so a
      * subagent's SDK events count as "still working" on the parent's
      * stream — without it, a multi-minute subagent looks like silence
@@ -59,7 +59,7 @@ export interface RouteContext {
      */
     onActivity?: () => void;
     /**
-     * Optional sink for subagent step text. `_platform://task` forwards
+     * Optional sink for subagent step text. `_ernesto://task` forwards
      * each formatted child SDK assistant message here so the parent's
      * UI (Slack progress display) can render nested activity as it
      * happens, instead of getting a single final blob. Adapters that
@@ -67,7 +67,7 @@ export interface RouteContext {
      */
     onSubagentStep?: (text: string) => void;
     /**
-     * Optional sink for subagent cost. `_platform://task` calls this
+     * Optional sink for subagent cost. `_ernesto://task` calls this
      * with `metadata.costUsd` after each subagent finishes so the
      * parent's UI (Slack thinking-card) can show the *conversation* cost —
      * parent cost + sum of all subagent costs — instead of just the
@@ -99,7 +99,7 @@ export interface RouteContext {
     /**
      * Parent-run routing inherited from the workflow context the route
      * is dispatched from. Routes that fan out to child runs (notably
-     * `_platform://task`) propagate selected keys here onto the child's
+     * `_ernesto://task`) propagate selected keys here onto the child's
      * `dispatchWorkflow.context` so the child inherits the parent's UI
      * surface — events from the child carry `parentRunId` + transport
      * routing (slackThreadId/slackChannelId/…), and transport subscribers
@@ -116,7 +116,7 @@ export interface RouteContext {
  *
  * Use for cross-workspace platform routes whose data lives under
  * `workspaces/<w>/...` and whose authorization is per-workspace
- * (e.g. `_platform://list-dashboards` requires `${input.workspace}:read`).
+ * (e.g. `_ernesto://list-dashboards` requires `${input.workspace}:read`).
  * Static-scope routes — anything where the scope is constant per URI —
  * should keep using the plain `RouteScope | ReadonlyArray<RouteScope>`
  * form for clarity.

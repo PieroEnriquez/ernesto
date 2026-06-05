@@ -79,8 +79,8 @@ export interface CasCreateOptions {
     defaultDisallowedTools?: string[];
     /** Transport (`'in-process'` / `'mcp'` / `'laptop'` / `'vm'`) the
      *  agent is running under. When set, the platform-body composer
-     *  reads the matching `_platform/<overlay>.md` and appends it to the
-     *  system prompt on top of the universal `_platform/WORKSPACE.md`.
+     *  reads the matching `_ernesto/<overlay>.md` and appends it to the
+     *  system prompt on top of the universal `_ernesto/WORKSPACE.md`.
      *  Required for the agent to follow the platform's routing
      *  discipline ("look up URIs in `owns:` blocks", "don't glob for
      *  `routes/_index.md`", …). Absent → only the workflow body is the
@@ -188,7 +188,7 @@ function coerceToCompiledAgent(
 ): CompiledAgent {
     // Pass-through only when the caller hasn't asked for transport
     // composition. When `opts.transport` is set we must run
-    // `compileAgent` so the platform body (`_platform/WORKSPACE.md` +
+    // `compileAgent` so the platform body (`_ernesto/WORKSPACE.md` +
     // the per-transport overlay) lands in the system prompt — without
     // it the agent has no routing-catalog discipline.
     const isPreCompiled =

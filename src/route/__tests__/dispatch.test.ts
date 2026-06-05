@@ -104,7 +104,7 @@ describe('dispatchRoute', () => {
 
     describe('dynamic scope (function form)', () => {
         const platformDashboards = defineRoute({
-            uri: '_platform://list-dashboards',
+            uri: '_ernesto://list-dashboards',
             scope: (input) => `${input.workspace}:read`,
             input: z.object({ workspace: z.string() }),
             output: z.object({ ok: z.literal(true) }),
@@ -116,7 +116,7 @@ describe('dispatchRoute', () => {
             reg.register(platformDashboards);
             const result = await dispatchRoute(
                 reg,
-                '_platform://list-dashboards',
+                '_ernesto://list-dashboards',
                 { workspace: 'marketing' },
                 makeCtx(['marketing:read']),
             );
@@ -128,7 +128,7 @@ describe('dispatchRoute', () => {
             reg.register(platformDashboards);
             const result = await dispatchRoute(
                 reg,
-                '_platform://list-dashboards',
+                '_ernesto://list-dashboards',
                 { workspace: 'payments' },
                 makeCtx(['marketing:read']),
             );
@@ -149,7 +149,7 @@ describe('dispatchRoute', () => {
             // scope_denied. This is the post-reorder guarantee.
             const result = await dispatchRoute(
                 reg,
-                '_platform://list-dashboards',
+                '_ernesto://list-dashboards',
                 { not_a_workspace: 'x' },
                 makeCtx([]),
             );
@@ -163,7 +163,7 @@ describe('dispatchRoute', () => {
             reg.register(platformDashboards);
             const result = await dispatchRoute(
                 reg,
-                '_platform://list-dashboards',
+                '_ernesto://list-dashboards',
                 { workspace: 'payments' },
                 makeCtx(['ernesto:agent-ops']),
             );

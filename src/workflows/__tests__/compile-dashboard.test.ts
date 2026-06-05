@@ -77,7 +77,7 @@ describe('compileDashboardSpecToWorkflow', () => {
         }
         const notes = wf.steps.notes;
         if (notes.kind === 'route') {
-            expect(notes.uri).toBe('_platform://markdown');
+            expect(notes.uri).toBe('_ernesto://markdown');
             expect(notes.render).toBe('markdown');
         }
     });
@@ -128,7 +128,7 @@ describe('compileDashboardSpecToWorkflow', () => {
         expect(wf.outputs?.blocks.shape).toBe('dashboard');
     });
 
-    it('handles JS blocks: emits _platform://js_exec route with inputs', () => {
+    it('handles JS blocks: emits _ernesto://js_exec route with inputs', () => {
         const spec = dashboardSpecSchema.parse({
             slug: 'js-only',
             title: 'JS',
@@ -154,7 +154,7 @@ describe('compileDashboardSpecToWorkflow', () => {
         const wf = compileDashboardSpecToWorkflow(spec);
         const derived = wf.steps.derived;
         if (derived.kind === 'route') {
-            expect(derived.uri).toBe('_platform://js_exec');
+            expect(derived.uri).toBe('_ernesto://js_exec');
             expect((derived.params as Record<string, unknown>).inputs).toEqual(['src']);
             expect(derived.render).toBe('value');
         }

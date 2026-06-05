@@ -5,7 +5,7 @@
  * - Pure passthrough of model, maxTurns, mcpServers, outputFormat.
  * - Defaults: declaration's `disallowedTools` wins over caller-supplied
  *   default.
- * - L2 platform-body append: reads `<cwd>/workspaces/_platform/WORKSPACE.md`,
+ * - L2 platform-body append: reads `<cwd>/workspaces/_ernesto/WORKSPACE.md`,
  *   strips frontmatter, appends to the agent's own system prompt (both
  *   the string and preset shapes).
  * - Silent fallback when the platform body is absent or empty (laptop
@@ -15,7 +15,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { compileAgent, composePlatformBody } from '../compile-agent';
+import { compileAgent, composeErnestoBody } from '../compile-agent';
 import type { AgentDeclaration, AgentContext } from '../types';
 
 const baseDecl: AgentDeclaration = {
@@ -110,26 +110,26 @@ describe('compileAgent — L2 platform body append', () => {
         rmSync(tmp, { recursive: true, force: true });
     });
 
-    function writePlatformBody(body: string): void {
-        const dir = join(tmp, 'workspaces', '_platform');
+    function writeErnestoBody(body: string): void {
+        const dir = join(tmp, 'workspaces', '_ernesto');
         mkdirSync(dir, { recursive: true });
         writeFileSync(join(dir, 'WORKSPACE.md'), body, 'utf8');
     }
 
     it('appends platform body to a string systemPrompt', () => {
-        writePlatformBody('Editorial guardrails: be kind.');
+        writeErnestoBody('Editorial guardrails: be kind.');
         const r = compileAgent(baseDecl, { cwd: tmp });
         expect(r.systemPrompt).toBe('You are a test agent.\n\nEditorial guardrails: be kind.');
     });
 
     it('strips frontmatter before appending', () => {
-        writePlatformBody('---\nname: _platform\n---\nBody text only.\n');
+        writeErnestoBody('---\nname: _ernesto\n---\nBody text only.\n');
         const r = compileAgent(baseDecl, { cwd: tmp });
         expect(r.systemPrompt).toBe('You are a test agent.\n\nBody text only.\n');
     });
 
     it('appends platform body into preset systemPrompt.append', () => {
-        writePlatformBody('Platform note.');
+        writeErnestoBody('Platform note.');
         const r = compileAgent(
             { ...baseDecl, systemPrompt: { type: 'preset', preset: 'claude_code', append: 'Prior append.' } },
             { cwd: tmp },
@@ -142,7 +142,7 @@ describe('compileAgent — L2 platform body append', () => {
     });
 
     it('preset without a prior append still receives the platform body', () => {
-        writePlatformBody('Solo platform note.');
+        writeErnestoBody('Solo platform note.');
         const r = compileAgent(
             { ...baseDecl, systemPrompt: { type: 'preset', preset: 'claude_code' } },
             { cwd: tmp },
@@ -154,13 +154,13 @@ describe('compileAgent — L2 platform body append', () => {
         });
     });
 
-    it('absent _platform/WORKSPACE.md is a silent no-op', () => {
+    it('absent _ernesto/WORKSPACE.md is a silent no-op', () => {
         const r = compileAgent(baseDecl, { cwd: tmp });
         expect(r.systemPrompt).toBe('You are a test agent.');
     });
 
     it('empty body after stripping frontmatter is treated as absent', () => {
-        writePlatformBody('---\nname: _platform\n---\n\n  \n');
+        writeErnestoBody('---\nname: _ernesto\n---\n\n  \n');
         const r = compileAgent(baseDecl, { cwd: tmp });
         expect(r.systemPrompt).toBe('You are a test agent.');
     });
@@ -176,7 +176,7 @@ describe('compileAgent — transport-specific platform body', () => {
 
     beforeEach(() => {
         tmp = mkdtempSync(join(tmpdir(), 'lib-compile-agent-transport-'));
-        mkdirSync(join(tmp, 'workspaces', '_platform'), { recursive: true });
+        mkdirSync(join(tmp, 'workspaces', '_ernesto'), { recursive: true });
     });
 
     afterEach(() => {
@@ -184,7 +184,7 @@ describe('compileAgent — transport-specific platform body', () => {
     });
 
     function writePlatformFile(name: string, body: string): void {
-        writeFileSync(join(tmp, 'workspaces', '_platform', name), body, 'utf8');
+        writeFileSync(join(tmp, 'workspaces', '_ernesto', name), body, 'utf8');
     }
 
     it('appends universal body + in-process overlay for transport "in-process"', () => {
@@ -246,17 +246,17 @@ describe('compileAgent — transport-specific platform body', () => {
         );
     });
 
-    it('composePlatformBody returns the concatenated body for direct (non-compileAgent) callers', () => {
+    it('composeErnestoBody returns the concatenated body for direct (non-compileAgent) callers', () => {
         writePlatformFile('WORKSPACE.md', 'U.');
         writePlatformFile('in-process.md', 'P.');
-        expect(composePlatformBody(tmp, 'in-process')).toBe('U.\n\nP.');
+        expect(composeErnestoBody(tmp, 'in-process')).toBe('U.\n\nP.');
     });
 
-    it('composePlatformBody returns null when both files are absent', () => {
-        expect(composePlatformBody(tmp, 'in-process')).toBeNull();
+    it('composeErnestoBody returns null when both files are absent', () => {
+        expect(composeErnestoBody(tmp, 'in-process')).toBeNull();
     });
 
-    it('composePlatformBody returns null when cwd is undefined', () => {
-        expect(composePlatformBody(undefined, 'in-process')).toBeNull();
+    it('composeErnestoBody returns null when cwd is undefined', () => {
+        expect(composeErnestoBody(undefined, 'in-process')).toBeNull();
     });
 });

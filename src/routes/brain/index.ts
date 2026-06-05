@@ -6,7 +6,7 @@
  * agents, extractions, attached files — the org's shared cognition.
  * The agent edits a workdir-bound view of it; settle propagates back.
  * Workspaces are subdivisions within the brain (marketing, payments,
- * _platform, …). Don't extend the metaphor further: workdir stays
+ * _ernesto, …). Don't extend the metaphor further: workdir stays
  * workdir, workspaces stay workspaces — names the unnamed, don't
  * rename the named.
  *

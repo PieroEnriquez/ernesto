@@ -33,7 +33,7 @@ import { parseWorkspaceFrontmatter, canRead } from './access';
 import type { WorkspaceVisibility } from './visibility';
 
 const WORKSPACE_MD = 'WORKSPACE.md';
-const PLATFORM_WORKSPACE = '_platform';
+const ERNESTO_WORKSPACE = '_ernesto';
 
 /** Subtrees never descended into while hunting for boundaries — master-FS
  *  mirrors, generated output, archived content. Mirrors `boundaries.ts`'s
@@ -240,7 +240,7 @@ export function makeOverlayView(lower: FsReader, patch: WorkspacePatch): Overlay
     ): Promise<WorkspaceVisibility> {
         const all = await scanBoundaries();
         if (all.length === 0) {
-            return { all, readableNames: new Set([PLATFORM_WORKSPACE]) };
+            return { all, readableNames: new Set([ERNESTO_WORKSPACE]) };
         }
         const readableNames = new Set<string>();
         for (const boundary of all) {

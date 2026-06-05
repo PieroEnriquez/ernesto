@@ -300,7 +300,7 @@ async function deriveAffectedWorkspaces(workingTreeRoot: string): Promise<string
             // setup) / mid-run (`remirrorFile`).
             // Without this filter, every workspace whose mirror got
             // refreshed — or that the agent attached a file to via
-            // `_platform://attach` — would show up as untracked in
+            // `_ernesto://attach` — would show up as untracked in
             // `git status` and be added to the "affected" set on every
             // settle, firing audit + pubsub hooks for workspaces the user
             // never edited. The staging-side companion filter lives in

@@ -47,7 +47,7 @@ export interface WorkflowDeclaration {
     /**
      * Optional auto-dispatch trigger. Workflows without a trigger run
      * only when explicitly dispatched (via the agent's `execute`, the
-     * Slack subscriber, `_platform://task`, etc.). Workflows *with* a
+     * Slack subscriber, `_ernesto://task`, etc.). Workflows *with* a
      * trigger run on the trigger's schedule — these are the "static"
      * workflows the user identified: extractions, periodic refreshes,
      * scheduled audits, anything that historically had its own worker
@@ -296,7 +296,7 @@ export interface GroupStep extends BaseStep {
  * literal block to populate `meta` and wraps the file's body source
  * in `scriptSource`. The wire stays simple: ONE step
  * (`kind: 'dynamic-workflow'`) in a one-step DAG. Other workflows
- * can compose a dynamic workflow via `_platform://task` — same
+ * can compose a dynamic workflow via `_ernesto://task` — same
  * cross-workflow path as managed agents.
  *
  * Runtime contract (claude-code 2.1.154+):
@@ -381,7 +381,7 @@ export interface DynamicWorkflowMeta {
     model?: string;
     /**
      * When `true`, the dynamic-workflow handler prepends ernesto's
-     * platform body (the shared workspace preamble + the body matching
+     * ernesto body (the shared workspace preamble + the body matching
      * the active transport) to the outer dispatcher's `systemPrompt`.
      * Workflow subagents spawned via `agent()` inherit the dispatcher
      * context, so they gain full ernesto vocabulary — route URI
@@ -393,7 +393,7 @@ export interface DynamicWorkflowMeta {
      * ernesto conventions on the fly (vs. workflows like sourcing-batch
      * where every URI + param shape is baked into the script).
      */
-    includesPlatformBody?: boolean;
+    includesErnestoBody?: boolean;
 }
 
 /** Type guard. */

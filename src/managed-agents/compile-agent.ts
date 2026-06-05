@@ -23,8 +23,8 @@ import type {
  * silently if absent.
  *
  * Platform body composition (§7.3 stop):
- *   `<cwd>/workspaces/_platform/WORKSPACE.md`         (universal engine contract)
- *   `<cwd>/workspaces/_platform/<transport>.md`       (per-transport overlay —
+ *   `<cwd>/workspaces/_ernesto/WORKSPACE.md`          (universal engine contract)
+ *   `<cwd>/workspaces/_ernesto/<transport>.md`        (per-transport overlay —
  *                                                      in-process / mcp —
  *                                                      appended when set)
  *
@@ -49,9 +49,9 @@ export function compileAgent(
     ctx: AgentContext,
     defaults: { disallowedTools?: string[] } = {},
 ): CompiledAgent {
-    const platformBody = composePlatformBody(ctx.cwd, ctx.transport);
+    const platformBody = composeErnestoBody(ctx.cwd, ctx.transport);
     const systemPrompt = platformBody
-        ? appendPlatformBody(decl.systemPrompt, platformBody)
+        ? appendErnestoBody(decl.systemPrompt, platformBody)
         : decl.systemPrompt;
 
     return {
@@ -86,18 +86,18 @@ export function compileAgent(
  * Frontmatter is stripped from each file. Empty/absent files are
  * skipped silently (callers don't need to branch).
  */
-export function composePlatformBody(
+export function composeErnestoBody(
     cwd: string | undefined,
     transport?: Transport,
 ): string | null {
-    const universal = readPlatformBody(cwd);
+    const universal = readErnestoBody(cwd);
     const overlayBody = transport ? readTransportOverlay(cwd, transport) : null;
     if (universal && overlayBody) return universal + '\n\n' + overlayBody;
     return universal ?? overlayBody ?? null;
 }
 
 /**
- * Read `<cwd>/workspaces/_platform/WORKSPACE.md` body, frontmatter
+ * Read `<cwd>/workspaces/_ernesto/WORKSPACE.md` body, frontmatter
  * stripped. Sync on purpose — ~4 KB, one read per agent boot,
  * sub-ms. Async would ripple through every frontend caller
  * for no measurable win.
@@ -106,13 +106,13 @@ export function composePlatformBody(
  * under the bound workdir, not discovered. Personal CLAUDE.md files
  * above the workdir root can never bleed into agent prompts.
  */
-function readPlatformBody(cwd: string | undefined): string | null {
+function readErnestoBody(cwd: string | undefined): string | null {
     if (!cwd) return null;
-    return readMarkdownBody(join(cwd, 'workspaces', '_platform', 'WORKSPACE.md'));
+    return readMarkdownBody(join(cwd, 'workspaces', '_ernesto', 'WORKSPACE.md'));
 }
 
 /**
- * Read the per-transport overlay body (`_platform/<overlay>.md`),
+ * Read the per-transport overlay body (`_ernesto/<overlay>.md`),
  * frontmatter stripped, for backend-run agents. Optional — absent files
  * are not an error.
  *
@@ -120,7 +120,7 @@ function readPlatformBody(cwd: string | undefined): string | null {
  * `in-process` (and `vm`, which shares the in-process substrate — VM is
  * isolation, not a separate overlay) → `in-process.md`; `mcp` →
  * `mcp.md`. A `laptop` run carries its own overlay (the plugin's
- * SKILL.md) and is not injected from `_platform`, so it resolves to null.
+ * SKILL.md) and is not injected from `_ernesto`, so it resolves to null.
  */
 const OVERLAY_BY_TRANSPORT: Record<string, string> = {
     'in-process': 'in-process',
@@ -131,7 +131,7 @@ function readTransportOverlay(cwd: string | undefined, transport: Transport): st
     if (!cwd) return null;
     const overlay = OVERLAY_BY_TRANSPORT[transport];
     if (!overlay) return null;
-    return readMarkdownBody(join(cwd, 'workspaces', '_platform', `${overlay}.md`));
+    return readMarkdownBody(join(cwd, 'workspaces', '_ernesto', `${overlay}.md`));
 }
 
 function readMarkdownBody(path: string): string | null {
@@ -150,16 +150,16 @@ function readMarkdownBody(path: string): string | null {
     return body.trim().length > 0 ? body : null;
 }
 
-function appendPlatformBody(
+function appendErnestoBody(
     base: SystemPromptConfig,
-    platformBody: string,
+    ernestoBody: string,
 ): SystemPromptConfig {
     if (typeof base === 'string') {
-        return base + '\n\n' + platformBody;
+        return base + '\n\n' + ernestoBody;
     }
     return {
         type: 'preset',
         preset: base.preset,
-        append: (base.append ? base.append + '\n\n' : '') + platformBody,
+        append: (base.append ? base.append + '\n\n' : '') + ernestoBody,
     };
 }

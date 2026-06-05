@@ -75,7 +75,7 @@ export async function dispatchResolvedRoute(
     ctx: RouteContext,
 ): Promise<DispatchResult> {
     // Validate input BEFORE resolving scope. Dynamic-scope routes
-    // (e.g. `_platform://list-dashboards`, scope =
+    // (e.g. `_ernesto://list-dashboards`, scope =
     // `${input.workspace}:read`) need typed input to compute their
     // required scope. For static-scope routes the ordering is
     // semantically identical: a malformed call returns `invalid_input`

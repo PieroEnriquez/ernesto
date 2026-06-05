@@ -83,7 +83,7 @@ export interface AgentDeclaration {
     subagents?: Record<string, { ref: string }>;
     /**
      * Managed-agents §7.12 — opt-in tags. `'subagent'` permits invocation
-     * via the `_platform://task` route. Default (absent) means the agent
+     * via the `_ernesto://task` route. Default (absent) means the agent
      * is NOT callable as a subagent — workspaces curate their public menu,
      * cron-only agents stay off it.
      */
@@ -93,8 +93,8 @@ export interface AgentDeclaration {
 /**
  * How a run reaches the backend — the transport it is composing on.
  * Threaded through to `compileAgent` so the per-transport
- * `_platform/<transport>.md` body is appended on top of the universal
- * `_platform/WORKSPACE.md`. Absent ≡ skip the per-transport append
+ * `_ernesto/<transport>.md` body is appended on top of the universal
+ * `_ernesto/WORKSPACE.md`. Absent ≡ skip the per-transport append
  * (legacy callers, tests, scripts without a workdir).
  *
  * - `in-process` — runs in the host process (chat backend, cron,
@@ -122,11 +122,11 @@ export type Isolation = 'none' | 'vm';
  */
 export interface AgentContext {
     /** The bound per-run workdir the agent reads its platform body
-     *  from (`<cwd>/workspaces/_platform/...`). */
+     *  from (`<cwd>/workspaces/_ernesto/...`). */
     cwd?: string;
     /**
      * Which transport is composing this agent. Drives the
-     * per-transport `_platform/<transport>.md` append. Optional for
+     * per-transport `_ernesto/<transport>.md` append. Optional for
      * backwards compatibility — callers that haven't migrated still get
      * the universal body only.
      */

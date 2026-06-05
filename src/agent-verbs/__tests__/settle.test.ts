@@ -97,13 +97,13 @@ describe('handleSettle', () => {
     it('ignores attachments.yaml + extracted/ + attached/ when deriving workspaces', async () => {
         const workdir = buildWorkdir();
         // The agent only edited hr. _tmp has a master-fs overlay
-        // (attachments.yaml from _platform://attach) and _platform has
+        // (attachments.yaml from _ernesto://attach) and _ernesto has
         // an empty `attached/` dir from the mirror — neither is author
         // intent and neither should pull those workspaces into the
         // settle set.
         await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# hr\n'));
         await workdir.fs.writeFile('workspaces/_tmp/attachments.yaml', enc('- name: x\n'));
-        await workdir.fs.writeFile('workspaces/_platform/attached/note.txt', enc('y\n'));
+        await workdir.fs.writeFile('workspaces/_ernesto/attached/note.txt', enc('y\n'));
 
         const onSuccess = vi.fn(async () => {});
         const ctx = makeCtx({ hooks: { onSettleSuccess: onSuccess } });

@@ -113,7 +113,7 @@ export type {
 
 // ─── Managed agents (declaration + composition) ──────────────────────────
 export {
-    composePlatformBody,
+    composeErnestoBody,
     parseManagedAgentMd, toAgentDeclaration,
     composeExtends, MAX_EXTENDS_DEPTH,
     gitBlobShaOf, verifyContentMatchesFileSha,

@@ -336,12 +336,12 @@ export const MAX_EXTENDS_DEPTH = 3;
 
 /**
  * §7.13.5 — the only workspace permitted as a cross-workspace `extends:`
- * base. `_platform` is already the canonical "library" workspace
- * (it owns `_platform://task`, `_platform://list-dashboards`, etc.),
+ * base. `_ernesto` is already the canonical "library" workspace
+ * (it owns `_ernesto://task`, `_ernesto://list-dashboards`, etc.),
  * so re-using it for shared agent bases keeps the boundary in one
  * place. Any other cross-workspace extends is rejected.
  */
-export const PLATFORM_WORKSPACE = '_platform';
+export const ERNESTO_WORKSPACE = '_ernesto';
 
 /**
  * §7.13.5 — parse an `extends:` value into a (workspace, slug) pair.
@@ -349,7 +349,7 @@ export const PLATFORM_WORKSPACE = '_platform';
  * Two accepted forms:
  *   - `<slug>`                — resolves in the extender's own workspace.
  *   - `<workspace>/<slug>`    — resolves in the named workspace. Only
- *                               `_platform` is accepted as a non-self
+ *                               `_ernesto` is accepted as a non-self
  *                               workspace; any other prefix throws.
  *
  * Slug-only is the historical form and stays the recommendation for
@@ -394,9 +394,9 @@ function parseExtendsKey(
  * - Cycle detection on `<workspace>/<slug>` path; throws with the
  *   full path printed (`ws/a → ws/b → ws/a`).
  * - Depth cap `MAX_EXTENDS_DEPTH`; throws on overflow.
- * - Same-workspace by default; `_platform` (`PLATFORM_WORKSPACE`) is
+ * - Same-workspace by default; `_ernesto` (`ERNESTO_WORKSPACE`) is
  *   the one accepted cross-workspace base, reachable via the
- *   `_platform/<slug>` qualified form. Any other cross-workspace
+ *   `_ernesto/<slug>` qualified form. Any other cross-workspace
  *   target throws.
  * - Missing base → `extends_target_not_found: <workspace>/<slug>`.
  */
@@ -432,10 +432,10 @@ function composeExtendsInner(
     }
     const { workspace: baseWorkspace, slug: baseSlug } = parseExtendsKey(extendsKey, md);
 
-    if (baseWorkspace !== md.workspace && baseWorkspace !== PLATFORM_WORKSPACE) {
+    if (baseWorkspace !== md.workspace && baseWorkspace !== ERNESTO_WORKSPACE) {
         throw new Error(
             `managed-agents/${md.slug}.md: cross-workspace extends only allowed from ` +
-            `"${PLATFORM_WORKSPACE}" (got ${md.workspace} → ${baseWorkspace}/${baseSlug})`,
+            `"${ERNESTO_WORKSPACE}" (got ${md.workspace} → ${baseWorkspace}/${baseSlug})`,
         );
     }
 

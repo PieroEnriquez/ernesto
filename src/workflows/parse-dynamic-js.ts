@@ -210,11 +210,11 @@ function validateMetaShape(
         );
     }
     if (
-        meta.includesPlatformBody !== undefined &&
-        typeof meta.includesPlatformBody !== 'boolean'
+        meta.includesErnestoBody !== undefined &&
+        typeof meta.includesErnestoBody !== 'boolean'
     ) {
         throw new DynamicWorkflowParseError(
-            '`meta.includesPlatformBody` must be a boolean when present',
+            '`meta.includesErnestoBody` must be a boolean when present',
         );
     }
 }

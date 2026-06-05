@@ -62,9 +62,9 @@ describe('computeWorkspaceVisibility (real FS, depth-aware)', () => {
     });
 
     it('reserved system workspaces are always readable, even with a restrictive ACL', async () => {
-        await ws('workspaces/_platform', '---\nname: _platform\nread: nobody:read\n---\n');
+        await ws('workspaces/_ernesto', '---\nname: _ernesto\nread: nobody:read\n---\n');
         const vis = await computeWorkspaceVisibility(root, scopes(), { isAdmin: false });
-        expect(vis.readableNames.has('_platform')).toBe(true);
+        expect(vis.readableNames.has('_ernesto')).toBe(true);
     });
 
     it('readableBoundaries resolves a child by its DIR, not its name', async () => {
@@ -73,11 +73,11 @@ describe('computeWorkspaceVisibility (real FS, depth-aware)', () => {
         expect(pricing?.dir).toBe('workspaces/product/pricing');
     });
 
-    it('falls back to _platform when there are no boundaries on disk', async () => {
+    it('falls back to _ernesto when there are no boundaries on disk', async () => {
         const empty = await mkdtemp(path.join(tmpdir(), 'visibility-empty-'));
         try {
             const vis = await computeWorkspaceVisibility(empty, scopes(), { isAdmin: false });
-            expect([...vis.readableNames]).toEqual(['_platform']);
+            expect([...vis.readableNames]).toEqual(['_ernesto']);
             expect(vis.all).toEqual([]);
         } finally {
             await rm(empty, { recursive: true, force: true });

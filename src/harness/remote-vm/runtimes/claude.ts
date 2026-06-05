@@ -48,7 +48,7 @@ async function post(url, body) {
 }
 
 const ernesto = createSdkMcpServer({ name: 'ernesto', version: '1.0.0', tools: [
-  tool('execute', 'Dispatch an ernesto route by URI (e.g. _platform://task, a dashboard, a typed route).', { uri: z.string(), params: z.any().optional() },
+  tool('execute', 'Dispatch an ernesto route by URI (e.g. _ernesto://task, a dashboard, a typed route).', { uri: z.string(), params: z.any().optional() },
     async ({ uri, params }) => {
       // Coerce stringified params (haiku often JSON-encodes the object) into
       // a real object so the route's Zod input validation sees the right shape.

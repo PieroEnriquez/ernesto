@@ -2,7 +2,7 @@
  * One shared YAML-frontmatter splitter.
  *
  * Several markdown readers (`.dashboard.md` specs, managed-agent `.md`
- * files, the `_platform/WORKSPACE.md` / `_platform/<transport>.md` overlay bodies) each used to
+ * files, the `_ernesto/WORKSPACE.md` / `_ernesto/<transport>.md` overlay bodies) each used to
  * hand-roll the same `^---\n…\n---\n` split. They had drifted on the
  * edges (one required the fence, another treated a fence-less file as a
  * pure body; the body slice differed). This is the single source of

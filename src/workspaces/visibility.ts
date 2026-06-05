@@ -37,7 +37,7 @@ import { RESERVED_SYSTEM_WORKSPACES } from '../lint/lint-workspace';
 import { parseWorkspaceFrontmatter, canRead } from './access';
 
 const WORKSPACE_MD = 'WORKSPACE.md';
-const PLATFORM_WORKSPACE = '_platform';
+const ERNESTO_WORKSPACE = '_ernesto';
 
 /**
  * A principal's read view of the workspace tree.
@@ -62,7 +62,7 @@ export interface ComputeWorkspaceVisibilityOptions {
  * Scan the workspace tree rooted at `treeRoot` (the dir that contains
  * `workspaces/`) and resolve which boundaries the principal — identified by its
  * `scopes` set — may read. With no boundaries on disk, returns empty `all` and
- * `readableNames` containing only `_platform` (so agent boot's symlink target
+ * `readableNames` containing only `_ernesto` (so agent boot's symlink target
  * never dangles).
  */
 export async function computeWorkspaceVisibility(
@@ -72,7 +72,7 @@ export async function computeWorkspaceVisibility(
 ): Promise<WorkspaceVisibility> {
     const all = await scanWorkspaceBoundaries(treeRoot);
     if (all.length === 0) {
-        return { all, readableNames: new Set([PLATFORM_WORKSPACE]) };
+        return { all, readableNames: new Set([ERNESTO_WORKSPACE]) };
     }
 
     const readableNames = new Set<string>();

@@ -23,7 +23,7 @@
  * pattern from product-autofill's `runWorkflowOnce`.
  *
  * The user variant carries scopes as a ReadonlySet for §7.4 narrowing
- * by recursive dispatch (subworkflow / `_platform://task`).
+ * by recursive dispatch (subworkflow / `_ernesto://task`).
  *
  * See the unified-runtime architecture reference.
  */

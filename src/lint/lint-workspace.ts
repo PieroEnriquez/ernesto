@@ -16,7 +16,7 @@
  *                                   `name`, `description`, and `admin`.
  *   forbidden_workspace_name      — new workspaces match
  *                                   `^[a-z][a-z0-9-]{0,39}$`. Reserved
- *                                   `_`-prefix: only `_platform` allowed.
+ *                                   `_`-prefix: only `_ernesto` allowed.
  *   forbidden_generated_path      — `workspaces/{w}/{extracted,attached}/`
  *                                   is master-fs-mirrored at host boot;
  *                                   agents must not commit changes to it.
@@ -97,7 +97,7 @@ export const UNREGISTERED_EXTRACTION_SOURCE = 'unregistered_extraction_source';
 const GENERATED_SUBDIRS = ['extracted', 'attached'] as const;
 const MAX_FILE_BYTES = 1024 * 1024;
 const WORKSPACE_NAME_REGEX = /^[a-z][a-z0-9-]{0,39}$/;
-const PLATFORM_WORKSPACE = '_platform';
+const ERNESTO_WORKSPACE = '_ernesto';
 
 /** Underscore-prefixed workspace names are reserved as system-only (rule
  *  `forbidden_workspace_name`). This Set is the allowlist of reserved names
@@ -108,7 +108,7 @@ const PLATFORM_WORKSPACE = '_platform';
  *  Exported so other layers (visibility, editor surface) treat the same
  *  set as system without duplicating the constant. */
 export const RESERVED_SYSTEM_WORKSPACES: ReadonlySet<string> = new Set([
-    PLATFORM_WORKSPACE,
+    ERNESTO_WORKSPACE,
     '_tmp',
     '_example',
     '_docs',

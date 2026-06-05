@@ -5,8 +5,8 @@
  *
  *   - filters         → workflow-level `inputs`
  *   - SQL blocks      → `route` step calling `redshift://query`
- *   - JS blocks       → `route` step calling `_platform://js_exec`
- *   - markdown blocks → `route` step calling `_platform://markdown`
+ *   - JS blocks       → `route` step calling `_ernesto://js_exec`
+ *   - markdown blocks → `route` step calling `_ernesto://markdown`
  *   - dataflow deps   → `next:` chain (lexicographic tie-break for determinism)
  *   - cross-block `{{ revenue }}` refs in SQL → `${{ steps.revenue.output.* }}`
  *   - `format: chart|table|value|markdown` → `render:` annotation
@@ -144,7 +144,7 @@ function compileBlock(
     if (block.kind === 'markdown') {
         return {
             kind: 'route',
-            uri: '_platform://markdown',
+            uri: '_ernesto://markdown',
             params: { content: block.body },
             render: 'markdown',
             next,
@@ -164,7 +164,7 @@ function compileBlock(
     if (isJsBlock(block)) {
         return {
             kind: 'route',
-            uri: '_platform://js_exec',
+            uri: '_ernesto://js_exec',
             params: {
                 code: rewriteCrossBlockRefs(block.body, dataBlockIds),
                 inputs: block.inputs.slice(),
@@ -175,14 +175,14 @@ function compileBlock(
     }
     if (isNarrativeBlock(block)) {
         // The dashboard runtime renders a Play CTA for narrative blocks
-        // and fires `_platform://narrative` on click. The compiled route
+        // and fires `_ernesto://narrative` on click. The compiled route
         // is the same handler — `params` carry the agent spec; the
         // upstream block results arrive inline at dispatch time via the
         // `inputs` field on the request. `render: 'narrative'` is the
         // signal the SPA picks up to swap auto-run for click-to-run.
         return {
             kind: 'route',
-            uri: '_platform://narrative',
+            uri: '_ernesto://narrative',
             params: {
                 model: block.model ?? 'claude-sonnet-4-6',
                 systemPrompt: block.systemPrompt,

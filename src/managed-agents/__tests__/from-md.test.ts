@@ -378,17 +378,17 @@ ${body}
         ).toThrow(/resolver returned wrong base/);
     });
 
-    it('allows extends from _platform via the qualified form', () => {
+    it('allows extends from _ernesto via the qualified form', () => {
         const base = parseManagedAgentMd(baseRaw('shared-base', 'PLATFORM BASE PROSE.'), {
             slug: 'shared-base',
-            workspace: '_platform',
+            workspace: '_ernesto',
         });
         const local = parseManagedAgentMd(
             `---
 slug: ext
 name: Ext
-description: pulls shared base from _platform
-extends: _platform/shared-base
+description: pulls shared base from _ernesto
+extends: _ernesto/shared-base
 ---
 
 LOCAL PROSE.
@@ -413,17 +413,17 @@ LOCAL PROSE.
         });
         expect(() =>
             composeExtends(md, { resolveBase: resolverFrom([base]) }),
-        ).toThrow(/cross-workspace extends only allowed from "_platform"/);
+        ).toThrow(/cross-workspace extends only allowed from "_ernesto"/);
     });
 
     it('emits extends_target_not_found with the qualified workspace when the platform base is missing', () => {
-        const md = parseManagedAgentMd(minimalRaw('\nextends: _platform/missing-base'), {
+        const md = parseManagedAgentMd(minimalRaw('\nextends: _ernesto/missing-base'), {
             slug: 'test-agent',
             workspace: 'marketing',
         });
         expect(() =>
             composeExtends(md, { resolveBase: () => undefined }),
-        ).toThrow(/extends_target_not_found: _platform\/missing-base/);
+        ).toThrow(/extends_target_not_found: _ernesto\/missing-base/);
     });
 
     it('rejects malformed qualified extends (too many slashes)', () => {

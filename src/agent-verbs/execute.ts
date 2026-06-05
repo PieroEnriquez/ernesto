@@ -106,7 +106,7 @@ export interface ExecuteVerbContext {
     /** §7.12 — see `RouteContext.subagentDepth`. Forwarded into dispatchRoute. */
     subagentDepth?: number;
     /** Activity heartbeat for long-running routes (notably
-     *  `_platform://task`). See `RouteContext.onActivity`. */
+     *  `_ernesto://task`). See `RouteContext.onActivity`. */
     onActivity?: () => void;
     /** Per-step sink for subagent SDK assistant messages. See
      *  `RouteContext.onSubagentStep`. Forwarded into dispatchRoute. */

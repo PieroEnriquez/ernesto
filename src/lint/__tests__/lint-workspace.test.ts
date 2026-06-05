@@ -539,10 +539,10 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
         expect(ok).toEqual({ ok: true });
     });
 
-    it('_platform body is write-protected when write: ernesto:agent-ops is declared', async () => {
+    it('_ernesto body is write-protected when write: ernesto:agent-ops is declared', async () => {
         const platform = [
             '---',
-            'name: _platform',
+            'name: _ernesto',
             'description: Org-wide guardrails',
             'write: ernesto:agent-ops',
             'admin: ernesto:agent-ops',
@@ -552,22 +552,22 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
             '',
             'Original body.',
         ].join('\n');
-        await seedWorkspace(root, '_platform', platform);
+        await seedWorkspace(root, '_ernesto', platform);
         await commitAll(root, 'seed');
 
         // Body-only edit by a no-scope principal → write_denied.
         const newBody = platform.replace('Original body.', 'Original body.\n\nInjected rule.');
-        await writeStagedFile(root, 'workspaces/_platform/WORKSPACE.md', newBody);
-        const diff = diffModify('workspaces/_platform/WORKSPACE.md', platform, newBody);
+        await writeStagedFile(root, 'workspaces/_ernesto/WORKSPACE.md', newBody);
+        const diff = diffModify('workspaces/_ernesto/WORKSPACE.md', platform, newBody);
 
         const denied = makeLintWorkspace({ scopes: new Set([]), email: 'random@example.com' });
-        const fail = await denied({ diff, workspaces: ['_platform'], workingTreeRoot: root });
+        const fail = await denied({ diff, workspaces: ['_ernesto'], workingTreeRoot: root });
         const failed = expectErrors(fail);
-        expect(failed.errors.some(e => e.code === 'write_denied' && e.workspace === '_platform')).toBe(true);
+        expect(failed.errors.some(e => e.code === 'write_denied' && e.workspace === '_ernesto')).toBe(true);
 
         // Same edit with agent-ops → passes.
         const allowed = makeLintWorkspace({ scopes: new Set(['ernesto:agent-ops']), email: 'ops@example.com' });
-        const ok = await allowed({ diff, workspaces: ['_platform'], workingTreeRoot: root });
+        const ok = await allowed({ diff, workspaces: ['_ernesto'], workingTreeRoot: root });
         expect(ok).toEqual({ ok: true });
     });
 

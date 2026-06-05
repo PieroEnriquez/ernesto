@@ -43,7 +43,7 @@ export const GENERATED_SUBDIRS = ['extracted', 'attached'] as const;
 /**
  * Per-workspace single-file overlays mirrored from master-fs. Like
  * `GENERATED_SUBDIRS` but for individual files. `attachments.yaml` is
- * authored only by `_platform://attach` and `_platform://detach`, which
+ * authored only by `_ernesto://attach` and `_ernesto://detach`, which
  * write atomically to master-fs; the workdir copy is a hard link mirrored
  * by `ensureMasterFsOverlays` at host boot and `remirrorFile`
  * mid-run. Settle must not stage it — the bytes the agent might see
