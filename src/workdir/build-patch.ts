@@ -25,7 +25,7 @@ export async function buildSettlePatch(
 ): Promise<{ patch: string; parentSha: string }> {
     // Nesting-/relocation-aware path resolution, shared with `settleFromWorktree`.
     const { stagePaths, diffPaths } = await resolveWorkspaceStagePaths(workingTreeRoot, workspaces);
-    const addArgs = buildStageAddArgs(stagePaths);
+    const addArgs = await buildStageAddArgs(workingTreeRoot, stagePaths);
     if (addArgs) await runGit(workingTreeRoot, addArgs);
     const patch = await runGit(workingTreeRoot, ['diff', '--cached', '--binary', '--', ...diffPaths]);
     const parentSha = (await runGit(workingTreeRoot, ['rev-parse', 'origin/main'])).trim();

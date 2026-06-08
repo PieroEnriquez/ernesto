@@ -90,7 +90,7 @@ export async function settleFromWorktree(
         // Stage each resolved path minus its master-fs overlays (the shared
         // exclusion set in settle-core, kept in lockstep with the laptop-patch
         // and overlay paths).
-        const addArgs = buildStageAddArgs(stagePaths);
+        const addArgs = await buildStageAddArgs(root, stagePaths);
         if (addArgs) await runGit(root, addArgs);
 
         // Converge on the shared lint → commit → push → journal-rebase tail.

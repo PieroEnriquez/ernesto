@@ -15,7 +15,7 @@
  */
 
 import { Workdir } from './types';
-import { runGit } from './run-git';
+import { runGit, tryRunGit } from './run-git';
 import { stat } from 'fs/promises';
 import * as nodePath from 'path';
 import { scanWorkspaceBoundaries, boundaryForName } from '../workspaces/boundaries';
@@ -26,11 +26,16 @@ import type { LintFn, PushToMainFn, SettleResult } from './settle';
  * attach route). They live as hard-link mirrors of master-fs placed at
  * host boot (deployer-owned — see the host's `ensureMasterFsOverlays`)
  * and must never enter the git index. settle excludes them from staging via
- * git pathspec, regardless of any `.gitignore` rules — the workspaces tree's
- * `.gitignore` is deliberately empty of these because ripgrep (the engine
- * behind fs_glob/fs_grep) reads .gitignore and would silently skip them,
- * hiding master-fs-backed content from discovery. Keep this list in sync
- * with the lint's `forbidden_generated_path` rule.
+ * git pathspec. NOTE: some of these are ALSO `.gitignore`d in the workspaces
+ * repo (the master-fs untrack: `extracted/`, `_results/`, `.derived-from-sha`),
+ * others are not (`attached/`, `attachments.yaml`). `buildStageAddArgs` filters
+ * the exclude pathspecs against `git check-ignore` because `git add -- <ws>
+ * :(exclude)<p>` FAILS ("paths are ignored, use -f") when `<p>` is an existing,
+ * gitignored path — even though it is only being excluded. git already skips
+ * gitignored content during the `<ws>` dir-walk, so the exclude is redundant
+ * (and fatal) for those; it is kept only for the non-ignored generated paths,
+ * where it is still required to keep them out of the index. Keep this list in
+ * sync with the lint's `forbidden_generated_path` rule.
  *
  * `routes/` is not in this list: the earlier parallel route catalog
  * (`routes/_index.md` + `routes/{slug}.md`) was removed in favour of two
@@ -135,32 +140,66 @@ export async function resolveWorkspaceStagePaths(
 }
 
 /**
+ * Of `candidates`, return the subset git currently IGNORES (untracked AND
+ * matched by a `.gitignore` rule), batched into one `git check-ignore --stdin`
+ * call. `check-ignore` exits 1 when nothing matches (not an error) and prints
+ * the matched paths to stdout — `tryRunGit` preserves stdout on the non-zero
+ * branch, so we read it either way. It also respects the index: a TRACKED file
+ * that matches a pattern is reported NOT ignored (git never ignores tracked
+ * files), so such a path stays excluded — exactly what we want.
+ */
+async function gitIgnoredSubset(
+    root: string,
+    candidates: ReadonlyArray<string>,
+): Promise<ReadonlySet<string>> {
+    if (candidates.length === 0) return new Set();
+    const r = await tryRunGit(root, ['check-ignore', '--stdin'], {
+        stdin: candidates.join('\n'),
+    });
+    return new Set(r.stdout.split('\n').map((s) => s.trim()).filter(Boolean));
+}
+
+/**
  * Build the `git add -- …` argument list that stages each path minus its
- * master-fs overlays. `extracted/` and `attached/` (subdirs) and
- * `attachments.yaml` + `.derived-from-sha` (files) are hard-link mirrors of
- * master-fs placed at host boot (deployer-owned: the host's
- * `ensureMasterFsOverlays`); they must never enter the git index. Doing the
- * exclusion via pathspec here (instead of via the workspaces tree's
- * `.gitignore`) keeps the working tree discoverable to ripgrep-based tools
- * (`fs_glob`, `fs_grep`) — ripgrep reads .gitignore and would silently skip
- * these paths, hiding the mirrored master-fs content. Only git treats them as
- * out-of-bounds. Returns `null` when there is nothing to stage.
+ * master-fs overlays. `extracted/`/`attached/`/`_results/` (subdirs) and
+ * `attachments.yaml` + `.derived-from-sha` (files) are generated/master-fs
+ * mirrors that must never enter the git index. We exclude them via pathspec —
+ * EXCEPT for those git already `.gitignore`s: naming an existing gitignored
+ * path in a pathspec (even an `:(exclude)` one) makes `git add` fail with "the
+ * following paths are ignored … use -f", which broke every settle/open-workdir
+ * staging after the master-fs untrack landed the `.gitignore`. git already
+ * skips gitignored content during the inclusive `<ws>` dir-walk, so for those
+ * paths the exclude is redundant; we drop it (see `gitIgnoredSubset`) and keep
+ * it only for the still-tracked / not-ignored generated paths. Returns `null`
+ * when there is nothing to stage.
  *
  * Single source of truth for the exclusion set so the worktree, laptop-patch,
  * and overlay settle paths can never drift (a missing exclusion here once let
  * `attachments.yaml` ride along in laptop-transport patches a worktree settle
- * would have stripped).
+ * would have stripped). `root` is the repo whose `.gitignore`/index the filter
+ * is evaluated against.
  */
-export function buildStageAddArgs(stagePaths: ReadonlyArray<string>): string[] | null {
+export async function buildStageAddArgs(
+    root: string,
+    stagePaths: ReadonlyArray<string>,
+): Promise<string[] | null> {
     if (stagePaths.length === 0) return null;
+    const candidates: string[] = [];
+    for (const p of stagePaths) {
+        for (const sub of GENERATED_SUBDIRS) candidates.push(`${p}/${sub}`);
+        for (const file of GENERATED_FILES) candidates.push(`${p}/${file}`);
+    }
+    const ignored = await gitIgnoredSubset(root, candidates);
     const addArgs = ['add', '--'];
     for (const p of stagePaths) {
         addArgs.push(p);
         for (const sub of GENERATED_SUBDIRS) {
-            addArgs.push(`:(exclude)${p}/${sub}`);
+            const c = `${p}/${sub}`;
+            if (!ignored.has(c)) addArgs.push(`:(exclude)${c}`);
         }
         for (const file of GENERATED_FILES) {
-            addArgs.push(`:(exclude)${p}/${file}`);
+            const c = `${p}/${file}`;
+            if (!ignored.has(c)) addArgs.push(`:(exclude)${c}`);
         }
     }
     return addArgs;
