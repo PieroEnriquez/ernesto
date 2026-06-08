@@ -11,13 +11,28 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import { z } from 'zod';
 import { createRunner } from '../runner';
 import { userPrincipal } from '../principal';
+import { defineRoute } from '../../route/define-route';
 import { workspaceAllocatorMiddleware } from '../middleware/workspace-allocator';
 import { sandboxBindMiddleware } from '../middleware/sandbox-bind';
 import { toolSurfaceComposeMiddleware } from '../middleware/tool-surface-compose';
 import type { WorkflowReader, WorkflowDetail } from '../workflow-reader';
 import type { WorkflowDeclaration, WorkflowStep } from '../../workflows/types';
+
+// A workdir-bound ROUTE kind (like `code://materialize`) — used to exercise the
+// allocator's "reuse the inherited parent workdir" carve-out for route kinds.
+const WORKDIR_ROUTE = defineRoute({
+    uri: 'code://fake-materialize',
+    description: 'd',
+    scope: [],
+    input: z.object({}),
+    output: z.object({}),
+    async handler() {
+        return {};
+    },
+});
 
 function readerOf(decl: WorkflowDeclaration): WorkflowReader {
     const detail: WorkflowDetail = {
@@ -70,6 +85,52 @@ describe('workspaceAllocatorMiddleware', () => {
         expect(allocate).toHaveBeenCalledTimes(1);
         expect(observedWorkdirRoot).toBe('/tmp/test-workdir-1');
         expect(releaseCalled).toBe(1);
+    });
+
+    it('reuses an inherited workdir for a ROUTE kind invoked as a child (no fresh allocation)', async () => {
+        // A workdir-bound route (code://materialize) called from inside an
+        // agent's `execute` tool: the parent threads its workdir via
+        // `opts.context.workdirRoot`. The allocator must REUSE it so the route
+        // hard-links bytes into the workdir the agent actually reads — not a
+        // fresh throwaway one.
+        const runner = createRunner();
+        const allocate = vi.fn(async () => ({ workdirRoot: '/tmp/should-not-be-used' }));
+        let observed: string | undefined;
+        runner.registerStepKind('route', async (_step, ctx) => {
+            observed = ctx.workdirRoot;
+            return { kind: 'completed', output: {} };
+        });
+        runner.kindRegistry.registerRoute(WORKDIR_ROUTE, { cwd: 'workspace-workdir' });
+        runner.use(workspaceAllocatorMiddleware({ allocate }));
+
+        const run = await runner.dispatch('code://fake-materialize', {}, userPrincipal('u', []), {
+            context: { workdirRoot: '/tmp/parent-agent-workdir' },
+        });
+        expect(run.status).toBe('completed');
+        expect(allocate).not.toHaveBeenCalled();
+        expect(observed).toBe('/tmp/parent-agent-workdir');
+    });
+
+    it('still allocates for a WORKFLOW/agent kind even when a workdir is inherited (subagent isolation)', async () => {
+        // The carve-out above is route-only: a child workflow/agent dispatch
+        // must get its OWN workdir, never silently share the parent's.
+        const runner = createRunner();
+        const allocate = vi.fn(async () => ({ workdirRoot: '/tmp/fresh-child-workdir' }));
+        let observed: string | undefined;
+        runner.registerStepKind('route', async (_step, ctx) => {
+            observed = ctx.workdirRoot;
+            return { kind: 'completed', output: {} };
+        });
+        runner.registerWorkflowReader(readerOf(DECL));
+        runner.kindRegistry.registerWorkflow(DECL, { cwd: 'workspace-workdir' });
+        runner.use(workspaceAllocatorMiddleware({ allocate }));
+
+        const run = await runner.dispatch('wf', {}, userPrincipal('u', []), {
+            context: { workdirRoot: '/tmp/parent-agent-workdir' },
+        });
+        expect(run.status).toBe('completed');
+        expect(allocate).toHaveBeenCalledTimes(1);
+        expect(observed).toBe('/tmp/fresh-child-workdir');
     });
 
     it('skips allocation when policy.cwd is ephemeral or none', async () => {

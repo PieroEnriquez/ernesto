@@ -19,8 +19,9 @@
  *                                              flat chatter; this target is for
  *                                              thread-as-document indexing.
  *                                              Each entry lands at
- *                                              `threads/{YYYY-MM-DD}-{slug}-{ts}.md`
- *                                              with a typed frontmatter block.
+ *                                              `threads/{channel_id}/{YYYY-MM-DD}-{slug}-{ts}.md`
+ *                                              (grouped by channel) with a typed
+ *                                              frontmatter block.
  *
  * Slack API quirk: errors come back as HTTP 200 with a body of
  * `{ ok: false, error: '<reason>' }` rather than a 4xx/5xx status code.
@@ -130,7 +131,7 @@ export function slackPlugin(opts: SlackPluginOptions): ExtractionPlugin {
                     parsed.threadTs,
                     { token, baseUrl, timeoutMs, maxRetries, backoffBaseMs, repliesLimit, ctx },
                 );
-                const entry = buildThreadEntry(parsed.threadTs, replies);
+                const entry = buildThreadEntry(parsed.channelId, parsed.threadTs, replies);
                 return { entries: [entry], fetchedAt };
             }
 
@@ -511,9 +512,11 @@ function buildChannelThreadEntry(
         }
     });
 
+    // Group threads UNDER their channel so the extracted tree bands by channel
+    // (e.g. extracted/slack/threads/C12345/2026-06-07-…-…md) instead of one flat heap.
     const path = slug.length > 0
-        ? `threads/${dateYmd}-${slug}-${threadTs}.md`
-        : `threads/${dateYmd}-${threadTs}.md`;
+        ? `threads/${channelId}/${dateYmd}-${slug}-${threadTs}.md`
+        : `threads/${channelId}/${dateYmd}-${threadTs}.md`;
 
     return {
         path,
@@ -561,7 +564,7 @@ function formatDateYmd(ts: string): string {
     return `${yyyy}-${mm}-${dd}`;
 }
 
-function buildThreadEntry(threadTs: string, messages: SlackMessage[]): ExtractionEntry {
+function buildThreadEntry(channelId: string, threadTs: string, messages: SlackMessage[]): ExtractionEntry {
     const lines: string[] = [
         `# Thread ${threadTs}`,
         '',
@@ -572,7 +575,7 @@ function buildThreadEntry(threadTs: string, messages: SlackMessage[]): Extractio
         lines.push(formatMessage(msg, i === 0 ? 0 : 1));
     });
     return {
-        path: `threads/${threadTs}.md`,
+        path: `threads/${channelId}/${threadTs}.md`,
         content: lines.join('\n'),
         contentType: 'text/markdown',
     };

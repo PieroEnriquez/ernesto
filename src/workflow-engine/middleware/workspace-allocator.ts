@@ -73,6 +73,23 @@ export function workspaceAllocatorMiddleware(
             const cwd = ctx.decl?.policy?.cwd;
             if (cwd !== 'workspace-workdir') return ctx;
 
+            // A ROUTE kind invoked as a child of an agent operates on the
+            // PARENT agent's workdir, which the parent threads down via
+            // `opts.context.workdirRoot` (the backend tool-surface composer;
+            // also read by `inheritWorkdirRootMiddleware`). Such routes —
+            // e.g. `code://materialize`, which hard-links bytes INTO the
+            // caller's workdir for the agent to Read back — must REUSE that
+            // workdir, not allocate a fresh throwaway one the agent can't
+            // see. Workflow/agent kinds always get their own workdir
+            // (subagent isolation), so this carve-out is route-only.
+            if (ctx.decl?.kind === 'route') {
+                const inherited = ctx.opts.context?.workdirRoot;
+                if (typeof inherited === 'string' && inherited.length > 0) {
+                    ctx.workdirRoot = inherited;
+                    return ctx;
+                }
+            }
+
             const allocation = await opts.allocate(ctx);
             ctx.workdirRoot = allocation.workdirRoot;
             ctx.annotations[annotationKey] = allocation;

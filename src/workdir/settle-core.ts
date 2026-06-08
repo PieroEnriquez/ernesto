@@ -37,8 +37,18 @@ import type { LintFn, PushToMainFn, SettleResult } from './settle';
  * auto-blocks inside each workspace's WORKSPACE.md, so there is no routes
  * subdir to exclude. WORKSPACE.md itself IS staged — the derive worker
  * re-asserts the auto-blocks on the next push, so a stale block self-heals.
+ *
+ * `_results` is the transient per-conversation route-result archive subtree the
+ * `execute` verb writes (`workspaces/<w>/_results/*.json`). It is scratch state,
+ * never author intent, and must NEVER be committed/pushed (it is also the FIX 1
+ * contract: `_results` must not be settled). It was previously excluded only on
+ * the overlay/fold paths (boundaries.ts / open-workdir / foldback already list
+ * it); listing it HERE — the single source of truth `buildStageAddArgs` uses —
+ * closes the worktree-settle path (`settleFromWorktree`, used by the in-process
+ * agent `settle` verb), which would otherwise `git add` untracked `_results`
+ * archives present in the worktree and push them to main.
  */
-export const GENERATED_SUBDIRS = ['extracted', 'attached'] as const;
+export const GENERATED_SUBDIRS = ['extracted', 'attached', '_results'] as const;
 
 /**
  * Per-workspace single-file overlays mirrored from master-fs. Like

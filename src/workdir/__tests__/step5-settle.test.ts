@@ -96,6 +96,31 @@ describe('settleFromWorktree', () => {
         expect(seen!.diff).not.toContain('attachments.yaml');
     });
 
+    it('excludes _results/ archives from staging — transient route-result scratch, never settled', async () => {
+        const workdir = buildWorkdir();
+        await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# hr\n'));
+        // The execute verb writes per-conversation route-result archives under
+        // workspaces/<ws>/_results/*.json. They are present + untracked in the
+        // worktree at settle time and must NEVER be staged/committed/pushed.
+        await workdir.fs.writeFile(
+            'workspaces/hr/_results/2026-01-01--some-route.json',
+            enc('{"data":[]}\n'),
+        );
+
+        let seen: { diff: string } | null = null;
+        const captureLint: LintFn = async (input) => { seen = input; return { ok: true }; };
+
+        await settleFromWorktree(workdir, {
+            workspaces: ['hr'],
+            message: 'add hr',
+            lint: captureLint,
+        });
+
+        expect(seen).not.toBeNull();
+        expect(seen!.diff).toContain('workspaces/hr/WORKSPACE.md');
+        expect(seen!.diff).not.toContain('_results');
+    });
+
     it('lint receives the staged diff scoped to workspaces[]', async () => {
         const workdir = buildWorkdir();
         await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# hr\n'));

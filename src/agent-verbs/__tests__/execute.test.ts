@@ -129,6 +129,39 @@ describe('handleExecute', () => {
         });
     });
 
+    it('does NOT mistake a route\'s own top-level `file` for the archive pointer', async () => {
+        // A route whose output happens to carry a top-level `file: string` that
+        // is NOT archive-shaped must still get its own archiveRouteResult, and
+        // the returned `file` must point at the real archive
+        // (`workspaces/<ws>/_results/<file>.json`), never at the route's value.
+        const reg = new RouteRegistry();
+        reg.register(
+            defineRoute({
+                uri: 'test://hasfile',
+                scope: 'test:read',
+                input: z.object({}),
+                output: z.object({ file: z.string() }),
+                handler: async () => ({ file: 'some/user/path.txt' }),
+            }),
+        );
+        const root = path.join(SHARED_TMP_ROOT, 'hasfile-root');
+        await fs.mkdir(root, { recursive: true });
+        const wd = makeFakeWorkdir(root);
+        const result = (await handleExecute(
+            wd,
+            reg,
+            { uri: 'test://hasfile', params: {}, ui: [] },
+            makeCtx(['test:read'], { reg, workdir: wd }),
+        )) as { ok: true; data: unknown; file?: string };
+
+        expect(result.ok).toBe(true);
+        // The advertised archive path is the real archive shape, not the route's
+        // own `file` value, and the archived file actually exists on disk.
+        expect(result.file).toMatch(/^workspaces\/test\/_results\/.*\.json$/);
+        expect(result.file).not.toBe('some/user/path.txt');
+        await expect(fs.stat(path.join(root, result.file as string))).resolves.toBeTruthy();
+    });
+
     it('threads workdir.workingTreeRoot into the route context', async () => {
         const reg = new RouteRegistry();
         const seenRoot = vi.fn();

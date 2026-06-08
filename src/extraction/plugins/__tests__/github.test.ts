@@ -94,7 +94,7 @@ describe('githubPlugin – happy path per target kind', () => {
 
         expect(result.entries).toHaveLength(1);
         const entry = result.entries[0];
-        expect(entry.path).toBe('prs/6298.md');
+        expect(entry.path).toBe('prs/backend/6298.md');
         expect(entry.contentType).toBe('text/markdown');
         expect(entry.content).toMatch(/# PR #6298: Add dark mode toggle/);
         expect(entry.content).toMatch(/\*\*Author:\*\* @johndoe/);
@@ -119,7 +119,7 @@ describe('githubPlugin – happy path per target kind', () => {
 
         expect(result.entries).toHaveLength(1);
         const entry = result.entries[0];
-        expect(entry.path).toBe('commits/a1b2c3d.md');
+        expect(entry.path).toBe('commits/backend/a1b2c3d.md');
         expect(entry.contentType).toBe('text/markdown');
         expect(entry.content).toMatch(/# Add user authentication/);
         expect(entry.content).toMatch(/John Doe <john@example.com>/);
@@ -150,7 +150,7 @@ describe('githubPlugin – happy path per target kind', () => {
         expect(url).toMatch(/direction=desc/);
 
         expect(result.entries).toHaveLength(2);
-        expect(result.entries.map((e) => e.path)).toEqual(['prs/6298.md', 'prs/6296.md']);
+        expect(result.entries.map((e) => e.path)).toEqual(['prs/backend/6298.md', 'prs/backend/6296.md']);
     });
 
     it('fetches recent commits on the default branch', async () => {
@@ -173,8 +173,8 @@ describe('githubPlugin – happy path per target kind', () => {
         );
 
         expect(result.entries).toHaveLength(2);
-        expect(result.entries[0].path).toBe('commits/a1b2c3d.md');
-        expect(result.entries[1].path).toBe('commits/b2c3d4e.md');
+        expect(result.entries[0].path).toBe('commits/backend/a1b2c3d.md');
+        expect(result.entries[1].path).toBe('commits/backend/b2c3d4e.md');
     });
 });
 
@@ -274,7 +274,7 @@ describe('githubPlugin – 429 retry behaviour', () => {
             expect.objectContaining({ attempt: 1, delayMs: 500 }),
         );
         expect(result.entries).toHaveLength(1);
-        expect(result.entries[0].path).toBe('prs/6298.md');
+        expect(result.entries[0].path).toBe('prs/backend/6298.md');
     });
 
     it('uses exponential backoff across multiple 429s (500, 1000, 2000), then gives up', async () => {

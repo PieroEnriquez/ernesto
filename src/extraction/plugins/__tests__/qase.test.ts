@@ -153,8 +153,8 @@ describe('qasePlugin – happy path per target kind', () => {
             contentType: 'application/json',
         });
         expect(JSON.parse(result.entries[0].content)).toEqual(suitePayload);
-        expect(result.entries[1].path).toBe('cases/100.json');
-        expect(result.entries[2].path).toBe('cases/101.json');
+        expect(result.entries[1].path).toBe('cases/7/100.json');
+        expect(result.entries[2].path).toBe('cases/7/101.json');
         expect(JSON.parse(result.entries[1].content)).toEqual(casesPage.entities[0]);
     });
 
@@ -197,9 +197,9 @@ describe('qasePlugin – happy path per target kind', () => {
         // 1 suite + 3 cases
         expect(result.entries).toHaveLength(4);
         expect(result.entries.slice(1).map((e) => e.path)).toEqual([
-            'cases/1.json',
-            'cases/2.json',
-            'cases/3.json',
+            'cases/7/1.json',
+            'cases/7/2.json',
+            'cases/7/3.json',
         ]);
     });
 });

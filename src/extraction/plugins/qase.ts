@@ -11,8 +11,9 @@
  *
  * Target syntax (matches frontmatter convention):
  *   - `project:<projectCode>`              — list of suites in the project.
- *   - `suite:<projectCode>:<suiteId>`      — every case in a suite.
- *   - `case:<projectCode>:<caseId>`        — a single test case.
+ *   - `suite:<projectCode>:<suiteId>`      — every case in a suite, grouped under
+ *                                            `cases/{suiteId}/{caseId}.json`.
+ *   - `case:<projectCode>:<caseId>`        — a single test case (`cases/{caseId}.json`).
  *
  * Response envelope:
  *   - Qase wraps successful responses as `{ status: true, result: <payload> }`.
@@ -141,8 +142,10 @@ export function qasePlugin(opts: QasePluginOptions): ExtractionPlugin {
                         content: stringifyJson(suitePayload),
                         contentType: 'application/json',
                     },
+                    // Group a suite's cases UNDER the suite so the tree bands by suite
+                    // (cases/{suiteId}/{caseId}.json) instead of one flat cases/ heap.
                     ...cases.map((c) => ({
-                        path: `cases/${getCaseId(c)}.json`,
+                        path: `cases/${target.id}/${getCaseId(c)}.json`,
                         content: stringifyJson(c),
                         contentType: 'application/json',
                     })),

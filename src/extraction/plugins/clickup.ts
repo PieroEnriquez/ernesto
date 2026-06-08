@@ -15,8 +15,10 @@
  *                                  when two lists share a name and the id stays one
  *                                  Grep away. Falls back to bare `lists/{id}.json` if
  *                                  the list has no name.
- *   - doc:{id}                  → docs/{id}/{slug}.md per page (markdown, v3,
- *                                  requires workspaceId option)
+ *   - doc:{id}                  → docs/{id}/{page-tree…}/{slug}.md per page — sub-pages
+ *                                  nest under their parent page's slug so the doc's
+ *                                  hierarchy is preserved (markdown, v3, requires
+ *                                  workspaceId option).
  *   - doc:{id}:{rootPageId}     → same shape, but pages outside the subtree
  *                                  rooted at {rootPageId} are dropped.
  *   - list-table:{id}           → lists/{slug}-{id}.md (markdown table of tasks, legacy
@@ -369,24 +371,31 @@ async function fetchListTable(args: FetchListTableArgs): Promise<ExtractionEntry
     const listPayload = (await listRes.json()) as { id?: string; name?: string };
     const listName = typeof listPayload.name === 'string' ? listPayload.name : args.id;
 
-    // 2. Fetch tasks for the list. Include subtasks for parity with legacy.
-    const tasksRes = await fetchWithRetry(
-        `${args.baseUrl}/list/${safe}/task?subtasks=true&include_closed=true`,
-        args.token,
-        {
-            timeoutMs: args.timeoutMs,
-            maxRetries: args.maxRetries,
-            backoffBaseMs: args.backoffBaseMs,
-            log: args.log,
-            kind: 'list-table',
-            id: args.id,
-        },
-    );
-    // If the tasks endpoint 404s but the list exists, treat as an empty list.
-    const tasks: ClickUpTask[] =
-        tasksRes === 'not_found'
-            ? []
-            : (((await tasksRes.json()) as { tasks?: ClickUpTask[] }).tasks ?? []);
+    // 2. Fetch tasks for the list, PAGINATED. ClickUp's `/list/{id}/task` returns
+    // ~100 tasks/page with a `last_page` flag — a single call silently truncates a
+    // big list to its first page, so walk pages until `last_page` (hard-capped). 404
+    // on the tasks endpoint (list exists, no tasks) → empty list. Include subtasks +
+    // closed for parity with legacy.
+    const tasks: ClickUpTask[] = [];
+    for (let page = 0; page <= 200; page++) {
+        const tasksRes = await fetchWithRetry(
+            `${args.baseUrl}/list/${safe}/task?subtasks=true&include_closed=true&page=${page}`,
+            args.token,
+            {
+                timeoutMs: args.timeoutMs,
+                maxRetries: args.maxRetries,
+                backoffBaseMs: args.backoffBaseMs,
+                log: args.log,
+                kind: 'list-table',
+                id: args.id,
+            },
+        );
+        if (tasksRes === 'not_found') break;
+        const payload = (await tasksRes.json()) as { tasks?: ClickUpTask[]; last_page?: boolean };
+        const batch = payload.tasks ?? [];
+        tasks.push(...batch);
+        if (payload.last_page === true || batch.length === 0) break;
+    }
 
     const cutoffMs = computeClosedCutoffMs(args.closedTaskCutoffMonths);
     const filtered = tasks.filter((t) => !isStaleClosedTask(t, cutoffMs));
@@ -548,6 +557,24 @@ async function fetchDocPages(
         slugCounts.set(s, (slugCounts.get(s) ?? 0) + 1);
     }
 
+    // Preserve the doc's PAGE TREE as the extracted folder hierarchy: walk the listing
+    // tree carrying each page's ancestor slugs, so a doc groups by section instead of
+    // flattening hundreds of pages into one heap. Keyed off the nested `pages` shape
+    // (robust whether or not `parent_page_id` is populated).
+    const folderById = new Map<string, string>();
+    const walkTree = (nodes: ClickUpPageListing[], prefix: string) => {
+        for (const n of nodes) {
+            folderById.set(n.id, prefix);
+            if (n.pages && n.pages.length > 0) {
+                const childPrefix = prefix
+                    ? `${prefix}/${slugify(n.name) || n.id}`
+                    : slugify(n.name) || n.id;
+                walkTree(n.pages, childPrefix);
+            }
+        }
+    };
+    walkTree(tree, '');
+
     const entries: ExtractionEntry[] = [];
     for (const page of flatPages) {
         const pageUrl = `${args.baseUrlV3}/workspaces/${safeWorkspace}/docs/${safeDoc}/pages/${encodeURIComponent(page.id)}?content_format=text%2Fmd`;
@@ -573,8 +600,10 @@ async function fetchDocPages(
                 ? `${baseSlug}-${page.id}`
                 : baseSlug;
         const content = typeof payload.content === 'string' ? payload.content : '';
+        const folders = folderById.get(page.id) ?? '';
+        const rel = folders ? `${folders}/${slug}` : slug;
         entries.push({
-            path: `docs/${args.docId}/${slug}.md`,
+            path: `docs/${args.docId}/${rel}.md`,
             content,
             contentType: 'text/markdown',
         });

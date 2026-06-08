@@ -294,21 +294,28 @@ async function deriveAffectedWorkspaces(workingTreeRoot: string): Promise<string
         }
         const match = /^workspaces\/([^/]+)\/(.+)$/.exec(path);
         if (match) {
-            // Skip master-fs overlays. `extracted/`, `routes/`, `attached/`
-            // subdirs AND the `attachments.yaml` file are hard-link mirrors
-            // of master-fs placed at host boot (host-owned overlay
-            // setup) / mid-run (`remirrorFile`).
-            // Without this filter, every workspace whose mirror got
-            // refreshed — or that the agent attached a file to via
-            // `_ernesto://attach` — would show up as untracked in
-            // `git status` and be added to the "affected" set on every
-            // settle, firing audit + pubsub hooks for workspaces the user
-            // never edited. The staging-side companion filter lives in
-            // `settleFromWorktree`'s GENERATED_SUBDIRS + GENERATED_FILES.
+            // Skip master-fs overlays + transient archives. `extracted/`,
+            // `routes/`, `attached/`, `_results/` subdirs AND the
+            // `attachments.yaml` file are hard-link mirrors of master-fs placed
+            // at host boot (host-owned overlay setup) / mid-run (`remirrorFile`),
+            // or — for `_results/` — the per-conversation route-result archives
+            // the `execute` verb writes. Without this filter, every workspace
+            // whose mirror got refreshed, that the agent attached a file to via
+            // `_ernesto://attach`, or that merely had a route dispatched into it
+            // (writing a `_results/*.json` archive) would show up as untracked in
+            // `git status` and be added to the "affected" set on every settle,
+            // firing audit + pubsub hooks for workspaces the user never edited.
+            // The staging-side companion filter lives in `settleFromWorktree`'s
+            // GENERATED_SUBDIRS + GENERATED_FILES (which also lists `_results`).
             const rest = match[2];
             const firstSeg = rest.split('/')[0];
             if (rest === 'attachments.yaml') continue;
-            if (firstSeg !== 'extracted' && firstSeg !== 'routes' && firstSeg !== 'attached') {
+            if (
+                firstSeg !== 'extracted' &&
+                firstSeg !== 'routes' &&
+                firstSeg !== 'attached' &&
+                firstSeg !== '_results'
+            ) {
                 names.add(match[1]);
             }
         }

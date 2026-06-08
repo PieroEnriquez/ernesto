@@ -142,7 +142,7 @@ describe('clickupPlugin – happy path per target kind', () => {
         });
     });
 
-    it('flattens nested doc pages from the page_listing tree', async () => {
+    it('preserves the page tree as folders (sub-pages nested under their parent)', async () => {
         const listing = [
             {
                 id: 'root',
@@ -166,7 +166,7 @@ describe('clickupPlugin – happy path per target kind', () => {
 
         expect(result.entries.map((e) => e.path)).toEqual([
             'docs/docX/root.md',
-            'docs/docX/child.md',
+            'docs/docX/root/child.md',
         ]);
     });
 
@@ -333,7 +333,7 @@ describe('clickupPlugin – list-table target', () => {
         const fetchMock = vi
             .fn()
             .mockResolvedValueOnce(jsonResponse(200, listMeta))
-            .mockResolvedValueOnce(jsonResponse(200, { tasks }));
+            .mockResolvedValueOnce(jsonResponse(200, { tasks, last_page: true }));
         vi.stubGlobal('fetch', fetchMock);
 
         const plugin = clickupPlugin({ token: TOKEN });
@@ -347,7 +347,7 @@ describe('clickupPlugin – list-table target', () => {
         const [tasksUrl] = fetchMock.mock.calls[1];
         expect(listUrl).toBe('https://api.clickup.com/api/v2/list/list_99');
         expect(tasksUrl).toBe(
-            'https://api.clickup.com/api/v2/list/list_99/task?subtasks=true&include_closed=true',
+            'https://api.clickup.com/api/v2/list/list_99/task?subtasks=true&include_closed=true&page=0',
         );
 
         expect(result.entries).toHaveLength(1);
@@ -521,7 +521,7 @@ describe('clickupPlugin – doc subtree filter', () => {
 
         const paths = result.entries.map((e) => e.path).sort();
         // Only root-A and child-A1 should produce entries; root-B subtree is filtered out.
-        expect(paths).toEqual(['docs/doc-1/a1.md', 'docs/doc-1/root-a.md']);
+        expect(paths).toEqual(['docs/doc-1/root-a.md', 'docs/doc-1/root-a/a1.md']);
         // Per-page calls must have been made only for the kept pages.
         const pageCalls = fetchMock.mock.calls.filter(([u]) => String(u).includes('/pages/'));
         const pageIds = pageCalls.map(([u]) => (String(u).match(/\/pages\/([^?]+)/) as RegExpMatchArray)[1]).sort();

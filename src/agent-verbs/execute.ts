@@ -235,21 +235,50 @@ export async function handleExecute(
     const previewLimit = inlineAll ? 0 : Math.max(0, Number(previewLimitRaw) || 0);
     const runId = ctx.runId ?? randomUUID();
 
+    // Render-manifest routes archive the FULL output inside dispatchResolvedRoute
+    // (so a reconstructed conversation can render full rows) and embed the path in
+    // the stripped `data` envelope. Reuse that file instead of re-archiving the
+    // compact sketch here — re-archiving would clobber the full data with the
+    // sketch and defeat the whole point. Non-manifest routes carry no embedded
+    // file, so `dispatched.data` is the FULL output and we archive it as before.
+    const dispatchedData = dispatched.data;
+    const embeddedFile =
+        dispatchedData && typeof dispatchedData === 'object' && !Array.isArray(dispatchedData)
+            ? (dispatchedData as { file?: unknown }).file
+            : undefined;
+
+    // Only treat `data.file` as "the render-manifest already archived the full
+    // output" when it matches the archive's path shape
+    // (`workspaces/<ws>/_results/<file>.json`, see route-results/archive.ts).
+    // Without this guard, ANY future route that returns a top-level
+    // `file: string` of its own would (a) suppress our archiveRouteResult and
+    // (b) advertise a `_results` path that the write-through then fails to read,
+    // silently 404-ing the agent's later Read and defeating durability.
+    const isArchivePointer =
+        typeof embeddedFile === 'string' &&
+        embeddedFile.startsWith('workspaces/') &&
+        embeddedFile.includes('/_results/') &&
+        embeddedFile.endsWith('.json');
+
     let file: string | undefined;
-    try {
-        file = await archiveRouteResult({
-            workdir: workdirRoot,
-            uri: parsed.data.uri,
-            params: (params as Record<string, unknown>) ?? {},
-            runId,
-            data: dispatched.data,
-            log: ctx.log,
-        });
-    } catch (err) {
-        ctx.log.warn('archiveRouteResult failed — proceeding without file', {
-            uri: parsed.data.uri,
-            errorMessage: (err as Error).message,
-        });
+    if (isArchivePointer) {
+        file = embeddedFile as string;
+    } else {
+        try {
+            file = await archiveRouteResult({
+                workdir: workdirRoot,
+                uri: parsed.data.uri,
+                params: (params as Record<string, unknown>) ?? {},
+                runId,
+                data: dispatched.data,
+                log: ctx.log,
+            });
+        } catch (err) {
+            ctx.log.warn('archiveRouteResult failed — proceeding without file', {
+                uri: parsed.data.uri,
+                errorMessage: (err as Error).message,
+            });
+        }
     }
 
     let preview: unknown;

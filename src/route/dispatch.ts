@@ -15,12 +15,14 @@
  * shape is the substrate.
  */
 
+import { randomUUID } from 'node:crypto';
 import type { RouteRegistry } from './route-registry';
 import type { Route } from './define-route';
 import type { RouteContext, RouteScope } from './define-route';
 import { resolveRouteScope } from './define-route';
 import { sketchComponents } from './stage-sketch';
 import { applyRenderManifest } from './render';
+import { archiveRouteResult } from '../route-results/archive';
 import { checkScope } from '../shared/scope';
 
 export type DispatchErrorCode =
@@ -177,6 +179,38 @@ export async function dispatchResolvedRoute(
                     'route again with modifiers in `params` if you need a ' +
                     'transform (sort/filter/group).',
             };
+
+            // Persist the FULL route output durably and embed its path in the
+            // stripped envelope. Two reasons:
+            //   1. The `note` above promises "the full data is in `file`" — but
+            //      until now nothing archived it on this path (the agent verb
+            //      archived the already-stripped sketch), so that promise was
+            //      false and follow-up `Read`s saw only the sketch.
+            //   2. A reconstructed conversation has only the persisted envelope
+            //      (the live component stream is gone); the `file` lets it fetch
+            //      full rows instead of rendering the 1-row sketch.
+            // Embedding the path INTO `strippedShape` (not just the DispatchResult)
+            // is deliberate: it rides through the runner's `run.output` →
+            // `dispatchByUri` hop back to the agent verb, where a bare
+            // `result.file` would be dropped. Only when a workdir is bound;
+            // best-effort (a failed archive must never fail the dispatch).
+            if (ctx.workdirRoot) {
+                try {
+                    strippedShape.file = await archiveRouteResult({
+                        workdir: ctx.workdirRoot,
+                        uri: route.uri,
+                        params: (parsedInput.data as Record<string, unknown>) ?? {},
+                        runId: ctx.runId ?? randomUUID(),
+                        data: parsedOutput.data,
+                        log: ctx.log,
+                    });
+                } catch (archiveErr) {
+                    ctx.log.warn('route render: full-output archive failed', {
+                        uri: route.uri,
+                        errorMessage: (archiveErr as Error).message,
+                    });
+                }
+            }
         } catch (walkErr) {
             ctx.log.warn('render manifest walk failed — returning full data', {
                 uri: route.uri,

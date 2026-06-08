@@ -109,7 +109,7 @@ describe('slackPlugin – thread target happy path', () => {
 
         expect(result.entries).toHaveLength(1);
         const entry = result.entries[0];
-        expect(entry.path).toBe('threads/1700000100.000100.md');
+        expect(entry.path).toBe('threads/C12345/1700000100.000100.md');
         expect(entry.contentType).toBe('text/markdown');
         expect(entry.content).toContain('# Thread 1700000100.000100');
         expect(entry.content).toContain('parent message');
@@ -310,10 +310,10 @@ describe('slackPlugin – channel-threads target', () => {
         expect(String(historyUrl)).toContain('conversations.history');
         expect(String(historyUrl)).toContain(`oldest=${realNowSec - 30 * 24 * 60 * 60}`);
 
-        // Path shape: threads/{YYYY-MM-DD}-{slug}-{ts}.md
+        // Path shape: threads/{channelId}/{YYYY-MM-DD}-{slug}-{ts}.md
         const paths = result.entries.map((e) => e.path).sort();
         for (const p of paths) {
-            expect(p).toMatch(/^threads\/\d{4}-\d{2}-\d{2}-[a-z0-9-]+-\d+\.\d+\.md$/);
+            expect(p).toMatch(/^threads\/[A-Za-z0-9_-]+\/\d{4}-\d{2}-\d{2}-[a-z0-9-]+-\d+\.\d+\.md$/);
         }
 
         // Frontmatter is present and well-formed.

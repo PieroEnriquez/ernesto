@@ -11,7 +11,9 @@
  *   - `prs:<repo>`             — recent merged PRs (paginated list, 30 most recent).
  *   - `commits:<repo>`         — recent commits on the default branch (30 most recent).
  *
- * Each PR yields `prs/{number}.md`; each commit yields `commits/{shortSha}.md`.
+ * Each PR yields `prs/{repo}/{number}.md`; each commit yields
+ * `commits/{repo}/{shortSha}.md` — the repo is a path segment so the extracted
+ * tree groups naturally by repository (e.g. extracted/github/prs/backend/…).
  *
  * Failure shape contract:
  *   - 404 → resolve with empty entries (target absent is not fatal).
@@ -99,7 +101,7 @@ export function githubPlugin(opts: GitHubPluginOptions): ExtractionPlugin {
                     return { entries: [], fetchedAt };
                 }
                 const pr = (await res.json()) as PullRequestPayload;
-                return { entries: [renderPrEntry(pr)], fetchedAt };
+                return { entries: [renderPrEntry(pr, parsed.repo)], fetchedAt };
             }
 
             if (parsed.kind === 'commit') {
@@ -110,7 +112,7 @@ export function githubPlugin(opts: GitHubPluginOptions): ExtractionPlugin {
                     return { entries: [], fetchedAt };
                 }
                 const commit = (await res.json()) as CommitPayload;
-                return { entries: [renderCommitEntry(commit)], fetchedAt };
+                return { entries: [renderCommitEntry(commit, parsed.repo)], fetchedAt };
             }
 
             if (parsed.kind === 'prs') {
@@ -130,7 +132,7 @@ export function githubPlugin(opts: GitHubPluginOptions): ExtractionPlugin {
                 const list = (await res.json()) as PullRequestPayload[];
                 const merged = list.filter((pr) => Boolean(pr.merged_at)).slice(0, listLimit);
                 return {
-                    entries: merged.map(renderPrEntry),
+                    entries: merged.map((pr) => renderPrEntry(pr, parsed.repo)),
                     fetchedAt,
                 };
             }
@@ -147,7 +149,7 @@ export function githubPlugin(opts: GitHubPluginOptions): ExtractionPlugin {
             }
             const list = (await res.json()) as CommitPayload[];
             return {
-                entries: list.slice(0, listLimit).map(renderCommitEntry),
+                entries: list.slice(0, listLimit).map((c) => renderCommitEntry(c, parsed.repo)),
                 fetchedAt,
             };
         },
@@ -215,6 +217,11 @@ function fetchWithRetry(
 
 // ─── Rendering ───────────────────────────────────────────────────────────────
 
+/** Repo name as a safe single path segment (the extracted tree groups by it). */
+function repoSeg(repo: string): string {
+    return repo.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown';
+}
+
 interface PullRequestPayload {
     number: number;
     title: string;
@@ -250,7 +257,7 @@ interface CommitPayload {
     }>;
 }
 
-function renderPrEntry(pr: PullRequestPayload): ExtractionEntry {
+function renderPrEntry(pr: PullRequestPayload, repo: string): ExtractionEntry {
     const number = pr.number;
     const title = pr.title;
     const state = (pr.state ?? 'unknown').toUpperCase();
@@ -297,13 +304,13 @@ ${reviewers}
 `.trim();
 
     return {
-        path: `prs/${number}.md`,
+        path: `prs/${repoSeg(repo)}/${number}.md`,
         content,
         contentType: 'text/markdown',
     };
 }
 
-function renderCommitEntry(commit: CommitPayload): ExtractionEntry {
+function renderCommitEntry(commit: CommitPayload, repo: string): ExtractionEntry {
     const sha = commit.sha;
     const shortSha = sha.substring(0, 7);
     const author = commit.commit.author?.name ?? 'unknown';
@@ -360,7 +367,7 @@ ${filesSummary}
 `.trim();
 
     return {
-        path: `commits/${shortSha}.md`,
+        path: `commits/${repoSeg(repo)}/${shortSha}.md`,
         content,
         contentType: 'text/markdown',
     };
