@@ -36,6 +36,10 @@ const RENDERABLE_SAMPLES: Record<RenderableComponentKind, RenderableComponent> =
         image: { kind: 'image', props: { url: 'https://e/x.png' } },
         link: { kind: 'link', props: { url: 'https://e', title: 'Open' } },
         tree: { kind: 'tree', props: { nodes: [{ label: 'r' }] } },
+        actions: {
+            kind: 'actions',
+            props: { buttons: [{ label: 'Update', actionId: 'teams_update_task__abc' }] },
+        },
     };
 
 describe('components/types — renderable taxonomy round-trips validation', () => {
