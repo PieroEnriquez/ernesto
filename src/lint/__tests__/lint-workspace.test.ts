@@ -165,6 +165,16 @@ describe('lintWorkspace (scope-less)', () => {
                 )).toBe(true),
         },
         {
+            name: 'allows a WORKSPACE.md delete when the same workspace is re-created elsewhere (relocation)',
+            setup: async () =>
+                diffDelete('workspaces/cs-scheduler/WORKSPACE.md', VALID_HR) +
+                diffAdd('workspaces/cs/cs-scheduler/WORKSPACE.md', VALID_HR),
+            check: errors =>
+                expect(errors.some(e =>
+                    e.code === 'forbidden_workspace_md_delete' && e.workspace === 'cs-scheduler',
+                )).toBe(false),
+        },
+        {
             name: 'flags workspace_md_missing when other files in a workspace exist without WORKSPACE.md',
             setup: async () => {
                 await rm(path.join(root, 'workspaces', 'hr', 'WORKSPACE.md'));

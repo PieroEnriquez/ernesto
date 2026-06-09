@@ -543,16 +543,30 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
         // boundary probe: the file is gone from the post-stage tree, so it is
         // no longer a discoverable boundary. The deleted contract names the
         // workspace by its leaf (depth-proof).
+        //
+        // RELOCATION CARVE-OUT: a delete is allowed when the SAME workspace (by
+        // leaf name) is (re)created elsewhere in this patch — i.e. a move
+        // (`workspaces/cs-scheduler/WORKSPACE.md` → `workspaces/cs/cs-scheduler/WORKSPACE.md`,
+        // leaf `cs-scheduler`). Only an ORPHANING delete (no matching re-create)
+        // is still forbidden, so the workspace contract is never silently lost.
+        const recreatedWsLeaves = new Set<string>();
+        for (const e of entries) {
+            if (e.fromPath !== undefined) continue; // adds have no fromPath
+            if (!e.toPath || !isWsMdPath(e.toPath)) continue;
+            const leaf = wsMdLeaf(e.toPath);
+            if (leaf) recreatedWsLeaves.add(leaf);
+        }
         for (const e of entries) {
             if (!e.isDelete) continue;
             const p = e.fromPath;
             if (!p || !isWsMdPath(p)) continue;
             const w = wsMdLeaf(p);
+            if (w && recreatedWsLeaves.has(w)) continue; // relocation: re-created elsewhere
             errors.push({
                 code: 'forbidden_workspace_md_delete',
                 workspace: w,
                 path: p,
-                message: `WORKSPACE.md for workspace '${w}' was deleted; this file is the workspace's contract`,
+                message: `WORKSPACE.md for workspace '${w}' was deleted without being re-created elsewhere; this file is the workspace's contract`,
             });
         }
 
