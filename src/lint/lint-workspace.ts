@@ -967,6 +967,16 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
  * Skips `unregistered_extraction_source` because no registry is wired —
  * authoritative callers must use `makeLintWorkspace` with
  * `getRegisteredSources` set.
+ *
+ * QUARANTINE: every authoritative (settle) AND editor-preview path MUST
+ * construct lint via the backend `buildSettleLint(principal)` factory, which
+ * binds the principal and always wires `getRegisteredSources` from the live
+ * extraction registry — so editor-lint === settle-lint by construction. This
+ * scope-less export is reserved for genuinely non-principal contexts only
+ * (worker dashboards-e2e, spec-conformance invariants that assert
+ * principal-independent rules). Do NOT reach for it on a settle or preview
+ * path: doing so silently drops `unregistered_extraction_source` and the
+ * scope checks, re-opening the very parity gap `buildSettleLint` closes.
  */
 export const lintWorkspace: LintFn = build({});
 
