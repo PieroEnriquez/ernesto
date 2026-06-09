@@ -2,7 +2,7 @@ import { promises as fsp } from 'fs';
 import * as path from 'path';
 import { spawn } from 'child_process';
 import {
-    FsAdapter, MasterFsAdapter,
+    FsAdapter, MasterFsAdapter, MasterFsResolution,
     GlobOptions, GrepOptions, GrepResult, GrepOutputMode,
 } from './types';
 import { compileGlob, safeSubpath } from './glob-util';
@@ -95,17 +95,40 @@ export function makeNodeFsAdapter(workingTreeRoot: string): FsAdapter {
  * links are real directory entries pointing at the same inode, so the agent's
  * discovery tools walk them normally. Requires the working tree and master-fs
  * to be on the same volume (same device for `link(2)`).
+ *
+ * TWO-ROOT (Tier-2 §4): when `generatedRoot` + `isGenerated` are supplied, a
+ * path the matcher classifies as generated resolves GEN-FIRST from the sibling
+ * generated store; on a store miss it FALLS BACK to `masterFsRoot` (the
+ * additive guarantee — an empty store behaves exactly like single-root),
+ * UNLESS `authoritative` is true (the cutover: a generated miss surfaces
+ * `not-found`, master-FS is never consulted). Non-generated paths and the
+ * single-arg call resolve from `masterFsRoot` exactly as before. The backend
+ * passes the matcher because lib cannot import backend volume-paths (layering).
  */
-export function makeVolumeMasterFs(masterFsRoot: string): MasterFsAdapter {
+export function makeVolumeMasterFs(
+    masterFsRoot: string,
+    generatedRoot?: string,
+    isGenerated?: (relPath: string) => boolean,
+    authoritative?: boolean,
+): MasterFsAdapter {
+    const accessAt = async (root: string, relPath: string): Promise<MasterFsResolution> => {
+        const sourcePath = path.join(root, relPath);
+        try {
+            await fsp.access(sourcePath);
+            return { kind: 'hardlink', sourcePath };
+        } catch {
+            return { kind: 'not-found' };
+        }
+    };
     return {
         async resolve(masterFsPath) {
-            const sourcePath = path.join(masterFsRoot, masterFsPath);
-            try {
-                await fsp.access(sourcePath);
-                return { kind: 'hardlink', sourcePath };
-            } catch {
-                return { kind: 'not-found' };
+            if (generatedRoot && isGenerated && isGenerated(masterFsPath)) {
+                const gen = await accessAt(generatedRoot, masterFsPath);
+                if (gen.kind !== 'not-found') return gen;
+                // Store miss: cutover serves not-found; otherwise fall back.
+                if (authoritative) return { kind: 'not-found' };
             }
+            return accessAt(masterFsRoot, masterFsPath);
         },
     };
 }
