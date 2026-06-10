@@ -27,6 +27,7 @@ import { runGit, tryRunGit } from './run-git';
 import { SettleResult, LintFn, PushToMainFn } from './settle';
 import { runSettleCore, resolveScopedPaths } from './settle-core';
 import type { WorkspacePatch, PatchEntry } from '../workspaces/overlay';
+import { boundariesFromPatchPaths } from '../workspaces/boundaries';
 
 function isDeleted(e: PatchEntry): e is { deleted: true } {
     return (e as { deleted?: true }).deleted === true;
@@ -79,7 +80,20 @@ export async function settleFromOverlay(workdir: Workdir, input: SettleFromOverl
         // settle honor its contract and yields a path-granular committed set the
         // caller forgets from the draft. (The same `resolveScopedPaths` the lint
         // core uses, so apply-scope and commit-scope can never drift.)
-        const scopedPaths = await resolveScopedPaths(root, input.workspaces);
+        //
+        // Boundaries the patch itself declares participate in resolution: a
+        // settle that CREATES a sub-workspace carries the only copy of its
+        // `WORKSPACE.md` in the patch — the pre-merge tree below cannot resolve
+        // the new name, which used to silently skip the new workspace's files
+        // whenever another declared name matched (and fail `empty_patch` when
+        // none did). Deletion entries are filtered: a tombstoned WORKSPACE.md
+        // declares nothing.
+        const patchBoundaries = boundariesFromPatchPaths(
+            Object.entries(input.patch.files)
+                .filter(([, e]) => !isDeleted(e))
+                .map(([p]) => p),
+        );
+        const scopedPaths = await resolveScopedPaths(root, input.workspaces, patchBoundaries);
         const inScope = (p: string): boolean => scopedPaths.some((s) => p === s || p.startsWith(`${s}/`));
         // By-reference selection: AND the optional `files` set AFTER the
         // workspace scope so it can only SHRINK the committed set — the same

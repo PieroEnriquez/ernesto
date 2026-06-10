@@ -7,6 +7,7 @@ import { runGit } from '../run-git';
 import type { Workdir } from '../types';
 import type { WorkspacePatch } from '../../workspaces/overlay';
 import { buildWorkdir as kitBuildWorkdir } from '../../__tests__/kit';
+import { boundariesFromPatchPaths } from '../../workspaces/boundaries';
 
 const allowAllLint: LintFn = async () => ({ ok: true });
 const denyLint: (errors: ReadonlyArray<LintError>) => LintFn = (errors) => async () => ({ ok: false, errors });
@@ -299,5 +300,76 @@ describe('settleFromOverlay — server-side 3-way reconcile', () => {
             expect(r.sha).toBe('bot-sha-xyz');
         }
         expect(seenBranchRef).toBe('refs/workdirs/wd1');
+    });
+
+    it('creates a nested sub-workspace declared by its OWN leaf name', async () => {
+        // The regression: workspaces/hr/recruiting exists only in the patch —
+        // the pre-merge tree has no such boundary, so before the patch-declared
+        // boundaries participated in scoping, declaring ['recruiting'] silently
+        // matched nothing.
+        const workdir = buildWorkdir();
+        const patch: WorkspacePatch = {
+            baseSha,
+            files: {
+                'workspaces/hr/recruiting/WORKSPACE.md': { content: '---\nname: recruiting\n---\n' },
+                'workspaces/hr/recruiting/pipeline.md': { content: 'sourcing notes\n' },
+            },
+        };
+
+        const r = await settleFromOverlay(workdir, {
+            workspaces: ['recruiting'],
+            message: 'create the hr/recruiting sub-workspace',
+            patch,
+            lint: allowAllLint,
+        });
+
+        expect(r.ok).toBe(true);
+        const tree = await runGit(root, ['ls-tree', '-r', '--name-only', 'HEAD']);
+        expect(tree).toContain('workspaces/hr/recruiting/WORKSPACE.md');
+        expect(tree).toContain('workspaces/hr/recruiting/pipeline.md');
+    });
+
+    it('a draft-created boundary does NOT widen scope to undeclared workspaces', async () => {
+        // The patch spans the new sub-workspace AND an hr-only edit; only the
+        // new workspace is declared. The hr entry must stay out of the commit
+        // (retained in the draft) — patch-declared boundaries fix resolution,
+        // not the scoping contract.
+        const workdir = buildWorkdir();
+        const patch: WorkspacePatch = {
+            baseSha,
+            files: {
+                'workspaces/hr/recruiting/WORKSPACE.md': { content: '---\nname: recruiting\n---\n' },
+                'workspaces/hr/recruiting/pipeline.md': { content: 'sourcing notes\n' },
+                'workspaces/hr/handbook.md': { content: 'hr-only edit, undeclared\n' },
+            },
+        };
+
+        const r = await settleFromOverlay(workdir, {
+            workspaces: ['recruiting'],
+            message: 'create recruiting; hr edit stays behind',
+            patch,
+            lint: allowAllLint,
+        });
+
+        expect(r.ok).toBe(true);
+        const tree = await runGit(root, ['ls-tree', '-r', '--name-only', 'HEAD']);
+        expect(tree).toContain('workspaces/hr/recruiting/pipeline.md');
+        const handbook = await runGit(root, ['show', 'HEAD:workspaces/hr/handbook.md']);
+        expect(handbook).toBe('base line\n'); // undeclared edit did not land
+    });
+
+    it('boundariesFromPatchPaths: WORKSPACE.md entries declare boundaries, other paths do not', () => {
+        expect(
+            boundariesFromPatchPaths([
+                'workspaces/hr/recruiting/WORKSPACE.md',
+                'workspaces/hr/recruiting/pipeline.md',
+                'workspaces/legal/WORKSPACE.md',
+                'WORKSPACE.md',
+                'workspaces/WORKSPACE.md',
+            ]),
+        ).toEqual([
+            { name: 'recruiting', dir: 'workspaces/hr/recruiting' },
+            { name: 'legal', dir: 'workspaces/legal' },
+        ]);
     });
 });

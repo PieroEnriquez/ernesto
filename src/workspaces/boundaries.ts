@@ -76,6 +76,26 @@ export async function scanWorkspaceBoundaries(workingTreeRoot: string): Promise<
 }
 
 /**
+ * Derive the boundaries a PATCH declares: every present (non-deleted)
+ * `WORKSPACE.md` entry under `workspaces/` marks its directory as a boundary
+ * the patch creates or edits. The overlay-side complement of
+ * `scanWorkspaceBoundaries`: a settle that CREATES a sub-workspace carries the
+ * only copy of its `WORKSPACE.md` inside the patch, so a scan of the pre-merge
+ * tree cannot resolve the new name. Callers must pre-filter deletion entries —
+ * a tombstoned `WORKSPACE.md` declares nothing.
+ */
+export function boundariesFromPatchPaths(paths: Iterable<string>): WorkspaceBoundary[] {
+    const out: WorkspaceBoundary[] = [];
+    for (const p of paths) {
+        const m = /^workspaces\/(.+)\/WORKSPACE\.md$/.exec(p);
+        if (!m) continue;
+        const dir = `workspaces/${m[1]}`;
+        out.push({ name: dir.split('/').pop()!, dir });
+    }
+    return out;
+}
+
+/**
  * Resolve a workspace's leaf name to its current boundary. Leaf names are
  * globally unique (lint-enforced), so the first match is authoritative; if a
  * duplicate ever slipped through, the shallowest wins (deterministic).

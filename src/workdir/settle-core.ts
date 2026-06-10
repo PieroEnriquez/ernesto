@@ -18,7 +18,7 @@ import { Workdir } from './types';
 import { runGit, tryRunGit } from './run-git';
 import { stat } from 'fs/promises';
 import * as nodePath from 'path';
-import { scanWorkspaceBoundaries, boundaryForName } from '../workspaces/boundaries';
+import { scanWorkspaceBoundaries, boundaryForName, type WorkspaceBoundary } from '../workspaces/boundaries';
 import type { LintFn, PushToMainFn, SettleResult } from './settle';
 
 /**
@@ -78,9 +78,18 @@ export const GENERATED_FILES = ['.derived-from-sha'] as const;
 /** Tree-relative paths the lint diff is scoped to, resolved nesting-aware:
  *  each declared leaf maps to BOTH its conventional `workspaces/<leaf>` path
  *  and its current resolved location, so a relocation's rename is paired and a
- *  nested workspace's changes are not silently excluded from the gate. */
-export async function resolveScopedPaths(root: string, workspaces: ReadonlyArray<string>): Promise<string[]> {
-    const boundaries = await scanWorkspaceBoundaries(root);
+ *  nested workspace's changes are not silently excluded from the gate.
+ *
+ *  `extraBoundaries` lets a caller add boundaries the tree at `root` cannot
+ *  know yet — the overlay settle passes the boundaries its patch declares, so
+ *  a sub-workspace being CREATED in that settle resolves by its own leaf name
+ *  (parity with the worktree path, whose scan sees the authored files). */
+export async function resolveScopedPaths(
+    root: string,
+    workspaces: ReadonlyArray<string>,
+    extraBoundaries: ReadonlyArray<WorkspaceBoundary> = [],
+): Promise<string[]> {
+    const boundaries = [...(await scanWorkspaceBoundaries(root)), ...extraBoundaries];
     const wsPaths = new Set<string>();
     for (const w of workspaces) {
         wsPaths.add(`workspaces/${w}`);
