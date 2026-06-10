@@ -9,10 +9,7 @@
 
 import { EventEmitter } from 'node:events';
 import type { FactEvent } from './types/event';
-import type {
-    SubscribeEventsOpts,
-    EventSubscription,
-} from './types/runner';
+import type { SubscribeEventsOpts, EventSubscription } from './types/runner';
 
 export class EventBus {
     private readonly ee = new EventEmitter();

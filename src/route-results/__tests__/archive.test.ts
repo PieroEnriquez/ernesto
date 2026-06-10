@@ -22,9 +22,7 @@ describe('archiveRouteResult', () => {
             runId: 'r-test-1',
             data: { regions: [{ region: 'EU', revenue_usd: 100 }] },
         });
-        expect(rel).toMatch(
-            /^workspaces\/redshift\/_results\/\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z--revenue-breakdown\.json$/,
-        );
+        expect(rel).toMatch(/^workspaces\/redshift\/_results\/\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z--revenue-breakdown\.json$/);
         const abs = path.join(WORKDIR, rel);
         const txt = await fs.readFile(abs, 'utf8');
         const parsed = JSON.parse(txt);
@@ -61,9 +59,7 @@ describe('archiveRouteResult', () => {
             data: { blob: huge },
             log: { warn },
         });
-        const parsed = JSON.parse(
-            await fs.readFile(path.join(WORKDIR, rel), 'utf8'),
-        );
+        const parsed = JSON.parse(await fs.readFile(path.join(WORKDIR, rel), 'utf8'));
         expect(parsed.truncated).toBe(true);
         expect(parsed.originalByteLength).toBeGreaterThan(ARCHIVE_MAX_BYTES);
         expect(parsed.data).toMatchObject({ __truncated: true });
@@ -85,9 +81,7 @@ describe('archiveRouteResult', () => {
 
     it('recursively mkdirs the parent directory', async () => {
         // Fresh nested workdir — parent does not exist yet.
-        const fresh = await fs.mkdtemp(
-            path.join(os.tmpdir(), 'ernesto-archive-fresh-'),
-        );
+        const fresh = await fs.mkdtemp(path.join(os.tmpdir(), 'ernesto-archive-fresh-'));
         try {
             const rel = await archiveRouteResult({
                 workdir: fresh,

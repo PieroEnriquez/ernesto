@@ -2,12 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm, mkdir, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import * as path from 'path';
-import {
-    computeWorkspaceVisibility,
-    canReadPath,
-    workspaceForPath,
-    readableBoundaries,
-} from '../visibility';
+import { computeWorkspaceVisibility, canReadPath, workspaceForPath, readableBoundaries } from '../visibility';
 
 const scopes = (...xs: string[]): ReadonlySet<string> => new Set(xs);
 
@@ -35,15 +30,15 @@ describe('computeWorkspaceVisibility (real FS, depth-aware)', () => {
         // Principal with NO scopes.
         const vis = await computeWorkspaceVisibility(root, scopes(), { isAdmin: false });
 
-        expect(vis.readableNames.has('product')).toBe(true);  // public
+        expect(vis.readableNames.has('product')).toBe(true); // public
         expect(vis.readableNames.has('pricing')).toBe(false); // restricted — the leak we closed
-        expect(vis.readableNames.has('esim')).toBe(true);     // public grandchild (independent scoping)
-        expect(vis.readableNames.has('hr')).toBe(false);      // restricted
+        expect(vis.readableNames.has('esim')).toBe(true); // public grandchild (independent scoping)
+        expect(vis.readableNames.has('hr')).toBe(false); // restricted
 
         // Attribution is depth-correct, and the gate follows the DEEPEST owner.
         expect(workspaceForPath(vis, 'workspaces/product/pricing/x.md')).toBe('pricing');
-        expect(canReadPath(vis, 'workspaces/product/pricing/x.md')).toBe(false);        // restricted child
-        expect(canReadPath(vis, 'workspaces/product/overview.md')).toBe(true);          // parent's own file
+        expect(canReadPath(vis, 'workspaces/product/pricing/x.md')).toBe(false); // restricted child
+        expect(canReadPath(vis, 'workspaces/product/overview.md')).toBe(true); // parent's own file
         expect(canReadPath(vis, 'workspaces/product/pricing/esim/rates.md')).toBe(true); // public grandchild
     });
 

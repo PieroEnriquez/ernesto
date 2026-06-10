@@ -32,10 +32,7 @@ describe('buildStageAddArgs — gitignored generated paths', () => {
         // generated content NOT gitignored (still pathspec-excluded)
         await writeFile(path.join(ws, 'attachments.yaml'), 'k: v\n');
         // the .gitignore the master-fs untrack introduced
-        await writeFile(
-            path.join(root, '.gitignore'),
-            '**/extracted/\n**/_results/\n.derived-from-sha\n',
-        );
+        await writeFile(path.join(root, '.gitignore'), '**/extracted/\n**/_results/\n.derived-from-sha\n');
     });
 
     afterEach(async () => {

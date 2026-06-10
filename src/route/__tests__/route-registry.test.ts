@@ -31,7 +31,10 @@ describe('RouteRegistry', () => {
         const r = new RouteRegistry();
         r.register(makeRoute('a://one'));
         r.register(makeRoute('a://two'));
-        const uris = r.list().map((x) => x.uri).sort();
+        const uris = r
+            .list()
+            .map((x) => x.uri)
+            .sort();
         expect(uris).toEqual(['a://one', 'a://two']);
     });
 

@@ -115,8 +115,7 @@ export function redshiftSchemaPlugin(opts: RedshiftSchemaPluginOptions): Extract
     return defineExtraction({
         source: 'redshift_schema',
         scope: 'extraction:redshift_schema:read',
-        description:
-            'Index Redshift table+column metadata. Targets: tables, tables:{regex}, table:{schema}.{name}.',
+        description: 'Index Redshift table+column metadata. Targets: tables, tables:{regex}, table:{schema}.{name}.',
         fetch: async (req: ExtractionRequest, ctx: ExtractionContext): Promise<ExtractionResult> => {
             const parsed = parseTarget(req.target);
             const fetchedAt = new Date().toISOString();
@@ -132,9 +131,7 @@ export function redshiftSchemaPlugin(opts: RedshiftSchemaPluginOptions): Extract
             } else if (parsed.kind === 'tables-regex') {
                 selected = tables.filter((t) => parsed.pattern.test(t.table_name));
             } else {
-                const match = tables.find(
-                    (t) => t.table_schema === parsed.schema && t.table_name === parsed.tableName,
-                );
+                const match = tables.find((t) => t.table_schema === parsed.schema && t.table_name === parsed.tableName);
                 selected = match ? [match] : [];
             }
 
@@ -154,9 +151,7 @@ function parseTarget(target: string): ParsedTarget {
 
     const idx = target.indexOf(':');
     if (idx < 0) {
-        throw new Error(
-            'redshift_schema: target must be "tables", "tables:{regex}", or "table:{schema}.{name}"',
-        );
+        throw new Error('redshift_schema: target must be "tables", "tables:{regex}", or "table:{schema}.{name}"');
     }
     const kind = target.slice(0, idx);
     const rest = target.slice(idx + 1);
@@ -201,10 +196,7 @@ async function loadDenormalisedTables(
     let tablesResult: { rows: unknown[] };
     let columnsResult: { rows: unknown[] };
     try {
-        [tablesResult, columnsResult] = await Promise.all([
-            query(tablesQuery),
-            query(columnsQuery),
-        ]);
+        [tablesResult, columnsResult] = await Promise.all([query(tablesQuery), query(columnsQuery)]);
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         ctx.log.error('redshift_schema: metadata query failed', { message });

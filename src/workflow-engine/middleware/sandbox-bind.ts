@@ -39,9 +39,7 @@ export interface SandboxBindMiddlewareOpts {
     annotationKey?: string;
 }
 
-export function sandboxBindMiddleware(
-    opts: SandboxBindMiddlewareOpts,
-): DispatchMiddleware {
+export function sandboxBindMiddleware(opts: SandboxBindMiddlewareOpts): DispatchMiddleware {
     const annotationKey = opts.annotationKey ?? 'sandboxHooks';
 
     return {
@@ -58,10 +56,7 @@ export function sandboxBindMiddleware(
             // the handler error.
             if (!ctx.workdirRoot) return ctx;
 
-            ctx.annotations[annotationKey] = opts.binder.build(
-                ctx.workdirRoot,
-                ctx,
-            );
+            ctx.annotations[annotationKey] = opts.binder.build(ctx.workdirRoot, ctx);
             return ctx;
         },
     };

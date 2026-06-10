@@ -86,17 +86,9 @@ export interface SettleVerbHooks {
     /** Called after a successful settle (commit + push). Used by the
      *  in-process transport's host to record an audit log entry +
      *  publish a workspaces.pushed pubsub. */
-    onSettleSuccess?: (
-        workspaces: ReadonlyArray<string>,
-        sha: string,
-        pushed: boolean,
-    ) => Promise<void>;
+    onSettleSuccess?: (workspaces: ReadonlyArray<string>, sha: string, pushed: boolean) => Promise<void>;
     /** Called after a failed settle. Used by backend to record audit log entry. */
-    onSettleFailure?: (
-        workspaces: ReadonlyArray<string>,
-        error: string,
-        errors?: ReadonlyArray<LintError>,
-    ) => Promise<void>;
+    onSettleFailure?: (workspaces: ReadonlyArray<string>, error: string, errors?: ReadonlyArray<LintError>) => Promise<void>;
 }
 
 export interface SettleVerbContext {
@@ -119,11 +111,7 @@ export interface SettleVerbContext {
  * 3. Delegate to `settleFromWorktree`.
  * 4. Fire `onSettleSuccess` or `onSettleFailure` hooks; swallow their errors.
  */
-export async function handleSettle(
-    workdir: Workdir,
-    input: SettleInput,
-    ctx: SettleVerbContext,
-): Promise<SettleVerbResult> {
+export async function handleSettle(workdir: Workdir, input: SettleInput, ctx: SettleVerbContext): Promise<SettleVerbResult> {
     const parsed = settleInputSchema.safeParse(input);
     if (!parsed.success) {
         return {
@@ -226,11 +214,7 @@ async function fireFailureHook(
  * --hard FETCH_HEAD), just on the rejection path and with a `cherry-pick`
  * to preserve our commit instead of dropping it.
  */
-function wrapPushWithFastForwardRetry(
-    workdir: Workdir,
-    pushToMain: PushToMainFn,
-    log: VerbLogger,
-): PushToMainFn {
+function wrapPushWithFastForwardRetry(workdir: Workdir, pushToMain: PushToMainFn, log: VerbLogger): PushToMainFn {
     return async (input) => {
         const first = await pushToMain(input);
         if (first.ok || first.error !== 'fast_forward_required') return first;
@@ -310,12 +294,7 @@ async function deriveAffectedWorkspaces(workingTreeRoot: string): Promise<string
             const rest = match[2];
             const firstSeg = rest.split('/')[0];
             if (rest === 'attachments.yaml') continue;
-            if (
-                firstSeg !== 'extracted' &&
-                firstSeg !== 'routes' &&
-                firstSeg !== 'attached' &&
-                firstSeg !== '_results'
-            ) {
+            if (firstSeg !== 'extracted' && firstSeg !== 'routes' && firstSeg !== 'attached' && firstSeg !== '_results') {
                 names.add(match[1]);
             }
         }

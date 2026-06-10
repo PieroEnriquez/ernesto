@@ -36,27 +36,15 @@
  * refers to the workflow engine, not the harness).
  */
 
-import type {
-    AgentOptions as PiAgentOptions,
-    AgentTool,
-} from '@mariozechner/pi-agent-core';
+import type { AgentOptions as PiAgentOptions, AgentTool } from '@mariozechner/pi-agent-core';
 import { Type, getModel as piGetModel } from '@mariozechner/pi-ai';
 import type { Model, TSchema } from '@mariozechner/pi-ai';
-import type {
-    AgentDefinition,
-    ModelRef,
-    ToolSpec,
-} from '../types';
+import type { AgentDefinition, ModelRef, ToolSpec } from '../types';
 
 /** Pi-ai providers we recognise. The pi-ai `getModel` accepts more
  *  (Bedrock, Vertex, mistralai, openrouter, etc.), but the harness
  *  surface only exposes the canonical five from `capabilities.md`. */
-export type FraguaPiProvider =
-    | 'anthropic'
-    | 'openai'
-    | 'google'
-    | 'ollama'
-    | 'openrouter';
+export type FraguaPiProvider = 'anthropic' | 'openai' | 'google' | 'ollama' | 'openrouter';
 
 /** Compile context — what the harness adapter threads through from
  *  `fraguaPiCreateAgent` to the compile step. Fragua-pi-private. */
@@ -69,9 +57,7 @@ export interface FraguaPiCompileContext {
     resolveModel?: (provider: string, modelId: string) => Model<string>;
     /** Caller-supplied API key resolver. Forwarded to pi-agent-core's
      *  `Agent.getApiKey`. */
-    getApiKey?: (
-        provider: string,
-    ) => Promise<string | undefined> | string | undefined;
+    getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
     /** The Agent SDK's conversation transcript id (its `session_id`),
      *  used for provider-cache hints (Anthropic / OpenAI-Responses use
      *  this). */
@@ -94,9 +80,7 @@ export interface CompiledFraguaPiOptions {
     /** pi-agent-core tool list. */
     tools: AgentTool[];
     /** Caller-supplied API-key resolver. */
-    getApiKey?: (
-        provider: string,
-    ) => Promise<string | undefined> | string | undefined;
+    getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
     /** The Agent SDK's conversation transcript id (its `session_id`),
      *  for provider-cache hints. */
     transcriptId?: string;
@@ -109,20 +93,14 @@ export interface CompiledFraguaPiOptions {
  * Compile a harness `AgentDefinition` into the pieces needed to
  * construct a pi-agent-core `Agent`.
  */
-export function compileAgentToFraguaPiOptions(
-    def: AgentDefinition,
-    ctx: FraguaPiCompileContext = {},
-): CompiledFraguaPiOptions {
+export function compileAgentToFraguaPiOptions(def: AgentDefinition, ctx: FraguaPiCompileContext = {}): CompiledFraguaPiOptions {
     const warnings: string[] = [];
 
     // System prompt — collapse `SystemPromptConfig` to plain text.
     // The CAS-only `'claude_code'` preset is meaningless to pi-ai
     // (no provider-side equivalent); we use the `append` body when
     // present, drop the preset marker.
-    const systemPrompt =
-        typeof def.systemPrompt === 'string'
-            ? def.systemPrompt
-            : (def.systemPrompt.append ?? '');
+    const systemPrompt = typeof def.systemPrompt === 'string' ? def.systemPrompt : (def.systemPrompt.append ?? '');
 
     // Model resolution.
     const { provider, modelId } = parseModelId(def.model, ctx.defaultProvider);
@@ -133,19 +111,14 @@ export function compileAgentToFraguaPiOptions(
             // we intentionally accept any string so custom/faux
             // providers work — same trick fragua-the-project uses
             // in `PiLlmBackend`.
-            return (piGetModel as unknown as (
-                provider: string,
-                modelId: string,
-            ) => Model<string>)(p, m);
+            return (piGetModel as unknown as (provider: string, modelId: string) => Model<string>)(p, m);
         });
     const model = resolver(provider, modelId);
 
     // Tools — drop `mcp`-kind for now (pre-bridge), drop `builtin`-kind
     // (no pi-ai builtin tool surface), pass `fn` through.
     const tools: AgentTool[] = [];
-    const disallowed = new Set(
-        def.disallowedTools ?? ctx.defaultDisallowedTools ?? [],
-    );
+    const disallowed = new Set(def.disallowedTools ?? ctx.defaultDisallowedTools ?? []);
     for (const spec of def.tools ?? []) {
         if (spec.kind === 'fn') {
             if (disallowed.has(spec.name)) continue;
@@ -161,7 +134,7 @@ export function compileAgentToFraguaPiOptions(
             warnings.push(
                 `fragua-pi: dropping builtin tool '${spec.name}' — ` +
                     'pi-ai has no builtin-tool surface; lower to a fn tool ' +
-                    'or rely on fragua-the-project\'s ToolRegistry.',
+                    "or rely on fragua-the-project's ToolRegistry.",
             );
         }
     }
@@ -187,10 +160,7 @@ export function compileAgentToFraguaPiOptions(
  * Multi-segment ids (openrouter's `anthropic/claude-3.5`) preserve
  * everything after the first `/` as the modelId.
  */
-function parseModelId(
-    model: string | ModelRef,
-    defaultProvider: FraguaPiProvider | undefined,
-): { provider: string; modelId: string } {
+function parseModelId(model: string | ModelRef, defaultProvider: FraguaPiProvider | undefined): { provider: string; modelId: string } {
     const id = typeof model === 'string' ? model : model.id;
     const slash = id.indexOf('/');
     if (slash > 0) {
@@ -215,9 +185,7 @@ function parseModelId(
  * structured outputs land in `details`). When the handler throws, we
  * re-throw so the agent loop's error-tool-result fallback fires.
  */
-export function fnToolSpecToAgentTool(
-    spec: Extract<ToolSpec, { kind: 'fn' }>,
-): AgentTool {
+export function fnToolSpecToAgentTool(spec: Extract<ToolSpec, { kind: 'fn' }>): AgentTool {
     // The lib's JSON-schema is a permissive `Record<string, unknown>`;
     // pi-agent-core / typebox wants a `TSchema`. We wrap the raw
     // schema via `Type.Unsafe` so the validator passes everything
@@ -225,10 +193,7 @@ export function fnToolSpecToAgentTool(
     // source of truth, mirroring how fragua does it. Empty schema
     // collapses to `Type.Object({})`.
     const rawSchema = spec.schema ?? {};
-    const parameters: TSchema =
-        Object.keys(rawSchema).length === 0
-            ? Type.Object({})
-            : Type.Unsafe(rawSchema);
+    const parameters: TSchema = Object.keys(rawSchema).length === 0 ? Type.Object({}) : Type.Unsafe(rawSchema);
     return {
         name: spec.name,
         label: spec.name,
@@ -236,8 +201,7 @@ export function fnToolSpecToAgentTool(
         parameters,
         async execute(_toolCallId, params, _signal, _onUpdate) {
             const result = await spec.handler(params);
-            const text =
-                typeof result === 'string' ? result : JSON.stringify(result);
+            const text = typeof result === 'string' ? result : JSON.stringify(result);
             return {
                 content: [{ type: 'text', text }],
                 details: result,

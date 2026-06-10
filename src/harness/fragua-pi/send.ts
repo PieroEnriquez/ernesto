@@ -25,24 +25,10 @@
  */
 
 import debug from 'debug';
-import type {
-    Agent as PiAgent,
-    AgentEvent as PiAgentEvent,
-    AgentMessage as PiAgentMessage,
-} from '@mariozechner/pi-agent-core';
+import type { Agent as PiAgent, AgentEvent as PiAgentEvent, AgentMessage as PiAgentMessage } from '@mariozechner/pi-agent-core';
 import type { AssistantMessage } from '@mariozechner/pi-ai';
-import type {
-    AssistantBlock,
-    HarnessEvent,
-    RunHandle,
-    RunResult,
-    RunStatus,
-} from '../types';
-import {
-    createTranslatorState,
-    mapPiAgentEvent,
-    mapStopReason,
-} from './events';
+import type { AssistantBlock, HarnessEvent, RunHandle, RunResult, RunStatus } from '../types';
+import { createTranslatorState, mapPiAgentEvent, mapStopReason } from './events';
 
 const log = debug('ernesto:harness:fragua-pi:send');
 
@@ -83,9 +69,7 @@ export interface FraguaPiRunHandle extends RunHandle {
  * `RunHandle`. Symmetric to `cursorSend` — the agent factory is opt-in;
  * this just kicks off `agent.prompt(text)` and pumps the event stream.
  */
-export async function fraguaPiSend(
-    input: FraguaPiSendInput,
-): Promise<FraguaPiRunHandle> {
+export async function fraguaPiSend(input: FraguaPiSendInput): Promise<FraguaPiRunHandle> {
     const { agent, prompt, runId, onRawMessage } = input;
     log('starting fragua-pi run', { runId });
     // Kick off the prompt without awaiting — the event stream is
@@ -110,11 +94,7 @@ interface InternalToHandleOptions extends FraguaPiAgentToHandleOptions {
  * `agent.subscribe` listener and pumps every event into a buffer the
  * consumer drains via `stream()`.
  */
-export function fraguaPiAgentToRunHandle(
-    agent: PiAgent,
-    runId: string,
-    opts: InternalToHandleOptions,
-): FraguaPiRunHandle {
+export function fraguaPiAgentToRunHandle(agent: PiAgent, runId: string, opts: InternalToHandleOptions): FraguaPiRunHandle {
     const buffered: HarnessEvent[] = [];
     let status: RunStatus = 'running';
     const statusListeners = new Set<(s: RunStatus) => void>();
@@ -170,10 +150,7 @@ export function fraguaPiAgentToRunHandle(
                       // If `agent_end` didn't fire, synthesize a terminal
                       // status so the stream still completes.
                       if (!runDone) {
-                          const message =
-                              err instanceof Error
-                                  ? err.message
-                                  : String(err);
+                          const message = err instanceof Error ? err.message : String(err);
                           buffered.push({
                               kind: 'error',
                               message,
@@ -200,10 +177,7 @@ export function fraguaPiAgentToRunHandle(
                 yield buffered[cursor++]!;
             }
             if (runDone) return;
-            await Promise.race([
-                runDonePromise,
-                new Promise<void>((resolve) => setTimeout(resolve, 0)),
-            ]);
+            await Promise.race([runDonePromise, new Promise<void>((resolve) => setTimeout(resolve, 0))]);
         }
     };
 
@@ -245,8 +219,7 @@ export function fraguaPiAgentToRunHandle(
         const terminal: RunResult['status'] =
             status === 'canceled'
                 ? 'canceled'
-                : status === 'errored' ||
-                    (stopReason === 'error' && errorMessage !== undefined)
+                : status === 'errored' || (stopReason === 'error' && errorMessage !== undefined)
                   ? 'errored'
                   : mapStopReason(stopReason) === 'canceled'
                     ? 'canceled'
@@ -271,10 +244,7 @@ export function fraguaPiAgentToRunHandle(
                 ...(runError !== undefined ? { cause: runError } : {}),
             };
         } else if (runError !== undefined) {
-            const message =
-                runError instanceof Error
-                    ? runError.message
-                    : String(runError);
+            const message = runError instanceof Error ? runError.message : String(runError);
             result.error = { message, cause: runError };
         }
         return result;
@@ -335,12 +305,7 @@ function isAssistant(m: PiAgentMessage): m is AssistantMessage {
         content?: unknown;
         usage?: unknown;
     };
-    return (
-        mm.role === 'assistant' &&
-        Array.isArray(mm.content) &&
-        typeof mm.usage === 'object' &&
-        mm.usage !== null
-    );
+    return mm.role === 'assistant' && Array.isArray(mm.content) && typeof mm.usage === 'object' && mm.usage !== null;
 }
 
 function extractAssistantBlocks(msg: AssistantMessage): AssistantBlock[] {

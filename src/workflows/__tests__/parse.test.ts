@@ -92,9 +92,7 @@ steps:
     kind: route
     uri: "redshift://q
 `;
-        expect(() => parseWorkflowYaml(broken, { filename: 'broken.yaml' })).toThrow(
-            /broken\.yaml: malformed YAML/,
-        );
+        expect(() => parseWorkflowYaml(broken, { filename: 'broken.yaml' })).toThrow(/broken\.yaml: malformed YAML/);
     });
 
     it('throws on empty YAML', () => {

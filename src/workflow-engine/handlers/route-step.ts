@@ -19,11 +19,7 @@
  */
 
 import type { RouteStep } from '../../workflows/types';
-import type {
-    StepKindHandler,
-    EngineLogger,
-    EmitFactEvent,
-} from '../types/handler';
+import type { StepKindHandler, EngineLogger, EmitFactEvent } from '../types/handler';
 import type { UiComponent } from '../../components/types';
 import type { KindRegistry } from '../kind-registry';
 import { dispatchResolvedRoute } from '../../route/dispatch';
@@ -34,9 +30,7 @@ export interface RouteStepHandlerDeps {
     log: EngineLogger;
 }
 
-export function makeRouteStepHandler(
-    deps: RouteStepHandlerDeps,
-): StepKindHandler<RouteStep> {
+export function makeRouteStepHandler(deps: RouteStepHandlerDeps): StepKindHandler<RouteStep> {
     return async (step, ctx) => {
         const decl = deps.kindRegistry.resolve(step.uri);
         if (!decl) {
@@ -71,9 +65,7 @@ export function makeRouteStepHandler(
                 return {
                     kind: 'error',
                     code: child.error?.code ?? 'child_workflow_errored',
-                    message:
-                        child.error?.message ??
-                        `child workflow ${step.uri} errored`,
+                    message: child.error?.message ?? `child workflow ${step.uri} errored`,
                 };
             }
             return {
@@ -110,20 +102,14 @@ export function makeRouteStepHandler(
             : undefined;
 
         const routeCtx: RouteContext = {
-            user: ctx.principal.email
-                ? { id: ctx.principal.userId, email: ctx.principal.email }
-                : { id: ctx.principal.userId },
+            user: ctx.principal.email ? { id: ctx.principal.userId, email: ctx.principal.email } : { id: ctx.principal.userId },
             scopes: ctx.principal.scopes,
             log: deps.log,
             ...(ctx.workdirRoot ? { workdirRoot: ctx.workdirRoot } : {}),
             ...(emitComponent ? { emitComponent } : {}),
         } as RouteContext;
 
-        const result = await dispatchResolvedRoute(
-            decl.route,
-            step.params ?? {},
-            routeCtx,
-        );
+        const result = await dispatchResolvedRoute(decl.route, step.params ?? {}, routeCtx);
 
         if (!result.ok) {
             return {
@@ -138,9 +124,7 @@ export function makeRouteStepHandler(
         // walker's `projectStepOutput` emits components from it.
         if (Array.isArray(step.render) && step.render.length > 0) {
             const data =
-                result.data &&
-                typeof result.data === 'object' &&
-                !Array.isArray(result.data)
+                result.data && typeof result.data === 'object' && !Array.isArray(result.data)
                     ? (result.data as Record<string, unknown>)
                     : { value: result.data };
             return {

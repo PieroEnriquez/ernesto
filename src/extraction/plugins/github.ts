@@ -30,12 +30,7 @@ import {
     type ExtractionRequest,
     type ExtractionResult,
 } from '../define-extraction';
-import {
-    DEFAULT_BACKOFF_BASE_MS,
-    DEFAULT_MAX_RETRIES,
-    DEFAULT_TIMEOUT_MS,
-    fetchWithRetry as httpFetchWithRetry,
-} from './_http';
+import { DEFAULT_BACKOFF_BASE_MS, DEFAULT_MAX_RETRIES, DEFAULT_TIMEOUT_MS, fetchWithRetry as httpFetchWithRetry } from './_http';
 
 export interface GitHubPluginOptions {
     token: string;
@@ -79,8 +74,7 @@ export function githubPlugin(opts: GitHubPluginOptions): ExtractionPlugin {
     return defineExtraction({
         source: 'github',
         scope: 'extraction:github:read',
-        description:
-            'Fetch GitHub PRs and commits. Targets: pr:<repo>:<number>, commit:<repo>:<sha>, prs:<repo>, commits:<repo>.',
+        description: 'Fetch GitHub PRs and commits. Targets: pr:<repo>:<number>, commit:<repo>:<sha>, prs:<repo>, commits:<repo>.',
         fetch: async (req: ExtractionRequest, ctx: ExtractionContext): Promise<ExtractionResult> => {
             const parsed = parseTarget(req.target);
             const fetchedAt = new Date().toISOString();
@@ -168,9 +162,7 @@ function parseTarget(target: string): ParsedTarget {
     }
     if (kindRaw === 'pr' || kindRaw === 'commit') {
         if (parts.length < 3) {
-            throw new Error(
-                `github: target must look like "${kindRaw}:<repo>:<${kindRaw === 'pr' ? 'number' : 'sha'}>"`,
-            );
+            throw new Error(`github: target must look like "${kindRaw}:<repo>:<${kindRaw === 'pr' ? 'number' : 'sha'}>"`);
         }
         const repo = parts[1].trim();
         const id = parts.slice(2).join(':').trim();
@@ -193,11 +185,7 @@ interface FetchWithRetryOpts {
     kind: TargetKind;
 }
 
-function fetchWithRetry(
-    url: string,
-    token: string,
-    opts: FetchWithRetryOpts,
-): Promise<Response | 'not_found'> {
+function fetchWithRetry(url: string, token: string, opts: FetchWithRetryOpts): Promise<Response | 'not_found'> {
     return httpFetchWithRetry(url, {
         timeoutMs: opts.timeoutMs,
         maxRetries: opts.maxRetries,
@@ -219,7 +207,13 @@ function fetchWithRetry(
 
 /** Repo name as a safe single path segment (the extracted tree groups by it). */
 function repoSeg(repo: string): string {
-    return repo.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown';
+    return (
+        repo
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9._-]+/g, '-')
+            .replace(/^-+|-+$/g, '') || 'unknown'
+    );
 }
 
 interface PullRequestPayload {
@@ -268,10 +262,7 @@ function renderPrEntry(pr: PullRequestPayload, repo: string): ExtractionEntry {
     const mergedAt = pr.merged_at ?? null;
     const merged = Boolean(pr.merged_at) || Boolean(pr.merged);
 
-    const labels =
-        pr.labels && pr.labels.length > 0
-            ? pr.labels.map((l) => `- ${l.name ?? ''}`).join('\n')
-            : 'No labels';
+    const labels = pr.labels && pr.labels.length > 0 ? pr.labels.map((l) => `- ${l.name ?? ''}`).join('\n') : 'No labels';
     const reviewers =
         pr.requested_reviewers && pr.requested_reviewers.length > 0
             ? pr.requested_reviewers.map((r) => `- @${r.login ?? ''}`).join('\n')
@@ -327,14 +318,7 @@ function renderCommitEntry(commit: CommitPayload, repo: string): ExtractionEntry
         files.length > 0
             ? files
                   .map((f) => {
-                      const status =
-                          f.status === 'added'
-                              ? '+ '
-                              : f.status === 'removed'
-                                ? '- '
-                                : f.status === 'modified'
-                                  ? 'M '
-                                  : '? ';
+                      const status = f.status === 'added' ? '+ ' : f.status === 'removed' ? '- ' : f.status === 'modified' ? 'M ' : '? ';
                       return `${status}${f.filename} (+${f.additions}/-${f.deletions})`;
                   })
                   .join('\n')

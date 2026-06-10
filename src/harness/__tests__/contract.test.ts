@@ -93,9 +93,7 @@ for (const factory of HARNESS_FACTORIES) {
                 events.push(ev);
                 if (events.length > 200) break;
             }
-            const sawCancel = events.some(
-                (e) => e.kind === 'status' && e.status === 'canceled',
-            );
+            const sawCancel = events.some((e) => e.kind === 'status' && e.status === 'canceled');
             expect(sawCancel).toBe(true);
         });
 

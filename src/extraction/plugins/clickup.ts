@@ -94,16 +94,7 @@ const DEFAULT_BASE_URL = 'https://api.clickup.com/api/v2';
 const DEFAULT_BASE_URL_V3 = 'https://api.clickup.com/api/v3';
 const DEFAULT_CLOSED_TASK_CUTOFF_MONTHS = 3;
 
-const CLOSED_STATUS_NAMES = new Set([
-    'closed',
-    'done',
-    'complete',
-    'completed',
-    'resolved',
-    'cancelled',
-    'canceled',
-    'archived',
-]);
+const CLOSED_STATUS_NAMES = new Set(['closed', 'done', 'complete', 'completed', 'resolved', 'cancelled', 'canceled', 'archived']);
 
 interface ClickUpTask {
     id: string;
@@ -129,8 +120,7 @@ export function clickupPlugin(opts: ClickUpPluginOptions): ExtractionPlugin {
     const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     const maxRetries = opts.maxRetries ?? DEFAULT_MAX_RETRIES;
     const backoffBaseMs = opts.backoffBaseMs ?? DEFAULT_BACKOFF_BASE_MS;
-    const closedTaskCutoffMonths =
-        opts.closedTaskCutoffMonths ?? DEFAULT_CLOSED_TASK_CUTOFF_MONTHS;
+    const closedTaskCutoffMonths = opts.closedTaskCutoffMonths ?? DEFAULT_CLOSED_TASK_CUTOFF_MONTHS;
     const token = opts.token;
 
     return defineExtraction({
@@ -162,9 +152,7 @@ export function clickupPlugin(opts: ClickUpPluginOptions): ExtractionPlugin {
 
             if (parsed.kind === 'doc') {
                 if (!workspaceId) {
-                    throw new Error(
-                        'clickup: workspaceId option required for doc: targets',
-                    );
+                    throw new Error('clickup: workspaceId option required for doc: targets');
                 }
                 const entries = await fetchDocPages({
                     docId: parsed.id,
@@ -186,9 +174,7 @@ export function clickupPlugin(opts: ClickUpPluginOptions): ExtractionPlugin {
 
             if (parsed.kind === 'folder' || parsed.kind === 'space') {
                 if (!workspaceId) {
-                    throw new Error(
-                        `clickup: workspaceId option required for ${parsed.kind}: targets`,
-                    );
+                    throw new Error(`clickup: workspaceId option required for ${parsed.kind}: targets`);
                 }
                 const walkCtx: WalkContext = {
                     workspaceId,
@@ -201,9 +187,7 @@ export function clickupPlugin(opts: ClickUpPluginOptions): ExtractionPlugin {
                     log: ctx.log,
                 };
                 const discovered =
-                    parsed.kind === 'folder'
-                        ? await discoverFolder(parsed.id, '', walkCtx)
-                        : await discoverSpace(parsed.id, walkCtx);
+                    parsed.kind === 'folder' ? await discoverFolder(parsed.id, '', walkCtx) : await discoverSpace(parsed.id, walkCtx);
                 const filtered = applyPathFilters(discovered, req);
                 const entries: ExtractionEntry[] = [];
                 for (const item of filtered) {
@@ -298,11 +282,7 @@ interface FetchWithRetryOpts {
     id: string;
 }
 
-function fetchWithRetry(
-    url: string,
-    token: string,
-    opts: FetchWithRetryOpts,
-): Promise<Response | 'not_found'> {
+function fetchWithRetry(url: string, token: string, opts: FetchWithRetryOpts): Promise<Response | 'not_found'> {
     return httpFetchWithRetry(url, {
         timeoutMs: opts.timeoutMs,
         maxRetries: opts.maxRetries,
@@ -320,19 +300,13 @@ function fetchWithRetry(
     });
 }
 
-async function buildEntry(
-    kind: V2TaskOrListKind,
-    id: string,
-    response: Response,
-): Promise<ExtractionEntry> {
+async function buildEntry(kind: V2TaskOrListKind, id: string, response: Response): Promise<ExtractionEntry> {
     const payload = (await response.json()) as unknown;
     let path: string;
     if (kind === 'task') {
         path = `tasks/${id}.json`;
     } else {
-        const name = typeof (payload as { name?: unknown }).name === 'string'
-            ? (payload as { name: string }).name
-            : undefined;
+        const name = typeof (payload as { name?: unknown }).name === 'string' ? (payload as { name: string }).name : undefined;
         path = `lists/${listPathStem(name, id)}.json`;
     }
     return {
@@ -440,16 +414,7 @@ function renderTaskTable(listName: string, listId: string, tasks: ClickUpTask[])
         return `${header}\n_No tasks._\n`;
     }
 
-    const columns = [
-        'ID',
-        'Name',
-        'Status',
-        'Assignees',
-        'Priority',
-        'Tags',
-        'Updated',
-        'URL',
-    ];
+    const columns = ['ID', 'Name', 'Status', 'Assignees', 'Priority', 'Tags', 'Updated', 'URL'];
     const rows: string[] = [];
     rows.push(`| ${columns.join(' | ')} |`);
     rows.push(`| ${columns.map(() => '---').join(' | ')} |`);
@@ -460,9 +425,19 @@ function renderTaskTable(listName: string, listId: string, tasks: ClickUpTask[])
                 escapeCell(t.custom_id || t.id),
                 escapeCell(t.name ?? ''),
                 escapeCell(t.status?.status ?? ''),
-                escapeCell((t.assignees ?? []).map((a) => a.username ?? '').filter(Boolean).join(', ')),
+                escapeCell(
+                    (t.assignees ?? [])
+                        .map((a) => a.username ?? '')
+                        .filter(Boolean)
+                        .join(', '),
+                ),
                 escapeCell(t.priority?.priority ?? ''),
-                escapeCell((t.tags ?? []).map((tag) => tag.name ?? '').filter(Boolean).join(', ')),
+                escapeCell(
+                    (t.tags ?? [])
+                        .map((tag) => tag.name ?? '')
+                        .filter(Boolean)
+                        .join(', '),
+                ),
                 escapeCell(formatTimestamp(t.date_updated)),
                 escapeCell(t.url ?? `https://app.clickup.com/t/${t.id}`),
             ].join(' | ')} |`,
@@ -516,9 +491,7 @@ interface FetchDocPagesArgs {
     log: ExtractionContext['log'];
 }
 
-async function fetchDocPages(
-    args: FetchDocPagesArgs,
-): Promise<ExtractionEntry[] | 'not_found'> {
+async function fetchDocPages(args: FetchDocPagesArgs): Promise<ExtractionEntry[] | 'not_found'> {
     const safeWorkspace = encodeURIComponent(args.workspaceId);
     const safeDoc = encodeURIComponent(args.docId);
     const listingUrl = `${args.baseUrlV3}/workspaces/${safeWorkspace}/docs/${safeDoc}/page_listing`;
@@ -535,16 +508,10 @@ async function fetchDocPages(
         return 'not_found';
     }
 
-    const listingPayload = (await listingRes.json()) as
-        | ClickUpPageListing[]
-        | { pages?: ClickUpPageListing[] };
-    const tree: ClickUpPageListing[] = Array.isArray(listingPayload)
-        ? listingPayload
-        : (listingPayload.pages ?? []);
+    const listingPayload = (await listingRes.json()) as ClickUpPageListing[] | { pages?: ClickUpPageListing[] };
+    const tree: ClickUpPageListing[] = Array.isArray(listingPayload) ? listingPayload : (listingPayload.pages ?? []);
     const allPages = flattenPageListing(tree);
-    const flatPages = args.rootPageId
-        ? filterToSubtree(allPages, args.rootPageId)
-        : allPages;
+    const flatPages = args.rootPageId ? filterToSubtree(allPages, args.rootPageId) : allPages;
 
     if (flatPages.length === 0) {
         return [];
@@ -566,9 +533,7 @@ async function fetchDocPages(
         for (const n of nodes) {
             folderById.set(n.id, prefix);
             if (n.pages && n.pages.length > 0) {
-                const childPrefix = prefix
-                    ? `${prefix}/${slugify(n.name) || n.id}`
-                    : slugify(n.name) || n.id;
+                const childPrefix = prefix ? `${prefix}/${slugify(n.name) || n.id}` : slugify(n.name) || n.id;
                 walkTree(n.pages, childPrefix);
             }
         }
@@ -595,10 +560,7 @@ async function fetchDocPages(
         }
         const payload = (await pageRes.json()) as ClickUpPage;
         const baseSlug = slugify(page.name) || page.id;
-        const slug =
-            (slugCounts.get(baseSlug) ?? 0) > 1
-                ? `${baseSlug}-${page.id}`
-                : baseSlug;
+        const slug = (slugCounts.get(baseSlug) ?? 0) > 1 ? `${baseSlug}-${page.id}` : baseSlug;
         const content = typeof payload.content === 'string' ? payload.content : '';
         const folders = folderById.get(page.id) ?? '';
         const rel = folders ? `${folders}/${slug}` : slug;
@@ -612,10 +574,7 @@ async function fetchDocPages(
     return entries;
 }
 
-function flattenPageListing(
-    pages: ClickUpPageListing[],
-    acc: ClickUpPageListing[] = [],
-): ClickUpPageListing[] {
+function flattenPageListing(pages: ClickUpPageListing[], acc: ClickUpPageListing[] = []): ClickUpPageListing[] {
     for (const p of pages) {
         acc.push(p);
         if (p.pages && p.pages.length > 0) {
@@ -634,10 +593,7 @@ function flattenPageListing(
  * head. If `rootPageId` doesn't appear in the listing, returns `[]` rather than
  * throwing — matches how missing targets degrade to empty entries elsewhere.
  */
-function filterToSubtree(
-    pages: ClickUpPageListing[],
-    rootPageId: string,
-): ClickUpPageListing[] {
+function filterToSubtree(pages: ClickUpPageListing[], rootPageId: string): ClickUpPageListing[] {
     const childrenByParent = new Map<string, ClickUpPageListing[]>();
     for (const p of pages) {
         const parent = p.parent_page_id ?? '';
@@ -754,18 +710,14 @@ async function discoverFolder(
     if (preFetchedFolder) {
         folder = preFetchedFolder;
     } else {
-        const folderRes = await fetchWithRetry(
-            `${walkCtx.baseUrl}/folder/${encodeURIComponent(folderId)}`,
-            walkCtx.token,
-            {
-                timeoutMs: walkCtx.timeoutMs,
-                maxRetries: walkCtx.maxRetries,
-                backoffBaseMs: walkCtx.backoffBaseMs,
-                log: walkCtx.log,
-                kind: 'folder',
-                id: folderId,
-            },
-        );
+        const folderRes = await fetchWithRetry(`${walkCtx.baseUrl}/folder/${encodeURIComponent(folderId)}`, walkCtx.token, {
+            timeoutMs: walkCtx.timeoutMs,
+            maxRetries: walkCtx.maxRetries,
+            backoffBaseMs: walkCtx.backoffBaseMs,
+            log: walkCtx.log,
+            kind: 'folder',
+            id: folderId,
+        });
         if (folderRes === 'not_found') {
             walkCtx.log.info('ClickUp folder not found', { folderId });
             return [];
@@ -796,25 +748,18 @@ async function discoverFolder(
     return items;
 }
 
-async function discoverSpace(
-    spaceId: string,
-    walkCtx: WalkContext,
-): Promise<DiscoveredItem[]> {
+async function discoverSpace(spaceId: string, walkCtx: WalkContext): Promise<DiscoveredItem[]> {
     const items: DiscoveredItem[] = [];
 
     // Folderless lists.
-    const listsRes = await fetchWithRetry(
-        `${walkCtx.baseUrl}/space/${encodeURIComponent(spaceId)}/list?archived=false`,
-        walkCtx.token,
-        {
-            timeoutMs: walkCtx.timeoutMs,
-            maxRetries: walkCtx.maxRetries,
-            backoffBaseMs: walkCtx.backoffBaseMs,
-            log: walkCtx.log,
-            kind: 'space',
-            id: spaceId,
-        },
-    );
+    const listsRes = await fetchWithRetry(`${walkCtx.baseUrl}/space/${encodeURIComponent(spaceId)}/list?archived=false`, walkCtx.token, {
+        timeoutMs: walkCtx.timeoutMs,
+        maxRetries: walkCtx.maxRetries,
+        backoffBaseMs: walkCtx.backoffBaseMs,
+        log: walkCtx.log,
+        kind: 'space',
+        id: spaceId,
+    });
     if (listsRes !== 'not_found') {
         const payload = (await listsRes.json()) as { lists?: ClickUpListMeta[] };
         for (const list of payload.lists ?? []) {
@@ -872,10 +817,7 @@ async function discoverSpace(
  *
  * Returns an empty array on 404 — the parent may legitimately have no docs.
  */
-async function listDocsForParent(
-    parentId: string,
-    walkCtx: WalkContext,
-): Promise<ClickUpDocMeta[]> {
+async function listDocsForParent(parentId: string, walkCtx: WalkContext): Promise<ClickUpDocMeta[]> {
     const collected: ClickUpDocMeta[] = [];
     let cursor: string | undefined;
     const safeWs = encodeURIComponent(walkCtx.workspaceId);
@@ -924,10 +866,7 @@ async function listDocsForParent(
  * evaluated first; an empty `includePaths` is treated as "match everything",
  * matching the v1 ClickUpSource semantics.
  */
-function applyPathFilters(
-    items: DiscoveredItem[],
-    req: ExtractionRequest,
-): DiscoveredItem[] {
+function applyPathFilters(items: DiscoveredItem[], req: ExtractionRequest): DiscoveredItem[] {
     const includes = (req.includePaths ?? []).map((s) => s.toLowerCase()).filter((s) => s.length > 0);
     const excludes = (req.excludePaths ?? []).map((s) => s.toLowerCase()).filter((s) => s.length > 0);
     return items.filter((item) => {
@@ -942,23 +881,16 @@ function applyPathFilters(
  * Resolve a discovered child (list or doc) into the same entry shape its
  * corresponding `list:` or `doc:` target would produce.
  */
-async function emitDiscoveredItem(
-    item: DiscoveredItem,
-    walkCtx: WalkContext,
-): Promise<ExtractionEntry[]> {
+async function emitDiscoveredItem(item: DiscoveredItem, walkCtx: WalkContext): Promise<ExtractionEntry[]> {
     if (item.kind === 'list') {
-        const res = await fetchWithRetry(
-            `${walkCtx.baseUrl}/list/${encodeURIComponent(item.id)}`,
-            walkCtx.token,
-            {
-                timeoutMs: walkCtx.timeoutMs,
-                maxRetries: walkCtx.maxRetries,
-                backoffBaseMs: walkCtx.backoffBaseMs,
-                log: walkCtx.log,
-                kind: 'list',
-                id: item.id,
-            },
-        );
+        const res = await fetchWithRetry(`${walkCtx.baseUrl}/list/${encodeURIComponent(item.id)}`, walkCtx.token, {
+            timeoutMs: walkCtx.timeoutMs,
+            maxRetries: walkCtx.maxRetries,
+            backoffBaseMs: walkCtx.backoffBaseMs,
+            log: walkCtx.log,
+            kind: 'list',
+            id: item.id,
+        });
         if (res === 'not_found') return [];
         const payload = (await res.json()) as unknown;
         return [

@@ -66,35 +66,14 @@ export type {
     EmitFactEventInput,
 } from './types/handler';
 
-export type {
-    FactEvent,
-    FactEventType,
-    TypedFactEvent,
-    StoredEvent,
-} from './types/event';
+export type { FactEvent, FactEventType, TypedFactEvent, StoredEvent } from './types/event';
 
-export type {
-    RunState,
-    RunStatus,
-    RunSummary,
-    StorePort,
-    ListRunsOpts,
-    ListEventsOpts,
-    ParkedPause,
-    ResumeState,
-} from './store/port';
+export type { RunState, RunStatus, RunSummary, StorePort, ListRunsOpts, ListEventsOpts, ParkedPause, ResumeState } from './store/port';
 export { InMemoryStore } from './store/in-memory-store';
 
-export type {
-    WorkflowReader,
-    WorkflowSummary,
-    WorkflowDetail,
-} from './workflow-reader';
+export type { WorkflowReader, WorkflowSummary, WorkflowDetail } from './workflow-reader';
 
-export {
-    HitlController,
-    validateAgainstSchema,
-} from './hitl';
+export { HitlController, validateAgainstSchema } from './hitl';
 export type { HitlPauseInput, ResumeIntent } from './hitl';
 
 export {
@@ -106,11 +85,7 @@ export {
     defaultRendererStrategy,
 } from './conversation-state';
 
-export {
-    latestHitl,
-    synthesizeHitlFromText,
-    extractTurnState,
-} from './step-emissions';
+export { latestHitl, synthesizeHitlFromText, extractTurnState } from './step-emissions';
 export type { StepEmissionSummary } from './step-emissions';
 export type {
     ConversationState,
@@ -149,35 +124,18 @@ export { buildPreContext, runBefore, runAfter } from './middleware';
 // Each middleware is independently shippable, follows the same
 // before(ctx)/after(ctx, run) pattern, reads `ctx.decl.policy` to
 // decide whether to act.
-export {
-    scopeCheckMiddleware,
-    ScopeEscalationError,
-} from './middleware/scope-check';
-export {
-    modelRouterMiddleware,
-    ModelRouterError,
-} from './middleware/model-router';
+export { scopeCheckMiddleware, ScopeEscalationError } from './middleware/scope-check';
+export { modelRouterMiddleware, ModelRouterError } from './middleware/model-router';
 export type { ModelRouterOpts } from './middleware/model-router';
 export { timeoutMiddleware } from './middleware/timeout';
 export { loggingMiddleware } from './middleware/logging';
 export type { LoggingMiddlewareOpts } from './middleware/logging';
-export {
-    idempotencyDedupMiddleware,
-    IdempotencyConflictError,
-} from './middleware/idempotency-dedup';
+export { idempotencyDedupMiddleware, IdempotencyConflictError } from './middleware/idempotency-dedup';
 export type { IdempotencyDedupOpts } from './middleware/idempotency-dedup';
 export { workspaceAllocatorMiddleware } from './middleware/workspace-allocator';
-export type {
-    WorkspaceAllocator,
-    WorkspaceAllocation,
-    WorkspaceAllocatorMiddlewareOpts,
-} from './middleware/workspace-allocator';
+export type { WorkspaceAllocator, WorkspaceAllocation, WorkspaceAllocatorMiddlewareOpts } from './middleware/workspace-allocator';
 export { sandboxBindMiddleware } from './middleware/sandbox-bind';
-export type {
-    SandboxBinder,
-    SandboxHooks,
-    SandboxBindMiddlewareOpts,
-} from './middleware/sandbox-bind';
+export type { SandboxBinder, SandboxHooks, SandboxBindMiddlewareOpts } from './middleware/sandbox-bind';
 export {
     toolSurfaceComposeMiddleware,
     TOOL_SURFACE_ANNOTATIONS,
@@ -191,11 +149,7 @@ export type {
     ToolSurfaceComposeMiddlewareOpts,
 } from './middleware/tool-surface-compose';
 export { eventLogInitMiddleware } from './middleware/event-log-init';
-export type {
-    EventLogInitMiddlewareOpts,
-    ClaimRunInput,
-    ClaimRunResult,
-} from './middleware/event-log-init';
+export type { EventLogInitMiddlewareOpts, ClaimRunInput, ClaimRunResult } from './middleware/event-log-init';
 
 // ─── Built-in step-kind handlers ──────────────────────────────────
 // Lib-shipped handlers for step kinds whose dispatch logic is

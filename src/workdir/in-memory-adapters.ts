@@ -1,7 +1,4 @@
-import {
-    FsAdapter, MasterFsAdapter,
-    GlobOptions, GrepOptions, GrepResult, GrepOutputMode,
-} from './types';
+import { FsAdapter, MasterFsAdapter, GlobOptions, GrepOptions, GrepResult, GrepOutputMode } from './types';
 import { compileGlob, safeSubpath } from './glob-util';
 
 export function makeInMemoryFsAdapter(): FsAdapter {
@@ -49,7 +46,7 @@ export function makeInMemoryFsAdapter(): FsAdapter {
             const sub = safeSubpath(options?.path);
             const isMatch = compileGlob(pattern);
             // Filter to keys under `sub` (if given) and matching the glob.
-            const filtered = insertionOrder.filter(p => {
+            const filtered = insertionOrder.filter((p) => {
                 if (sub && !(p === sub || p.startsWith(sub + '/'))) return false;
                 return isMatch(p);
             });
@@ -68,10 +65,7 @@ export function makeInMemoryFsAdapter(): FsAdapter {
  * database (no `type: 'js'` heuristic) and multiline matches with absolute
  * line numbers (we report the line where the match *starts*).
  */
-function runInMemoryGrep(
-    files: Map<string, Uint8Array>,
-    opts: GrepOptions,
-): GrepResult {
+function runInMemoryGrep(files: Map<string, Uint8Array>, opts: GrepOptions): GrepResult {
     const mode: GrepOutputMode = opts.outputMode ?? 'files_with_matches';
     const flags = opts.caseInsensitive ? 'gi' : 'g';
     const reFlags = opts.multiline ? flags + 's' : flags;
@@ -90,17 +84,17 @@ function runInMemoryGrep(
     // pattern has no `/`. Mirror that so `--glob '*.tsx'` finds nested files.
     const globMatch = opts.glob
         ? (() => {
-            const fullMatch = compileGlob(opts.glob);
-            const baseMatch = opts.glob.includes('/') ? null : compileGlob(opts.glob);
-            return (p: string): boolean => {
-                if (fullMatch(p)) return true;
-                if (baseMatch) {
-                    const base = p.includes('/') ? p.slice(p.lastIndexOf('/') + 1) : p;
-                    if (baseMatch(base)) return true;
-                }
-                return false;
-            };
-        })()
+              const fullMatch = compileGlob(opts.glob);
+              const baseMatch = opts.glob.includes('/') ? null : compileGlob(opts.glob);
+              return (p: string): boolean => {
+                  if (fullMatch(p)) return true;
+                  if (baseMatch) {
+                      const base = p.includes('/') ? p.slice(p.lastIndexOf('/') + 1) : p;
+                      if (baseMatch(base)) return true;
+                  }
+                  return false;
+              };
+          })()
         : null;
     // No real "type database" — drop `type` filter silently in-memory (tests
     // that care exercise the node adapter).
@@ -113,7 +107,7 @@ function runInMemoryGrep(
     const out: string[] = [];
 
     // Iterate paths in deterministic order (sorted) so tests don't flake.
-    const paths = [...files.keys()].filter(p => pathFilter(p)).sort();
+    const paths = [...files.keys()].filter((p) => pathFilter(p)).sort();
 
     for (const p of paths) {
         if (globMatch && !globMatch(p)) continue;
@@ -143,7 +137,10 @@ function runInMemoryGrep(
                     let acc = 0;
                     for (let i = 0; i < lines.length; i++) {
                         acc += lines[i].length + 1;
-                        if (m.index < acc) { lineIdx = i; break; }
+                        if (m.index < acc) {
+                            lineIdx = i;
+                            break;
+                        }
                     }
                     matchedLineIdxs.add(lineIdx);
                 }

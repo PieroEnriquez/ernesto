@@ -26,7 +26,11 @@ function parseCursorLine(line: string): Record<string, unknown> | null {
     const t = line.trim();
     if (!t) return null;
     let o: unknown;
-    try { o = JSON.parse(t); } catch { return null; }
+    try {
+        o = JSON.parse(t);
+    } catch {
+        return null;
+    }
     if (!o || typeof o !== 'object') return null;
     if (typeof (o as { type?: unknown }).type !== 'string') return null;
     return o as Record<string, unknown>;

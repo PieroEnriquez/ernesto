@@ -48,9 +48,7 @@ export interface IdempotencyDedupOpts {
     annotationKey?: string;
 }
 
-export function idempotencyDedupMiddleware(
-    opts: IdempotencyDedupOpts = {},
-): DispatchMiddleware {
+export function idempotencyDedupMiddleware(opts: IdempotencyDedupOpts = {}): DispatchMiddleware {
     const annotationKey = opts.annotationKey ?? '__idempotencyKey';
     /** Map<resolvedKey, runId> of in-flight dispatches. */
     const inflight = new Map<string, string>();
@@ -89,9 +87,7 @@ export function idempotencyDedupMiddleware(
             return ctx;
         },
         after(ctx: DispatchPreContext, run): void {
-            const resolvedKey = ctx.annotations[annotationKey] as
-                | string
-                | undefined;
+            const resolvedKey = ctx.annotations[annotationKey] as string | undefined;
             if (resolvedKey === undefined) return;
             // Best-effort: surface the runId now that we have it,
             // before deleting. Race-free because before/after run
@@ -105,15 +101,14 @@ export function idempotencyDedupMiddleware(
 /** Resolve the idempotency-key expression. Supports a literal
  *  `inputs.X` path OR a `${{ inputs.X }}` wrapped token. Concatenates
  *  with the principal-scope suffix when provided. */
-function resolveIdempotencyKey(
-    expr: string,
-    inputs: Record<string, unknown>,
-    principalScopeSuffix?: string,
-): string | undefined {
+function resolveIdempotencyKey(expr: string, inputs: Record<string, unknown>, principalScopeSuffix?: string): string | undefined {
     // Strip ${{ }} if present.
     const m = /^\$\{\{\s*([^}]+?)\s*\}\}$/.exec(expr.trim());
     const inner = (m ? m[1]! : expr).trim();
-    const parts = inner.split('.').map((p) => p.trim()).filter(Boolean);
+    const parts = inner
+        .split('.')
+        .map((p) => p.trim())
+        .filter(Boolean);
     if (parts.length < 2 || parts[0] !== 'inputs') return undefined;
 
     let cur: unknown = inputs;

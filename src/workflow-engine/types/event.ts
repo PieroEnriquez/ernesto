@@ -102,10 +102,7 @@ export type TypedFactEvent =
           cacheRead?: number;
           cacheWrite?: number;
           costUsd?: number;
-          modelUsage?: Record<
-              string,
-              { inputTokens: number; outputTokens: number; costUsd?: number }
-          >;
+          modelUsage?: Record<string, { inputTokens: number; outputTokens: number; costUsd?: number }>;
           ts: number;
       }
     | {
@@ -147,4 +144,3 @@ export interface StoredEvent {
     ts: number;
     routing?: Readonly<Record<string, unknown>>;
 }
-

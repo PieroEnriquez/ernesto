@@ -26,10 +26,7 @@ class StubSandbox implements SandboxClient {
         this.stdoutLines = stdoutLines;
     }
 
-    async createOrResume(
-        key: string,
-        _opts: CreateOrResumeOpts,
-    ): Promise<SandboxHandle> {
+    async createOrResume(key: string, _opts: CreateOrResumeOpts): Promise<SandboxHandle> {
         this.order.push('createOrResume');
         this.createdKey = key;
         return { id: `sbx-${key}` };
@@ -42,20 +39,12 @@ class StubSandbox implements SandboxClient {
         this.order.push('writeFiles');
         this.writtenFiles.push(...files);
     }
-    async exec(
-        _h: SandboxHandle,
-        argv: string[],
-        opts?: ExecOpts,
-    ): Promise<ExecResult> {
+    async exec(_h: SandboxHandle, argv: string[], opts?: ExecOpts): Promise<ExecResult> {
         this.order.push('exec');
         this.execCalls.push({ argv, ...(opts ? { opts } : {}) });
         return { exitCode: 0, stdout: '', stderr: '' };
     }
-    async execStream(
-        _h: SandboxHandle,
-        argv: string[],
-        opts?: ExecOpts,
-    ): Promise<ExecStreamHandle> {
+    async execStream(_h: SandboxHandle, argv: string[], opts?: ExecOpts): Promise<ExecStreamHandle> {
         this.order.push('execStream');
         this.streamCalls.push({ argv, ...(opts ? { opts } : {}) });
         const lines = this.stdoutLines;
@@ -85,10 +74,7 @@ describe('createRemoteVmHarness lifecycle', () => {
             sandbox,
             backendBaseUrl: 'https://api.example.internal',
         });
-        await harness.createAgent(
-            { systemPrompt: 'test', model: 'claude-opus-4-7' },
-            { agentId: 'conv-1' },
-        );
+        await harness.createAgent({ systemPrompt: 'test', model: 'claude-opus-4-7' }, { agentId: 'conv-1' });
         // createOrResume → setNetworkPolicy must precede writeFiles + exec.
         expect(sandbox.order[0]).toBe('createOrResume');
         expect(sandbox.order[1]).toBe('setNetworkPolicy');
@@ -105,15 +91,9 @@ describe('createRemoteVmHarness lifecycle', () => {
             sandbox,
             backendBaseUrl: 'https://api.example.internal',
         });
-        await harness.createAgent(
-            { systemPrompt: 'test', model: 'm' },
-            { agentId: 'conv-xyz' },
-        );
+        await harness.createAgent({ systemPrompt: 'test', model: 'm' }, { agentId: 'conv-xyz' });
         expect(sandbox.createdKey).toBe('conv-xyz');
-        expect(sandbox.policy?.allowDomains).toEqual([
-            'api.example.internal',
-            'api.anthropic.com',
-        ]);
+        expect(sandbox.policy?.allowDomains).toEqual(['api.example.internal', 'api.anthropic.com']);
     });
 
     it('runs claude with cwd = the FUSE mount and streams events', async () => {
@@ -122,10 +102,7 @@ describe('createRemoteVmHarness lifecycle', () => {
             sandbox,
             backendBaseUrl: 'https://b.host',
         });
-        const agent = await harness.createAgent(
-            { systemPrompt: 'test', model: 'm' },
-            { agentId: 'conv-2' },
-        );
+        const agent = await harness.createAgent({ systemPrompt: 'test', model: 'm' }, { agentId: 'conv-2' });
         const run = await agent.send('hello');
         const events: HarnessEvent[] = [];
         for await (const ev of run.stream()) {
@@ -168,10 +145,7 @@ describe('createRemoteVmHarness lifecycle', () => {
             sandbox,
             backendBaseUrl: 'https://b.host',
         });
-        const agent = await harness.createAgent(
-            { systemPrompt: 'test', model: 'm' },
-            { agentId: 'conv-3' },
-        );
+        const agent = await harness.createAgent({ systemPrompt: 'test', model: 'm' }, { agentId: 'conv-3' });
         const run = await agent.send('hi');
         const result = await run.wait();
         expect(result.status).toBe('completed');
@@ -186,10 +160,7 @@ describe('createRemoteVmHarness lifecycle', () => {
             sandbox,
             backendBaseUrl: 'https://b.host',
         });
-        const agent = await harness.createAgent(
-            { systemPrompt: 'test', model: 'm' },
-            { agentId: 'conv-4' },
-        );
+        const agent = await harness.createAgent({ systemPrompt: 'test', model: 'm' }, { agentId: 'conv-4' });
         const run = await agent.send('hi');
         await run.cancel();
         const events: HarnessEvent[] = [];
@@ -197,9 +168,7 @@ describe('createRemoteVmHarness lifecycle', () => {
             events.push(ev);
             if (events.length > 200) break;
         }
-        expect(
-            events.some((e) => e.kind === 'status' && e.status === 'canceled'),
-        ).toBe(true);
+        expect(events.some((e) => e.kind === 'status' && e.status === 'canceled')).toBe(true);
     });
 
     it('NEVER places a secret into the VM env (brokered egress)', async () => {
@@ -242,10 +211,7 @@ describe('createRemoteVmHarness lifecycle', () => {
 
 describe('buildClaudeArgv', () => {
     it('launches the SDK query() driver with the prompt + a JSON config arg', () => {
-        const argv = buildClaudeArgv(
-            { systemPrompt: 'x', model: 'claude-opus-4-7', maxTurns: 12 },
-            'do the thing',
-        );
+        const argv = buildClaudeArgv({ systemPrompt: 'x', model: 'claude-opus-4-7', maxTurns: 12 }, 'do the thing');
         expect(argv[0]).toBe('node');
         expect(argv[1]).toContain('claude-driver');
         expect(argv[2]).toBe('do the thing');

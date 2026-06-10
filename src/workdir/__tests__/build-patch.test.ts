@@ -43,10 +43,7 @@ describe('buildSettlePatch', () => {
     it('produces a patch for an edit in the named workspace and reports the right parentSha', async () => {
         const { root, parentSha } = await makeCloneWithWorkspaces();
 
-        await fsp.writeFile(
-            join(root, 'workspaces', 'alpha', 'WORKSPACE.md'),
-            '---\nname: alpha\n---\nedited\n',
-        );
+        await fsp.writeFile(join(root, 'workspaces', 'alpha', 'WORKSPACE.md'), '---\nname: alpha\n---\nedited\n');
 
         const r = await buildSettlePatch(root, ['alpha']);
         expect(r.parentSha).toBe(parentSha);
@@ -64,10 +61,7 @@ describe('buildSettlePatch', () => {
         const { root } = await makeCloneWithWorkspaces();
 
         // Real edit: should land in the patch.
-        await fsp.writeFile(
-            join(root, 'workspaces', 'alpha', 'WORKSPACE.md'),
-            '---\nname: alpha\n---\nedited body\n',
-        );
+        await fsp.writeFile(join(root, 'workspaces', 'alpha', 'WORKSPACE.md'), '---\nname: alpha\n---\nedited body\n');
 
         // Edits under extracted/ and attached/ must NOT appear (they belong
         // to the derive worker / master-fs, not the dev's settle commit).
@@ -92,18 +86,9 @@ describe('buildSettlePatch', () => {
         // worktree settle would have stripped.
         const { root } = await makeCloneWithWorkspaces();
 
-        await fsp.writeFile(
-            join(root, 'workspaces', 'alpha', 'WORKSPACE.md'),
-            '---\nname: alpha\n---\nreal edit\n',
-        );
-        await fsp.writeFile(
-            join(root, 'workspaces', 'alpha', 'attachments.yaml'),
-            'attachments:\n  - id: leaked\n',
-        );
-        await fsp.writeFile(
-            join(root, 'workspaces', 'alpha', '.derived-from-sha'),
-            'deadbeef\n',
-        );
+        await fsp.writeFile(join(root, 'workspaces', 'alpha', 'WORKSPACE.md'), '---\nname: alpha\n---\nreal edit\n');
+        await fsp.writeFile(join(root, 'workspaces', 'alpha', 'attachments.yaml'), 'attachments:\n  - id: leaked\n');
+        await fsp.writeFile(join(root, 'workspaces', 'alpha', '.derived-from-sha'), 'deadbeef\n');
 
         const r = await buildSettlePatch(root, ['alpha']);
         expect(r.patch).toContain('workspaces/alpha/WORKSPACE.md');

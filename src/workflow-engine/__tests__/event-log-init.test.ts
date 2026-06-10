@@ -12,10 +12,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { createRunner } from '../runner';
 import { userPrincipal } from '../principal';
 import { eventLogInitMiddleware } from '../middleware/event-log-init';
-import {
-    idempotencyDedupMiddleware,
-    IdempotencyConflictError,
-} from '../middleware/idempotency-dedup';
+import { idempotencyDedupMiddleware, IdempotencyConflictError } from '../middleware/idempotency-dedup';
 import type { WorkflowReader, WorkflowDetail } from '../workflow-reader';
 import type { WorkflowDeclaration, WorkflowStep } from '../../workflows/types';
 import type { ClaimRunInput, ClaimRunResult } from '../middleware/event-log-init';
@@ -123,12 +120,7 @@ describe('eventLogInitMiddleware', () => {
         runner.use(idempotencyDedupMiddleware());
         runner.use(eventLogInitMiddleware({ claim }));
 
-        await runner.dispatch(
-            'wf',
-            { productId: 'sku-123' },
-            userPrincipal('u', []),
-            {},
-        );
+        await runner.dispatch('wf', { productId: 'sku-123' }, userPrincipal('u', []), {});
         const arg = claim.mock.calls[0]![0]!;
         expect(arg.idempotencyKey).toBe('sku-123');
     });
@@ -148,12 +140,7 @@ describe('eventLogInitMiddleware', () => {
         runner.use(eventLogInitMiddleware({ claim: store.claim }));
 
         // First dispatch: claim succeeds.
-        await runner.dispatch(
-            'wf',
-            { productId: 'sku-123' },
-            userPrincipal('u', []),
-            {},
-        );
+        await runner.dispatch('wf', { productId: 'sku-123' }, userPrincipal('u', []), {});
 
         // Simulate a SECOND process: the in-process map sees the prior
         // run released (after-hook fired) but the durable store still
@@ -173,14 +160,9 @@ describe('eventLogInitMiddleware', () => {
         runner2.use(idempotencyDedupMiddleware());
         runner2.use(eventLogInitMiddleware({ claim: store.claim }));
 
-        await expect(
-            runner2.dispatch(
-                'wf',
-                { productId: 'sku-123' },
-                userPrincipal('u', []),
-                {},
-            ),
-        ).rejects.toBeInstanceOf(IdempotencyConflictError);
+        await expect(runner2.dispatch('wf', { productId: 'sku-123' }, userPrincipal('u', []), {})).rejects.toBeInstanceOf(
+            IdempotencyConflictError,
+        );
     });
 
     it('releases the claim so subsequent dispatches with the same key proceed', async () => {
@@ -197,12 +179,7 @@ describe('eventLogInitMiddleware', () => {
         runner.use(idempotencyDedupMiddleware());
         runner.use(eventLogInitMiddleware({ claim: store.claim }));
 
-        await runner.dispatch(
-            'wf',
-            { productId: 'sku-x' },
-            userPrincipal('u', []),
-            {},
-        );
+        await runner.dispatch('wf', { productId: 'sku-x' }, userPrincipal('u', []), {});
         // The in-process map's after-hook released its entry. The
         // durable store still holds the key — but the simulated store
         // is allowed to be released by an explicit `release` (mirrors
@@ -212,12 +189,7 @@ describe('eventLogInitMiddleware', () => {
         store.release('sku-x');
 
         // Second dispatch with same key — now free in both layers.
-        const r2 = await runner.dispatch(
-            'wf',
-            { productId: 'sku-x' },
-            userPrincipal('u', []),
-            {},
-        );
+        const r2 = await runner.dispatch('wf', { productId: 'sku-x' }, userPrincipal('u', []), {});
         expect(r2.status).toBe('completed');
     });
 
@@ -238,12 +210,7 @@ describe('eventLogInitMiddleware', () => {
         runner.use(idempotencyDedupMiddleware());
         runner.use(eventLogInitMiddleware({ claim: store.claim }));
 
-        const run = await runner.dispatch(
-            'wf',
-            { x: 'y' },
-            userPrincipal('u', []),
-            {},
-        );
+        const run = await runner.dispatch('wf', { x: 'y' }, userPrincipal('u', []), {});
         expect(run.status).toBe('completed');
         // Single claim observed.
         expect(store.inflight().size).toBe(1);

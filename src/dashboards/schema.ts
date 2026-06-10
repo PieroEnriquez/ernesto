@@ -21,31 +21,14 @@ import { z } from 'zod';
 export const SLUG_RE = /^[a-z][a-z0-9-]{1,40}$/;
 export const BLOCK_ID_RE = /^[a-z][a-zA-Z0-9_]{0,63}$/;
 
-export const FORMAT_VALUES = [
-    'eur',
-    'usd',
-    'int',
-    'float',
-    'pct',
-    'ratio',
-    'text',
-    'date',
-    'datetime',
-] as const;
+export const FORMAT_VALUES = ['eur', 'usd', 'int', 'float', 'pct', 'ratio', 'text', 'date', 'datetime'] as const;
 export type Format = (typeof FORMAT_VALUES)[number];
 
 export const formatSchema = z.enum(FORMAT_VALUES);
 
 // ─── Filters ────────────────────────────────────────────────────────────────
 
-const DATE_RANGE_DEFAULTS = [
-    'last_7d',
-    'last_30d',
-    'last_90d',
-    'last_180d',
-    'last_365d',
-    'ytd',
-] as const;
+const DATE_RANGE_DEFAULTS = ['last_7d', 'last_30d', 'last_90d', 'last_180d', 'last_365d', 'ytd'] as const;
 export type DateRangeDefault = (typeof DATE_RANGE_DEFAULTS)[number];
 
 const bindsMap = z.record(z.string(), z.string());
@@ -77,11 +60,7 @@ const singleSelectFilter = z.object({
     required: z.boolean().optional(),
 });
 
-export const filterSchema = z.discriminatedUnion('kind', [
-    dateRangeFilter,
-    multiSelectFilter,
-    singleSelectFilter,
-]);
+export const filterSchema = z.discriminatedUnion('kind', [dateRangeFilter, multiSelectFilter, singleSelectFilter]);
 export type Filter = z.infer<typeof filterSchema>;
 
 // ─── Block sub-schemas (shared between SQL and JS variants) ────────────────
@@ -225,15 +204,9 @@ export type Block = z.infer<typeof blockSchema>;
 
 export type NarrativeBlock = z.infer<typeof narrativeBlock>;
 
-export type SqlBlock =
-    | z.infer<typeof metricRowBlock>
-    | z.infer<typeof timeseriesBlock>
-    | z.infer<typeof tableBlock>;
+export type SqlBlock = z.infer<typeof metricRowBlock> | z.infer<typeof timeseriesBlock> | z.infer<typeof tableBlock>;
 
-export type JsBlock =
-    | z.infer<typeof jsMetricRowBlock>
-    | z.infer<typeof jsTimeseriesBlock>
-    | z.infer<typeof jsTableBlock>;
+export type JsBlock = z.infer<typeof jsMetricRowBlock> | z.infer<typeof jsTimeseriesBlock> | z.infer<typeof jsTableBlock>;
 
 /** "Data block" = produces a result (excludes markdown). */
 export type DataBlock = SqlBlock | JsBlock;

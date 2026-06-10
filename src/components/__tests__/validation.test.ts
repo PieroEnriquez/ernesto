@@ -358,7 +358,7 @@ describe('validateRenderableComponent', () => {
         expect(r.ok).toBe(false);
         if (!r.ok) {
             expect(r.error).toMatch(/must be \{id: string, label: string\}/);
-            expect(r.error).toContain("Try:");
+            expect(r.error).toContain('Try:');
             expect(r.error).toMatch(/id: 'region'/);
         }
     });

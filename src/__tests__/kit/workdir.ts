@@ -79,9 +79,7 @@ export interface BareRepo {
  * clone), for the origin-backed settle/journal-rebase suites. Extra seed files
  * may be supplied as treePath → content (relative to the repo root).
  */
-export async function setupBareRepo(
-    seedFiles: Record<string, string> = {},
-): Promise<BareRepo> {
+export async function setupBareRepo(seedFiles: Record<string, string> = {}): Promise<BareRepo> {
     const bareRoot = await mkdtemp(path.join(tmpdir(), 'ernesto-bare-'));
     await runGit(bareRoot, ['init', '-q', '--bare', '-b', 'main']);
 
@@ -121,10 +119,7 @@ export interface TempTree {
  * mkdtemp + write `files` (treePath → content), returning the dir and a node
  * FS adapter rooted at it. The FsAdapter-only half for glob/grep tests.
  */
-export async function makeTempTree(
-    files: Record<string, string> = {},
-    prefix = 'ernesto-tree-',
-): Promise<TempTree> {
+export async function makeTempTree(files: Record<string, string> = {}, prefix = 'ernesto-tree-'): Promise<TempTree> {
     const dir = await mkdtemp(path.join(tmpdir(), prefix));
     for (const [rel, content] of Object.entries(files)) {
         const abs = path.join(dir, rel);

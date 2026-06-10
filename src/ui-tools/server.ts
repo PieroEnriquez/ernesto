@@ -53,16 +53,15 @@ export interface UiMcpServerHandle {
 // `validateUiComponent`) — the deep validation lives in the lib and
 // reports per-component errors so an array call can partially succeed.
 
-const uiComponentSchema = z.object({
-    kind: z.enum(UI_COMPONENT_KINDS),
-    // `props` is loose at the wire — structural validation is done by
-    // `validateUiComponent` after `coerceUiComponent` normalises.
-    props: z.union([
-        z.record(z.string(), z.unknown()),
-        z.string(),
-    ]).optional(),
-    slotId: z.string().optional(),
-}).passthrough();
+const uiComponentSchema = z
+    .object({
+        kind: z.enum(UI_COMPONENT_KINDS),
+        // `props` is loose at the wire — structural validation is done by
+        // `validateUiComponent` after `coerceUiComponent` normalises.
+        props: z.union([z.record(z.string(), z.unknown()), z.string()]).optional(),
+        slotId: z.string().optional(),
+    })
+    .passthrough();
 
 /**
  * Wire-level acceptance: the agent might JSON-stringify the whole
@@ -71,16 +70,19 @@ const uiComponentSchema = z.object({
  * validation; downstream coercion does the rest. Strings that don't
  * parse fall through to Zod's normal error.
  */
-const stringOrObjectOrArray = z.preprocess((raw) => {
-    if (typeof raw !== 'string') return raw;
-    const trimmed = raw.trim();
-    if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return raw;
-    try {
-        return JSON.parse(trimmed);
-    } catch {
-        return raw;
-    }
-}, z.union([uiComponentSchema, z.array(uiComponentSchema)]));
+const stringOrObjectOrArray = z.preprocess(
+    (raw) => {
+        if (typeof raw !== 'string') return raw;
+        const trimmed = raw.trim();
+        if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return raw;
+        try {
+            return JSON.parse(trimmed);
+        } catch {
+            return raw;
+        }
+    },
+    z.union([uiComponentSchema, z.array(uiComponentSchema)]),
+);
 
 const uiInputSchema: z.ZodRawShape = {
     component: stringOrObjectOrArray.optional(),
@@ -126,13 +128,9 @@ export interface CreateUiMcpServerOpts {
  * Build an in-process HTTP MCP server exposing the unified `ui` tool.
  * Returns the McpServerConfig + a lifecycle handle.
  */
-export async function createUiMcpServer(
-    opts: CreateUiMcpServerOpts,
-): Promise<UiMcpServerHandle> {
+export async function createUiMcpServer(opts: CreateUiMcpServerOpts): Promise<UiMcpServerHandle> {
     const resolveCtx: UiToolContextResolver =
-        typeof opts.context === 'function'
-            ? (opts.context as UiToolContextResolver)
-            : () => opts.context as UiToolContext;
+        typeof opts.context === 'function' ? (opts.context as UiToolContextResolver) : () => opts.context as UiToolContext;
 
     const mcp = new McpServer({
         name: 'ernesto-ui-tools',
@@ -150,22 +148,13 @@ export async function createUiMcpServer(
             // Accept either `{ component: ... }` (the declared wire
             // shape) or a raw component / array (lenient — some MCP
             // clients elide single-arg wrappers).
-            const raw =
-                args && typeof args === 'object' && 'component' in args
-                    ? (args as { component: unknown }).component
-                    : args;
-            const output = await handleUi(
-                raw as Parameters<typeof handleUi>[0],
-                ctx,
-            );
+            const raw = args && typeof args === 'object' && 'component' in args ? (args as { component: unknown }).component : args;
+            const output = await handleUi(raw as Parameters<typeof handleUi>[0], ctx);
             return {
                 content: [
                     {
                         type: 'text',
-                        text:
-                            typeof output === 'string'
-                                ? output
-                                : JSON.stringify(output ?? { ok: true }),
+                        text: typeof output === 'string' ? output : JSON.stringify(output ?? { ok: true }),
                     },
                 ],
             };
@@ -180,11 +169,7 @@ export async function createUiMcpServer(
 
     // Cast through `unknown` to keep the registerTool callback variant clean
     // (the SDK has overload resolution narrowed by the input schema shape).
-    (mcp.registerTool as unknown as (
-        name: string,
-        config: Record<string, unknown>,
-        cb: typeof callback,
-    ) => void)(
+    (mcp.registerTool as unknown as (name: string, config: Record<string, unknown>, cb: typeof callback) => void)(
         'ui',
         {
             description: UI_TOOL_DESCRIPTION,
@@ -215,10 +200,7 @@ export async function createUiMcpServer(
                     res.end(
                         JSON.stringify({
                             error: 'parse_error',
-                            message:
-                                err instanceof Error
-                                    ? err.message
-                                    : String(err),
+                            message: err instanceof Error ? err.message : String(err),
                         }),
                     );
                 }

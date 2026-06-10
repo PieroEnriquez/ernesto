@@ -38,9 +38,7 @@ export class ScopeEscalationError extends Error {
     readonly code = 'scope_escalation';
     readonly missing: ReadonlyArray<string>;
     constructor(kindUri: string, missing: ReadonlyArray<string>) {
-        super(
-            `kind "${kindUri}" declared scopes the caller lacks: ${missing.join(',')}`,
-        );
+        super(`kind "${kindUri}" declared scopes the caller lacks: ${missing.join(',')}`);
         this.name = 'ScopeEscalationError';
         this.missing = missing;
     }
@@ -49,15 +47,17 @@ export class ScopeEscalationError extends Error {
 /** Build the middleware. Static factory so callers can pass an
  *  optional service-allowlist that bypasses the check for trusted
  *  workers. The allowlist is keyed by `workerId`. */
-export function scopeCheckMiddleware(opts: {
-    /** Service workers whose scope check is bypassed. Defaults to
-     *  "all service principals bypass" because today the queue +
-     *  scheduler layer is the trusted boundary. */
-    serviceAllowlist?: 'all' | ReadonlySet<string>;
-    /** User principals holding any of these scopes skip the strict
-     *  check (PREVIEW admin bypass). Empty by default — no bypass. */
-    adminBypassScopes?: ReadonlyArray<string>;
-} = {}): DispatchMiddleware {
+export function scopeCheckMiddleware(
+    opts: {
+        /** Service workers whose scope check is bypassed. Defaults to
+         *  "all service principals bypass" because today the queue +
+         *  scheduler layer is the trusted boundary. */
+        serviceAllowlist?: 'all' | ReadonlySet<string>;
+        /** User principals holding any of these scopes skip the strict
+         *  check (PREVIEW admin bypass). Empty by default — no bypass. */
+        adminBypassScopes?: ReadonlyArray<string>;
+    } = {},
+): DispatchMiddleware {
     const allowlist = opts.serviceAllowlist ?? 'all';
     const adminBypassScopes = new Set(opts.adminBypassScopes ?? []);
 
@@ -86,9 +86,7 @@ export function scopeCheckMiddleware(opts: {
             if (declared.length === 0) return ctx;
 
             // User principal: enforce caller.scopes ⊇ declared.
-            const callerScopes = isServicePrincipal(principal)
-                ? new Set<string>()
-                : principal.scopes;
+            const callerScopes = isServicePrincipal(principal) ? new Set<string>() : principal.scopes;
 
             // PREVIEW admin bypass — agent-ops admins dispatch any kind.
             if (adminBypassScopes.size > 0) {
@@ -113,10 +111,7 @@ export function scopeCheckMiddleware(opts: {
 /** Collect the kind's declared scopes. For route kinds, the scope can
  *  be a function of the input (dynamic-scope routes, commit
  *  `afea0c1`); resolve by calling it. */
-function collectDeclaredScopes(
-    decl: KindDecl,
-    inputs: Record<string, unknown>,
-): string[] {
+function collectDeclaredScopes(decl: KindDecl, inputs: Record<string, unknown>): string[] {
     if (decl.kind === 'route') {
         const s = decl.route.scope;
         if (Array.isArray(s)) return [...s];

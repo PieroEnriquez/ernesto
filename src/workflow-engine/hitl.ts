@@ -119,14 +119,9 @@ export class HitlController {
         const key = `${runId}:${intent.promptId}`;
         const pending = this.pending.get(key);
         if (!pending) {
-            throw new Error(
-                `no pending HITL for run ${runId} prompt ${intent.promptId}`,
-            );
+            throw new Error(`no pending HITL for run ${runId} prompt ${intent.promptId}`);
         }
-        const validationError = validateAgainstSchema(
-            intent.value,
-            pending.schema,
-        );
+        const validationError = validateAgainstSchema(intent.value, pending.schema);
         if (validationError) {
             throw new Error(`HITL value invalid: ${validationError}`);
         }
@@ -180,10 +175,7 @@ export class HitlController {
  * Absent template → returns a renderer-default framing
  * (`"The user responded: <value>"`). Renderers MAY override.
  */
-export function materializeResumePrompt(
-    template: string | undefined,
-    value: unknown,
-): string {
+export function materializeResumePrompt(template: string | undefined, value: unknown): string {
     return substituteFields(template, value);
 }
 
@@ -196,9 +188,7 @@ export function materializeResumePrompt(
  *
  *  Anything else returns `['submit']` — the renderer falls back to a
  *  generic form/modal affordance keyed off the full schema. */
-function extractRoutesFromSchema(
-    schema: Record<string, unknown>,
-): string[] {
+function extractRoutesFromSchema(schema: Record<string, unknown>): string[] {
     // Top-level enum (the natural shape for a single yes/no or pick-one
     // input where the workflow author doesn't want to nest in an object).
     const topEnum = (schema as { enum?: unknown[] }).enum;
@@ -206,8 +196,7 @@ function extractRoutesFromSchema(
         const out = topEnum.filter((e): e is string => typeof e === 'string');
         if (out.length > 0) return out;
     }
-    const props = (schema as { properties?: Record<string, { enum?: unknown[] }> })
-        .properties;
+    const props = (schema as { properties?: Record<string, { enum?: unknown[] }> }).properties;
     if (!props) return ['submit'];
     const out: string[] = [];
     for (const v of Object.values(props)) {
@@ -231,23 +220,14 @@ function extractRoutesFromSchema(
  * Anything else is accepted (no constraint emitted). The caller can
  * always reject downstream if the handler needs stricter validation.
  */
-export function validateAgainstSchema(
-    value: unknown,
-    schema: Record<string, unknown>,
-): string | null {
+export function validateAgainstSchema(value: unknown, schema: Record<string, unknown>): string | null {
     const type = schema.type;
     if (type === 'object') {
-        if (
-            value === null ||
-            typeof value !== 'object' ||
-            Array.isArray(value)
-        ) {
+        if (value === null || typeof value !== 'object' || Array.isArray(value)) {
             return 'expected object';
         }
         const obj = value as Record<string, unknown>;
-        const props =
-            (schema.properties as Record<string, Record<string, unknown>>) ??
-            {};
+        const props = (schema.properties as Record<string, Record<string, unknown>>) ?? {};
         const required = (schema.required as string[]) ?? [];
         for (const name of required) {
             if (!Object.prototype.hasOwnProperty.call(obj, name)) {

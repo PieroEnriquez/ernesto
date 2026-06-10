@@ -17,7 +17,7 @@ import { isJsBlock, isNarrativeBlock, type DashboardSpec } from './schema';
 export function dataflowOrder(spec: DashboardSpec): string[] {
     const visited = new Set<string>();
     const result: string[] = [];
-    const byId = new Map(spec.blocks.map(b => [b.id, b]));
+    const byId = new Map(spec.blocks.map((b) => [b.id, b]));
 
     const visit = (id: string): void => {
         if (visited.has(id)) return;

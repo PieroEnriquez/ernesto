@@ -18,9 +18,7 @@
  * System prompt shape — either a raw string (use as-is) or a preset
  * (the SDK's `claude_code` preset, with an optional `append` body).
  */
-export type SystemPromptConfig =
-    | string
-    | { type: 'preset'; preset: 'claude_code'; append?: string };
+export type SystemPromptConfig = string | { type: 'preset'; preset: 'claude_code'; append?: string };
 
 /**
  * Self-contained JSON Schema for structured output. Mirrors the

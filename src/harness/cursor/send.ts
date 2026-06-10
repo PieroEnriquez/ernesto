@@ -21,18 +21,9 @@ import type {
     SDKMessage as CursorSDKMessage,
     InteractionUpdate,
 } from '@cursor/sdk';
-import type {
-    HarnessEvent,
-    RunHandle,
-    RunResult,
-    RunStatus,
-} from '../types';
+import type { HarnessEvent, RunHandle, RunResult, RunStatus } from '../types';
 import { makeRunHandle, type TerminalFold } from '../run-handle';
-import {
-    createTranslatorState,
-    mapCursorDelta,
-    mapCursorMessage,
-} from './events';
+import { createTranslatorState, mapCursorDelta, mapCursorMessage } from './events';
 
 const log = debug('ernesto:harness:cursor:send');
 
@@ -126,10 +117,7 @@ export interface CursorRunToHandleOptions {
     onRawMessage?: (msg: CursorSDKMessage) => void;
 }
 
-export function cursorRunToRunHandle(
-    cursorRun: CursorRun,
-    opts: CursorRunToHandleOptions,
-): RunHandle {
+export function cursorRunToRunHandle(cursorRun: CursorRun, opts: CursorRunToHandleOptions): RunHandle {
     return buildRunHandle({
         cursorRun,
         runId: opts.runId,
@@ -162,10 +150,7 @@ function buildRunHandle(args: BuildRunHandleInput): RunHandle {
             // Cursor doesn't expose token-level usage; the fold carries
             // zeros and `costReporting=false` gates any UI reading them.
             usage: fold.usage,
-            durationMs:
-                cursorResult && typeof cursorResult.durationMs === 'number'
-                    ? cursorResult.durationMs
-                    : fold.durationMs,
+            durationMs: cursorResult && typeof cursorResult.durationMs === 'number' ? cursorResult.durationMs : fold.durationMs,
         };
         if (cursorResult) {
             if (typeof cursorResult.result === 'string') {
@@ -186,12 +171,7 @@ function buildRunHandle(args: BuildRunHandleInput): RunHandle {
         buffered,
         source: cursorRun.stream(),
         createState: createTranslatorState,
-        mapMessage: (msg, id, state) =>
-            mapCursorMessage(
-                msg,
-                id,
-                state as ReturnType<typeof createTranslatorState>,
-            ),
+        mapMessage: (msg, id, state) => mapCursorMessage(msg, id, state as ReturnType<typeof createTranslatorState>),
         ...(onRawMessage ? { onRawMessage } : {}),
         // Cursor may end the stream without a terminal status event —
         // synthesize one from `Run.status` (defaulting to `completed`).

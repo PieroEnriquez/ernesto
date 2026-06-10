@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-    buildProvisionSpec,
-    EDEN_LITE_PATH,
-    WORKDIR_MOUNT,
-} from '../provision';
+import { buildProvisionSpec, EDEN_LITE_PATH, WORKDIR_MOUNT } from '../provision';
 
 describe('buildProvisionSpec', () => {
     const base = {
@@ -13,10 +9,7 @@ describe('buildProvisionSpec', () => {
 
     it('derives the deny-all egress policy when none supplied', () => {
         const spec = buildProvisionSpec(base);
-        expect(spec.networkPolicy.allowDomains).toEqual([
-            'api.example.internal',
-            'api.anthropic.com',
-        ]);
+        expect(spec.networkPolicy.allowDomains).toEqual(['api.example.internal', 'api.anthropic.com']);
     });
 
     it('uses the agentKey as the idempotent sandbox key', () => {
@@ -45,10 +38,7 @@ describe('buildProvisionSpec', () => {
     it('shim file is non-secret and documents brokered egress', () => {
         const spec = buildProvisionSpec(base);
         expect(spec.files).toHaveLength(1);
-        const shim = Buffer.from(
-            spec.files[0]!.contentBase64,
-            'base64',
-        ).toString('utf8');
+        const shim = Buffer.from(spec.files[0]!.contentBase64, 'base64').toString('utf8');
         expect(shim).toContain('NON-SECRET');
         expect(shim).toContain(base.backendBaseUrl);
         // No actual secret value smuggled in (an `sk-` key or a literal
@@ -75,8 +65,6 @@ describe('buildProvisionSpec', () => {
 
     it('passes baseSnapshot through when set', () => {
         expect(buildProvisionSpec(base).baseSnapshot).toBeUndefined();
-        expect(
-            buildProvisionSpec({ ...base, baseSnapshot: 'snap-v1' }).baseSnapshot,
-        ).toBe('snap-v1');
+        expect(buildProvisionSpec({ ...base, baseSnapshot: 'snap-v1' }).baseSnapshot).toBe('snap-v1');
     });
 });

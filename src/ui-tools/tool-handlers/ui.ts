@@ -15,10 +15,7 @@
 
 import type { UiComponent } from '../../components/types';
 import { coerceUiComponent } from '../../components/coerce';
-import {
-    collectUiComponentErrors,
-    validateUiComponent,
-} from '../../components/validation';
+import { collectUiComponentErrors, validateUiComponent } from '../../components/validation';
 import { resolveUiRef } from '../resolve-ui-ref';
 import type { UiToolContext } from '../types';
 
@@ -54,10 +51,7 @@ export interface UiCallResult {
     response?: unknown;
 }
 
-export async function handleUi(
-    args: UiArgs,
-    ctx: UiToolContext,
-): Promise<UiCallResult | unknown> {
+export async function handleUi(args: UiArgs, ctx: UiToolContext): Promise<UiCallResult | unknown> {
     // Resolve the input to a flat `unknown[]` of candidate components.
     // Three accepted shapes; ref-mode reads the file off the workdir.
     let list: unknown[];
@@ -237,9 +231,7 @@ export async function handleUi(
             schema: pauseSchema,
             prompt: pausePrompt,
             ...(pauseDefaults !== undefined ? { defaults: pauseDefaults } : {}),
-            ...(pauseResumePrompt !== undefined
-                ? { resumePrompt: pauseResumePrompt }
-                : {}),
+            ...(pauseResumePrompt !== undefined ? { resumePrompt: pauseResumePrompt } : {}),
         });
         return response;
     }
@@ -248,20 +240,9 @@ export async function handleUi(
 }
 
 function isRefShape(v: unknown): v is { ref: string } {
-    return (
-        !!v &&
-        typeof v === 'object' &&
-        !Array.isArray(v) &&
-        typeof (v as { ref?: unknown }).ref === 'string'
-    );
+    return !!v && typeof v === 'object' && !Array.isArray(v) && typeof (v as { ref?: unknown }).ref === 'string';
 }
 
 function isComponentFieldShape(v: unknown): v is { component: unknown } {
-    return (
-        !!v &&
-        typeof v === 'object' &&
-        !Array.isArray(v) &&
-        'component' in (v as object) &&
-        !('kind' in (v as object))
-    );
+    return !!v && typeof v === 'object' && !Array.isArray(v) && 'component' in (v as object) && !('kind' in (v as object));
 }

@@ -98,21 +98,10 @@ export interface HitlComponent {
 
 /** Top-level component union — what the unified `ui` MCP tool
  *  accepts. */
-export type UiComponent =
-    | ThinkingComponent
-    | StatusComponent
-    | ProgressComponent
-    | AttachmentComponent
-    | HitlComponent;
+export type UiComponent = ThinkingComponent | StatusComponent | ProgressComponent | AttachmentComponent | HitlComponent;
 
 /** Stable tuple of top-level kinds. */
-export const UI_COMPONENT_KINDS = [
-    'thinking',
-    'status',
-    'progress',
-    'attachment',
-    'hitl',
-] as const;
+export const UI_COMPONENT_KINDS = ['thinking', 'status', 'progress', 'attachment', 'hitl'] as const;
 
 export type UiComponentKind = (typeof UI_COMPONENT_KINDS)[number];
 

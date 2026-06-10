@@ -27,9 +27,10 @@ export type WorkdirHealth = 'missing' | 'healthy' | 'corrupted';
  * repository" mid-flow.
  */
 export async function probeWorkdirHealth(workingTreeRoot: string): Promise<WorkdirHealth> {
-    const dotGitExists = await fsp
-        .stat(join(workingTreeRoot, '.git'))
-        .then(() => true, () => false);
+    const dotGitExists = await fsp.stat(join(workingTreeRoot, '.git')).then(
+        () => true,
+        () => false,
+    );
     if (!dotGitExists) return 'missing';
     const r = await tryRunGit(workingTreeRoot, ['rev-parse', '--show-toplevel']);
     return r.ok ? 'healthy' : 'corrupted';

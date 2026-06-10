@@ -37,9 +37,7 @@ describe('dispatchExtraction', () => {
         const result = await dispatchExtraction(reg, 'clickup', validRequest, makeCtx(['clickup:read']));
         expect(result.ok).toBe(true);
         if (!result.ok) return;
-        expect(result.data.entries).toEqual([
-            { path: 'list:12345.md', content: '# list:12345', contentType: 'text/markdown' },
-        ]);
+        expect(result.data.entries).toEqual([{ path: 'list:12345.md', content: '# list:12345', contentType: 'text/markdown' }]);
         expect(result.data.fetchedAt).toBe(fixedNow);
     });
 
@@ -71,12 +69,7 @@ describe('dispatchExtraction', () => {
         const reg = new ExtractionRegistry();
         reg.register(echoPlugin);
 
-        const result = await dispatchExtraction(
-            reg,
-            'clickup',
-            validRequest,
-            makeCtx(['ernesto:agent-ops']),
-        );
+        const result = await dispatchExtraction(reg, 'clickup', validRequest, makeCtx(['ernesto:agent-ops']));
         expect(result.ok).toBe(true);
     });
 
@@ -84,12 +77,7 @@ describe('dispatchExtraction', () => {
         const reg = new ExtractionRegistry();
         reg.register(echoPlugin);
 
-        const result = await dispatchExtraction(
-            reg,
-            'clickup',
-            { target: '' },
-            makeCtx(['clickup:read']),
-        );
+        const result = await dispatchExtraction(reg, 'clickup', { target: '' }, makeCtx(['clickup:read']));
         expect(result.ok).toBe(false);
         if (result.ok) return;
         expect(result.error).toBe('invalid_request');
@@ -108,12 +96,7 @@ describe('dispatchExtraction', () => {
             }),
         );
 
-        const result = await dispatchExtraction(
-            reg,
-            'boom',
-            { target: 't' },
-            makeCtx(['x:read']),
-        );
+        const result = await dispatchExtraction(reg, 'boom', { target: 't' }, makeCtx(['x:read']));
         expect(result.ok).toBe(false);
         if (result.ok) return;
         expect(result.error).toBe('fetch_failed');
@@ -127,8 +110,7 @@ describe('dispatchExtraction', () => {
             defineExtraction({
                 source: 'liar',
                 scope: 'x:read',
-                fetch: async () =>
-                    ({ entries: 'not-an-array', fetchedAt: fixedNow } as unknown as ExtractionResult),
+                fetch: async () => ({ entries: 'not-an-array', fetchedAt: fixedNow }) as unknown as ExtractionResult,
             }),
         );
 
@@ -138,12 +120,7 @@ describe('dispatchExtraction', () => {
             log: { info: () => {}, warn: () => {}, error: errLog },
         };
 
-        const result = await dispatchExtraction(
-            reg,
-            'liar',
-            { target: 't' },
-            ctx,
-        );
+        const result = await dispatchExtraction(reg, 'liar', { target: 't' }, ctx);
         expect(result.ok).toBe(false);
         if (result.ok) return;
         expect(result.error).toBe('fetch_failed');

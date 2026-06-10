@@ -6,23 +6,14 @@
  * assigns the seq on append; callers don't pre-allocate.
  */
 
-import type {
-    ListEventsOpts,
-    ListRunsOpts,
-    RunState,
-    RunStatus,
-    RunSummary,
-    StorePort,
-} from './port';
+import type { ListEventsOpts, ListRunsOpts, RunState, RunStatus, RunSummary, StorePort } from './port';
 import type { StoredEvent } from '../types/event';
 
 export class InMemoryStore implements StorePort {
     private readonly events = new Map<string, StoredEvent[]>();
     private readonly runs = new Map<string, RunState>();
 
-    async appendEvent(
-        event: Omit<StoredEvent, 'seq'>,
-    ): Promise<StoredEvent> {
+    async appendEvent(event: Omit<StoredEvent, 'seq'>): Promise<StoredEvent> {
         const arr = this.events.get(event.runId) ?? [];
         const seq = arr.length;
         const stored: StoredEvent = { ...event, seq };
@@ -31,10 +22,7 @@ export class InMemoryStore implements StorePort {
         return stored;
     }
 
-    async listEvents(
-        runId: string,
-        opts: ListEventsOpts = {},
-    ): Promise<StoredEvent[]> {
+    async listEvents(runId: string, opts: ListEventsOpts = {}): Promise<StoredEvent[]> {
         const arr = this.events.get(runId) ?? [];
         if (opts.sinceSeq === undefined) return [...arr];
         return arr.filter((e) => e.seq > opts.sinceSeq!);

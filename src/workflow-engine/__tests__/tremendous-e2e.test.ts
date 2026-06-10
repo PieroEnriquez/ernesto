@@ -19,13 +19,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { createRunner } from '../runner';
-import {
-    userPrincipal,
-    servicePrincipal,
-    narrowPrincipalScopes,
-    isUserPrincipal,
-    isServicePrincipal,
-} from '../principal';
+import { userPrincipal, servicePrincipal, narrowPrincipalScopes, isUserPrincipal, isServicePrincipal } from '../principal';
 import type { WorkflowReader, WorkflowDetail } from '../workflow-reader';
 import type { WorkflowDeclaration } from '../../workflows/types';
 import type { Run } from '../types/runner';
@@ -157,13 +151,12 @@ describe('tremendous E2E — unified runtime end-to-end', () => {
         runner.registerWorkflowReader(readerOf([pipeline]));
 
         // ── M1: Service-principal dispatch (background worker style) ─────
-        const serviceRun: Run<{ logo: string; faq: string[]; faqFr: string[] }> =
-            await runner.dispatch(
-                'product-enablement://pipeline',
-                { productId: 'P-12345' },
-                servicePrincipal('autofill-worker', 'req-1'),
-                { transport: 'in-process' },
-            );
+        const serviceRun: Run<{ logo: string; faq: string[]; faqFr: string[] }> = await runner.dispatch(
+            'product-enablement://pipeline',
+            { productId: 'P-12345' },
+            servicePrincipal('autofill-worker', 'req-1'),
+            { transport: 'in-process' },
+        );
 
         expect(serviceRun.status).toBe('completed');
         expect(serviceRun.runId).toBeDefined();
@@ -195,11 +188,7 @@ describe('tremendous E2E — unified runtime end-to-end', () => {
     });
 
     it('M1: Principal narrowing via narrowPrincipalScopes — recursive subworkflow scopes', () => {
-        const parent = userPrincipal('alice', [
-            'marketing:read',
-            'payments:read',
-            'cs:read',
-        ]);
+        const parent = userPrincipal('alice', ['marketing:read', 'payments:read', 'cs:read']);
         // Declared subworkflow scope intersection
         const narrowed = narrowPrincipalScopes(parent, ['marketing:read', 'striga:read']);
         expect(isUserPrincipal(narrowed)).toBe(true);
@@ -250,8 +239,7 @@ describe('tremendous E2E — unified runtime end-to-end', () => {
                                     uri: 'consumer',
                                     params: {
                                         id: '${{ steps.producer.outputs.user.id }}',
-                                        displayName:
-                                            'Hello, ${{ steps.producer.outputs.user.profile.name }}!',
+                                        displayName: 'Hello, ${{ steps.producer.outputs.user.profile.name }}!',
                                         tags: '${{ steps.producer.outputs.user.profile.tags }}',
                                         source: '${{ inputs.source }}',
                                     },
@@ -264,12 +252,7 @@ describe('tremendous E2E — unified runtime end-to-end', () => {
             ]),
         );
 
-        const run = await runner.dispatch(
-            'wf-interp',
-            { source: 'autofill' },
-            servicePrincipal('test', 'req-1'),
-            {},
-        );
+        const run = await runner.dispatch('wf-interp', { source: 'autofill' }, servicePrincipal('test', 'req-1'), {});
         expect(run.status).toBe('completed');
         expect(observed.params).toEqual({
             id: 42, // single token preserves number type

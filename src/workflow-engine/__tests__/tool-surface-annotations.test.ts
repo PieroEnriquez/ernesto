@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-    TOOL_SURFACE_ANNOTATIONS,
-    readDisallowedToolsExtra,
-    readSystemPromptExtras,
-} from '../middleware/tool-surface-compose';
+import { TOOL_SURFACE_ANNOTATIONS, readDisallowedToolsExtra, readSystemPromptExtras } from '../middleware/tool-surface-compose';
 
 describe('TOOL_SURFACE_ANNOTATIONS', () => {
     it('exports the canonical annotation key strings', () => {

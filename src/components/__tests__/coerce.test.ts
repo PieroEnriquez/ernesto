@@ -154,9 +154,7 @@ describe('coerceUiComponent', () => {
         expect(out).toEqual({
             kind: 'hitl',
             props: {
-                render: [
-                    { kind: 'markdown', props: { body: 'hello' } },
-                ],
+                render: [{ kind: 'markdown', props: { body: 'hello' } }],
                 expect: { kind: 'message' },
                 resumePrompt: 'user said {value}',
             },
@@ -171,8 +169,7 @@ describe('coerceUiComponent', () => {
                 expect: { kind: 'message' },
             },
         });
-        expect((out as { props: { resumePrompt: string } }).props.resumePrompt)
-            .toBe('User said: {value}.');
+        expect((out as { props: { resumePrompt: string } }).props.resumePrompt).toBe('User said: {value}.');
     });
 
     it('does not override an explicit resumePrompt', () => {
@@ -184,7 +181,6 @@ describe('coerceUiComponent', () => {
                 resumePrompt: 'Custom template {value}',
             },
         });
-        expect((out as { props: { resumePrompt: string } }).props.resumePrompt)
-            .toBe('Custom template {value}');
+        expect((out as { props: { resumePrompt: string } }).props.resumePrompt).toBe('Custom template {value}');
     });
 });

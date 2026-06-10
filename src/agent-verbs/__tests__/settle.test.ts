@@ -11,7 +11,9 @@ import { buildWorkdir as kitBuildWorkdir } from '../../__tests__/kit';
 const enc = (s: string) => new TextEncoder().encode(s);
 
 const allowAllLint: LintFn = async () => ({ ok: true });
-const denyLint = (errors: ReadonlyArray<LintError>): LintFn => async () => ({ ok: false, errors });
+const denyLint =
+    (errors: ReadonlyArray<LintError>): LintFn =>
+    async () => ({ ok: false, errors });
 const okPush: PushToMainFn = async ({ sha }) => ({ ok: true, sha });
 
 function makeLog() {
@@ -120,9 +122,7 @@ describe('handleSettle', () => {
         const workdir = buildWorkdir();
         await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# bad\n'));
 
-        const errors: ReadonlyArray<LintError> = [
-            { code: 'bad', workspace: 'hr', message: 'nope' },
-        ];
+        const errors: ReadonlyArray<LintError> = [{ code: 'bad', workspace: 'hr', message: 'nope' }];
         const onSuccess = vi.fn(async () => {});
         const onFailure = vi.fn(async () => {});
         const ctx = makeCtx({
@@ -172,10 +172,7 @@ describe('handleSettle', () => {
 
         const r = await handleSettle(workdir, { message: 'add hr' }, ctx);
         expect(r.ok).toBe(true);
-        expect(log.warn).toHaveBeenCalledWith(
-            'onSettleSuccess hook failed',
-            expect.objectContaining({ errorMessage: 'audit redis down' }),
-        );
+        expect(log.warn).toHaveBeenCalledWith('onSettleSuccess hook failed', expect.objectContaining({ errorMessage: 'audit redis down' }));
     });
 
     it('onSettleFailure throw is caught and logged; settle result is unchanged', async () => {
@@ -194,10 +191,7 @@ describe('handleSettle', () => {
 
         const r = await handleSettle(workdir, { message: 'add hr' }, ctx);
         expect(r.ok).toBe(false);
-        expect(log.warn).toHaveBeenCalledWith(
-            'onSettleFailure hook failed',
-            expect.objectContaining({ errorMessage: 'audit redis down' }),
-        );
+        expect(log.warn).toHaveBeenCalledWith('onSettleFailure hook failed', expect.objectContaining({ errorMessage: 'audit redis down' }));
     });
 
     it('invalid input: empty message returns invalid_input', async () => {
@@ -308,7 +302,7 @@ describe('handleSettle', () => {
         await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# hr\n'));
 
         const ctx = makeCtx({
-            trailers: { 'Workdir-Id': 'wd1', 'User': 'u@b.com', 'Transport': 'in-process' },
+            trailers: { 'Workdir-Id': 'wd1', User: 'u@b.com', Transport: 'in-process' },
         });
 
         const r = await handleSettle(workdir, { message: 'add hr' }, ctx);

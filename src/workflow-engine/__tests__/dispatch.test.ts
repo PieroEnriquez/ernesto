@@ -18,9 +18,7 @@ describe('HandlerDispatcher', () => {
     it('throws on duplicate registration', () => {
         const d = new HandlerDispatcher();
         d.register('route', stub);
-        expect(() => d.register('route', stub)).toThrow(
-            /already registered/,
-        );
+        expect(() => d.register('route', stub)).toThrow(/already registered/);
     });
 
     it('require() throws for unknown kinds', () => {

@@ -1,19 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import {
-    parseWorkspaceFrontmatter,
-    canRead,
-    canWrite,
-    canAdmin,
-    type WorkspaceFrontmatter,
-} from '../access';
+import { parseWorkspaceFrontmatter, canRead, canWrite, canAdmin, type WorkspaceFrontmatter } from '../access';
 
 const scopes = (...xs: string[]): ReadonlySet<string> => new Set(xs);
 
 describe('parseWorkspaceFrontmatter', () => {
     it('parses a well-formed block into typed fields', () => {
-        const fm = parseWorkspaceFrontmatter(
-            '---\nname: pricing\nread: pricing:read\nowns:\n  - pricing://esim\n---\n\nprose\n',
-        );
+        const fm = parseWorkspaceFrontmatter('---\nname: pricing\nread: pricing:read\nowns:\n  - pricing://esim\n---\n\nprose\n');
         expect(fm.name).toBe('pricing');
         expect(fm.read).toBe('pricing:read');
         expect(fm.owns).toEqual(['pricing://esim']);

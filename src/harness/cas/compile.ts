@@ -80,10 +80,7 @@ export interface CompileContext {
  * `Options`. Behavior must remain byte-equivalent to the legacy
  * `workflowToSdkOptions` for the fields the SDK actually consumes.
  */
-export function compileAgentToSdkOptions(
-    compiled: CompiledAgent,
-    ctx: CompileContext,
-): Options {
+export function compileAgentToSdkOptions(compiled: CompiledAgent, ctx: CompileContext): Options {
     const baseEnv: Record<string, string> = {
         ...(ctx.providerEnv ?? {}),
         PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin',
@@ -96,8 +93,7 @@ export function compileAgentToSdkOptions(
     // preset branch is in use. Source: sdk.d.ts ~line 1755.
     const systemPromptForSdk = withExcludeDynamicSections(compiled.systemPrompt);
 
-    const disallowedTools =
-        compiled.disallowedTools ?? ctx.defaultDisallowedTools;
+    const disallowedTools = compiled.disallowedTools ?? ctx.defaultDisallowedTools;
 
     return {
         model: compiled.model,
@@ -138,15 +134,8 @@ export function compileAgentToSdkOptions(
  * `type: 'preset'` discriminator — our lib type doesn't carry that
  * field, so a structural cast is necessary at the boundary.
  */
-function withExcludeDynamicSections(
-    systemPrompt: CompiledAgent['systemPrompt'],
-): Options['systemPrompt'] {
-    if (
-        typeof systemPrompt === 'object' &&
-        systemPrompt !== null &&
-        'type' in systemPrompt &&
-        systemPrompt.type === 'preset'
-    ) {
+function withExcludeDynamicSections(systemPrompt: CompiledAgent['systemPrompt']): Options['systemPrompt'] {
+    if (typeof systemPrompt === 'object' && systemPrompt !== null && 'type' in systemPrompt && systemPrompt.type === 'preset') {
         return {
             type: 'preset',
             preset: systemPrompt.preset,

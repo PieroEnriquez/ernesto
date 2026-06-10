@@ -14,11 +14,7 @@
 import type { DashboardSpec, Filter } from './schema';
 
 export type FilterValues = Record<string, FilterValue>;
-export type FilterValue =
-    | DateRangeValue
-    | string[]
-    | string
-    | null;
+export type FilterValue = DateRangeValue | string[] | string | null;
 
 export interface DateRangeValue {
     /** ISO date (YYYY-MM-DD). */
@@ -34,11 +30,7 @@ export interface BoundQuery {
 
 const BIND_REFERENCE_RE = /(?<![:\w]):([a-zA-Z][a-zA-Z0-9_]*)/g;
 
-export function substituteBinds(
-    sql: string,
-    spec: DashboardSpec,
-    filterValues: FilterValues,
-): BoundQuery {
+export function substituteBinds(sql: string, spec: DashboardSpec, filterValues: FilterValues): BoundQuery {
     const resolved = resolveAllBinds(spec, filterValues);
     const values: unknown[] = [];
     const placeholderByName = new Map<string, number>();
@@ -64,10 +56,7 @@ export function substituteBinds(
  * `null` (the spec idiom `(:foo IS NULL OR col = ANY(:foo))` short-
  * circuits).
  */
-function resolveAllBinds(
-    spec: DashboardSpec,
-    filterValues: FilterValues,
-): Record<string, unknown> {
+function resolveAllBinds(spec: DashboardSpec, filterValues: FilterValues): Record<string, unknown> {
     const out: Record<string, unknown> = {};
     for (const filter of spec.filters) {
         const value = filterValues[filter.id];
@@ -109,13 +98,20 @@ function valueForBind(filter: Filter, bindKey: string, value: FilterValue): unkn
 }
 
 function defaultDateRange(preset: string): DateRangeValue {
-    const days = preset === 'last_7d' ? 7
-        : preset === 'last_30d' ? 30
-        : preset === 'last_90d' ? 90
-        : preset === 'last_180d' ? 180
-        : preset === 'last_365d' ? 365
-        : preset === 'ytd' ? Math.max(1, Math.floor((Date.now() - new Date(new Date().getUTCFullYear(), 0, 1).getTime()) / 86_400_000))
-        : 90;
+    const days =
+        preset === 'last_7d'
+            ? 7
+            : preset === 'last_30d'
+              ? 30
+              : preset === 'last_90d'
+                ? 90
+                : preset === 'last_180d'
+                  ? 180
+                  : preset === 'last_365d'
+                    ? 365
+                    : preset === 'ytd'
+                      ? Math.max(1, Math.floor((Date.now() - new Date(new Date().getUTCFullYear(), 0, 1).getTime()) / 86_400_000))
+                      : 90;
     const end = new Date();
     const start = new Date(end.getTime() - days * 86_400_000);
     return { startDate: iso(start), endDate: iso(end) };

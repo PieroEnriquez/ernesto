@@ -45,9 +45,7 @@ describe('compileManagedAgentMdToWorkflow', () => {
         const wf = compileManagedAgentMdToWorkflow(md);
 
         expect(wf.name).toBe('payments-analyst');
-        expect(wf.description).toBe(
-            'Investigate payments anomalies for a given product.',
-        );
+        expect(wf.description).toBe('Investigate payments anomalies for a given product.');
         expect(wf.version).toBe(1);
         expect(wf.tags).toEqual(['managed-agent']);
         expect(wf.scope).toEqual(['payments:read', 'redshift:query']);

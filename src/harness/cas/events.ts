@@ -18,16 +18,8 @@
  */
 
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
-import type {
-    AssistantBlock,
-    HarnessEvent,
-} from '../types';
-import {
-    buildUsageEvent,
-    createBaseTranslatorState,
-    mapStream,
-    type BaseTranslatorState,
-} from '../translator-base';
+import type { AssistantBlock, HarnessEvent } from '../types';
+import { buildUsageEvent, createBaseTranslatorState, mapStream, type BaseTranslatorState } from '../translator-base';
 
 /**
  * Per-stream state the row translator needs across rows. Tracks open
@@ -49,10 +41,7 @@ export function createTranslatorState(): TranslatorState {
  * Lazy — pulls from the source iterator and yields per-row, so consumers
  * keep backpressure end-to-end.
  */
-export function mapSdkStream(
-    sdkMessages: AsyncIterable<SDKMessage>,
-    runId: string,
-): AsyncGenerator<HarnessEvent> {
+export function mapSdkStream(sdkMessages: AsyncIterable<SDKMessage>, runId: string): AsyncGenerator<HarnessEvent> {
     return mapStream(sdkMessages, runId, createTranslatorState, mapSdkMessage);
 }
 
@@ -61,11 +50,7 @@ export function mapSdkStream(
  * builds inline SDK message fixtures and asserts the emitted
  * `HarnessEvent[]` for each row independently.
  */
-export function mapSdkMessage(
-    msg: SDKMessage,
-    runId: string,
-    state: TranslatorState,
-): HarnessEvent[] {
+export function mapSdkMessage(msg: SDKMessage, runId: string, state: TranslatorState): HarnessEvent[] {
     switch (msg.type) {
         case 'system':
             return mapSystem(msg, runId, state);
@@ -85,11 +70,7 @@ export function mapSdkMessage(
     }
 }
 
-function mapSystem(
-    msg: Extract<SDKMessage, { type: 'system' }>,
-    runId: string,
-    state: TranslatorState,
-): HarnessEvent[] {
+function mapSystem(msg: Extract<SDKMessage, { type: 'system' }>, runId: string, state: TranslatorState): HarnessEvent[] {
     if (msg.subtype === 'init' && !state.sawInit) {
         state.sawInit = true;
         return [{ kind: 'status', status: 'running', runId }];
@@ -97,11 +78,7 @@ function mapSystem(
     return [];
 }
 
-function mapAssistant(
-    msg: Extract<SDKMessage, { type: 'assistant' }>,
-    runId: string,
-    state: TranslatorState,
-): HarnessEvent[] {
+function mapAssistant(msg: Extract<SDKMessage, { type: 'assistant' }>, runId: string, state: TranslatorState): HarnessEvent[] {
     const out: HarnessEvent[] = [];
     const parentToolUseId = msg.parent_tool_use_id ?? null;
 
@@ -142,11 +119,7 @@ function mapAssistant(
                     runId,
                 });
             } else if (b.type === 'thinking') {
-                const text = typeof b.thinking === 'string'
-                    ? b.thinking
-                    : typeof b.text === 'string'
-                        ? b.text
-                        : '';
+                const text = typeof b.thinking === 'string' ? b.thinking : typeof b.text === 'string' ? b.text : '';
                 out.push({ kind: 'thinking', text, runId });
                 // `thinking` blocks are *not* re-included in
                 // `assistant_message.content` — they have their own
@@ -169,11 +142,7 @@ function mapAssistant(
     return out;
 }
 
-function mapUser(
-    msg: Extract<SDKMessage, { type: 'user' }>,
-    runId: string,
-    state: TranslatorState,
-): HarnessEvent[] {
+function mapUser(msg: Extract<SDKMessage, { type: 'user' }>, runId: string, state: TranslatorState): HarnessEvent[] {
     const out: HarnessEvent[] = [];
     const rawContent = msg.message.content as unknown;
     if (!Array.isArray(rawContent)) return out;
@@ -181,8 +150,7 @@ function mapUser(
     for (const block of rawContent) {
         const b = block as { type?: string } & Record<string, unknown>;
         if (b.type === 'tool_result') {
-            const toolUseId =
-                typeof b.tool_use_id === 'string' ? b.tool_use_id : '';
+            const toolUseId = typeof b.tool_use_id === 'string' ? b.tool_use_id : '';
             const output = b.content as unknown;
             const isError = b.is_error === true;
             out.push({
@@ -214,10 +182,7 @@ function mapUser(
     return out;
 }
 
-function mapStreamEvent(
-    msg: Extract<SDKMessage, { type: 'stream_event' }>,
-    runId: string,
-): HarnessEvent[] {
+function mapStreamEvent(msg: Extract<SDKMessage, { type: 'stream_event' }>, runId: string): HarnessEvent[] {
     const ev = msg.event as { type?: string } & Record<string, unknown>;
     // Per-token text delta — the only stream_event shape we surface.
     // `tool_use` / `thinking` block deltas are skipped; they re-emerge
@@ -232,24 +197,14 @@ function mapStreamEvent(
     return [];
 }
 
-function mapResult(
-    msg: Extract<SDKMessage, { type: 'result' }>,
-    runId: string,
-): HarnessEvent[] {
+function mapResult(msg: Extract<SDKMessage, { type: 'result' }>, runId: string): HarnessEvent[] {
     const out: HarnessEvent[] = [];
     const usage = msg.usage;
-    const inputTokens =
-        ((usage as { input_tokens?: number } | undefined)?.input_tokens) ?? 0;
-    const outputTokens =
-        ((usage as { output_tokens?: number } | undefined)?.output_tokens) ?? 0;
-    const cacheRead =
-        ((usage as { cache_read_input_tokens?: number } | undefined)
-            ?.cache_read_input_tokens) ?? undefined;
-    const cacheWrite =
-        ((usage as { cache_creation_input_tokens?: number } | undefined)
-            ?.cache_creation_input_tokens) ?? undefined;
-    const costUsd =
-        typeof msg.total_cost_usd === 'number' ? msg.total_cost_usd : undefined;
+    const inputTokens = (usage as { input_tokens?: number } | undefined)?.input_tokens ?? 0;
+    const outputTokens = (usage as { output_tokens?: number } | undefined)?.output_tokens ?? 0;
+    const cacheRead = (usage as { cache_read_input_tokens?: number } | undefined)?.cache_read_input_tokens ?? undefined;
+    const cacheWrite = (usage as { cache_creation_input_tokens?: number } | undefined)?.cache_creation_input_tokens ?? undefined;
+    const costUsd = typeof msg.total_cost_usd === 'number' ? msg.total_cost_usd : undefined;
 
     // `usage` fires AFTER `assistant_message`, BEFORE the next event.
     // For terminal results, it fires just before `status: completed` /
@@ -276,9 +231,7 @@ function mapResult(
     // cancellation is surfaced via `Query.interrupt()` resolving, and
     // the caller emits `status: canceled` separately in `send.ts`.
     const errors = (msg as { errors?: unknown }).errors;
-    const message = Array.isArray(errors) && typeof errors[0] === 'string'
-        ? errors[0]
-        : `CAS run ${msg.subtype}`;
+    const message = Array.isArray(errors) && typeof errors[0] === 'string' ? errors[0] : `CAS run ${msg.subtype}`;
     out.push({ kind: 'error', message, recoverable: false, runId });
     out.push({ kind: 'status', status: 'errored', runId });
     return out;

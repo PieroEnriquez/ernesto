@@ -38,13 +38,7 @@ import { HitlController, validateAgainstSchema, type HitlPauseInput } from './hi
 import { walk, type WalkResult, type WalkerDeps } from './engine/walker';
 import type { GraphSeed } from './engine/run-graph';
 import { KindRegistry, mergeWorkflowPolicyDefaults } from './kind-registry';
-import {
-    type DispatchMiddleware,
-    type DispatchPreContext,
-    buildPreContext,
-    runBefore,
-    runAfter,
-} from './middleware';
+import { type DispatchMiddleware, type DispatchPreContext, buildPreContext, runBefore, runAfter } from './middleware';
 
 const NULL_LOG: EngineLogger = {
     info: () => undefined,
@@ -97,15 +91,10 @@ class Runner implements WorkflowRunner {
         // handled inline by the engine (not a dispatcher kind). The
         // dispatcher carries only leaf handlers (route/input/agent/
         // subworkflow), supplied by the caller.
-        this.hitl = new HitlController(this.bus, this.store, (runId) =>
-            this.nextSeq(runId),
-        );
+        this.hitl = new HitlController(this.bus, this.store, (runId) => this.nextSeq(runId));
     }
 
-    registerStepKind(
-        kind: StepKind,
-        handler: StepKindHandler<any>,
-    ): void {
+    registerStepKind(kind: StepKind, handler: StepKindHandler<any>): void {
         this.dispatcher.register(kind, handler);
     }
 
@@ -121,9 +110,7 @@ class Runner implements WorkflowRunner {
         this.middlewares.push(mw);
     }
 
-    async subscribeEvents(
-        opts: SubscribeEventsOpts,
-    ): Promise<EventSubscription> {
+    async subscribeEvents(opts: SubscribeEventsOpts): Promise<EventSubscription> {
         return this.bus.subscribe(opts);
     }
 
@@ -139,13 +126,9 @@ class Runner implements WorkflowRunner {
     ): Promise<Run<TOut>> {
         // M5: resolve via the kind registry first, falling back to the
         // workflow reader. Shared with the resume path (`resumeDurable`).
-        const { workflowDecl, declFromRegistry } = await this.resolveKind(
-            kind,
-            inputs,
-        );
+        const { workflowDecl, declFromRegistry } = await this.resolveKind(kind, inputs);
 
-        const runId =
-            opts.preallocatedRunId ?? `run-${kind}-${randomUUID()}`;
+        const runId = opts.preallocatedRunId ?? `run-${kind}-${randomUUID()}`;
         this.seqByRun.set(runId, 0);
 
         const startedAt = Date.now();
@@ -167,10 +150,7 @@ class Runner implements WorkflowRunner {
             // middleware (notably `workspaceAllocatorMiddleware`) sees the
             // `cwd: 'workspace-workdir'` invariant for agent-main workflows
             // that arrive via the reader without going through the registry.
-            const synthesizedPolicy = mergeWorkflowPolicyDefaults(
-                workflowDecl.declaration,
-                undefined,
-            );
+            const synthesizedPolicy = mergeWorkflowPolicyDefaults(workflowDecl.declaration, undefined);
             preCtx.decl = {
                 kind: 'workflow',
                 uri: workflowDecl.name,
@@ -213,12 +193,8 @@ class Runner implements WorkflowRunner {
                         inputs: postPreCtx.inputs,
                         principal: postPreCtx.principal,
                         opts: { ...postPreCtx.opts, abortSignal: ac.signal },
-                        ...(postPreCtx.workdirRoot !== undefined
-                            ? { workdirRoot: postPreCtx.workdirRoot }
-                            : {}),
-                        ...(Object.keys(postPreCtx.annotations).length > 0
-                            ? { annotations: postPreCtx.annotations }
-                            : {}),
+                        ...(postPreCtx.workdirRoot !== undefined ? { workdirRoot: postPreCtx.workdirRoot } : {}),
+                        ...(Object.keys(postPreCtx.annotations).length > 0 ? { annotations: postPreCtx.annotations } : {}),
                     },
                     this.walkerDeps(),
                 );
@@ -247,12 +223,7 @@ class Runner implements WorkflowRunner {
             this.inflightAborts.delete(runId);
         }
 
-        const run = projectRunHandle<TOut>(
-            walkResult,
-            surfaceRunId,
-            startedAt,
-            (filterRunId) => this.subscribeRunEvents(filterRunId),
-        );
+        const run = projectRunHandle<TOut>(walkResult, surfaceRunId, startedAt, (filterRunId) => this.subscribeRunEvents(filterRunId));
 
         // M6: post-dispatch middleware chain (reverse order). Errors
         // here don't override the run's terminal status — they're
@@ -299,23 +270,15 @@ class Runner implements WorkflowRunner {
         if (!state || state.status !== 'paused' || !state.resume) {
             throw new Error(notPending);
         }
-        const parked = state.resume.paused.find(
-            (p) => p.promptId === input.promptId,
-        );
+        const parked = state.resume.paused.find((p) => p.promptId === input.promptId);
         if (!parked) throw new Error(notPending);
 
-        const validationError = validateAgainstSchema(
-            input.value,
-            parked.schema ?? {},
-        );
+        const validationError = validateAgainstSchema(input.value, parked.schema ?? {});
         if (validationError) {
             throw new Error(`HITL value invalid: ${validationError}`);
         }
 
-        const { workflowDecl } = await this.resolveKind(
-            state.workflow,
-            state.inputs,
-        );
+        const { workflowDecl } = await this.resolveKind(state.workflow, state.inputs);
 
         const seed: GraphSeed = {
             outputs: state.resume.outputs,
@@ -324,9 +287,7 @@ class Runner implements WorkflowRunner {
             // Any other still-parked pauses stay parked (re-held without
             // re-running their handler) — multi-pause runs converge over
             // successive resumes.
-            parked: state.resume.paused.filter(
-                (p) => p.promptId !== input.promptId,
-            ),
+            parked: state.resume.paused.filter((p) => p.promptId !== input.promptId),
         };
 
         const ac = new AbortController();
@@ -379,11 +340,9 @@ class Runner implements WorkflowRunner {
                 source: 'kind-registry',
                 declaration: {
                     name: declFromRegistry.uri,
-                    description:
-                        declFromRegistry.route.description ?? declFromRegistry.uri,
+                    description: declFromRegistry.route.description ?? declFromRegistry.uri,
                     version: 1 as const,
-                    ...(declFromRegistry.route.scope &&
-                    Array.isArray(declFromRegistry.route.scope)
+                    ...(declFromRegistry.route.scope && Array.isArray(declFromRegistry.route.scope)
                         ? { scope: [...declFromRegistry.route.scope] }
                         : {}),
                     steps: {
@@ -423,23 +382,12 @@ class Runner implements WorkflowRunner {
                 const childOpts: DispatchOpts = {
                     ...parent.routing.context,
                     parentRunId: parent.runId,
-                    ...(parent.routing.transport !== undefined
-                        ? { transport: parent.routing.transport }
-                        : {}),
-                    ...(parent.routing.surfaceRunId !== undefined
-                        ? { surfaceRunId: parent.routing.surfaceRunId }
-                        : {}),
-                    ...(parent.routing.conversationKey !== undefined
-                        ? { conversationKey: parent.routing.conversationKey }
-                        : {}),
+                    ...(parent.routing.transport !== undefined ? { transport: parent.routing.transport } : {}),
+                    ...(parent.routing.surfaceRunId !== undefined ? { surfaceRunId: parent.routing.surfaceRunId } : {}),
+                    ...(parent.routing.conversationKey !== undefined ? { conversationKey: parent.routing.conversationKey } : {}),
                     context: parent.routing.context,
                 };
-                const child = await this.dispatch(
-                    uri,
-                    inputs,
-                    parent.principal,
-                    childOpts,
-                );
+                const child = await this.dispatch(uri, inputs, parent.principal, childOpts);
                 return {
                     runId: child.runId,
                     status: child.status,
@@ -471,7 +419,7 @@ class Runner implements WorkflowRunner {
     }
 
     private nextSeq(runId: string): number {
-        const next = (this.seqByRun.get(runId) ?? 0);
+        const next = this.seqByRun.get(runId) ?? 0;
         this.seqByRun.set(runId, next + 1);
         return next;
     }
@@ -506,9 +454,7 @@ class Runner implements WorkflowRunner {
                     while (true) {
                         while (queue.length) yield queue.shift()!;
                         if (closed) break;
-                        await new Promise<void>((resolve) =>
-                            wakers.push(resolve),
-                        );
+                        await new Promise<void>((resolve) => wakers.push(resolve));
                     }
                     while (queue.length) yield queue.shift()!;
                 } finally {
@@ -535,10 +481,7 @@ function projectRunHandle<TOut>(
 ): Run<TOut> {
     const durationMs = Date.now() - startedAt;
     const status = mapWalkStatus(result.status);
-    const output =
-        result.status === 'completed'
-            ? (result.outputs as unknown as TOut)
-            : undefined;
+    const output = result.status === 'completed' ? (result.outputs as unknown as TOut) : undefined;
     const error = result.error;
     const usage: RunUsage = { ...ZERO_USAGE, durationMs };
     const handle: Run<TOut> = {
@@ -590,9 +533,7 @@ function principalFromRouting(routing: Record<string, unknown>): Principal {
     return {
         kind: 'user',
         userId: typeof routing.userId === 'string' ? routing.userId : 'unknown',
-        scopes: new Set(
-            Array.isArray(routing.scopes) ? (routing.scopes as string[]) : [],
-        ),
+        scopes: new Set(Array.isArray(routing.scopes) ? (routing.scopes as string[]) : []),
     };
 }
 
@@ -601,12 +542,7 @@ function principalFromRouting(routing: Record<string, unknown>): Principal {
  *  map to typed opts; everything else is replayed as `context`. */
 function optsFromRouting(routing: Record<string, unknown>): DispatchOpts {
     const opts: DispatchOpts = {};
-    if (
-        routing.transport === 'in-process' ||
-        routing.transport === 'mcp' ||
-        routing.transport === 'laptop' ||
-        routing.transport === 'vm'
-    ) {
+    if (routing.transport === 'in-process' || routing.transport === 'mcp' || routing.transport === 'laptop' || routing.transport === 'vm') {
         opts.transport = routing.transport;
     }
     if (typeof routing.surfaceRunId === 'string') opts.surfaceRunId = routing.surfaceRunId;
@@ -635,10 +571,14 @@ function optsFromRouting(routing: Record<string, unknown>): DispatchOpts {
 
 function mapWalkStatus(s: WalkResult['status']): RunHandleStatus {
     switch (s) {
-        case 'completed': return 'completed';
-        case 'errored':   return 'errored';
-        case 'canceled':  return 'canceled';
-        case 'paused':    return 'awaiting_input';
+        case 'completed':
+            return 'completed';
+        case 'errored':
+            return 'errored';
+        case 'canceled':
+            return 'canceled';
+        case 'paused':
+            return 'awaiting_input';
         default: {
             const _exhaustive: never = s;
             void _exhaustive;

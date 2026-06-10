@@ -39,8 +39,5 @@ export type {
     JsonSchemaOutputFormat,
 } from './types';
 
-export {
-    parseDynamicWorkflowJs,
-    DynamicWorkflowParseError,
-} from './parse-dynamic-js';
+export { parseDynamicWorkflowJs, DynamicWorkflowParseError } from './parse-dynamic-js';
 export type { ParsedDynamicWorkflow } from './parse-dynamic-js';

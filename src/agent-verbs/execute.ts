@@ -78,13 +78,7 @@ export const executeOutputSchema = z.discriminatedUnion('ok', [
     z.object({ ok: z.literal(true), data: z.unknown() }),
     z.object({
         ok: z.literal(false),
-        error: z.enum([
-            'route_not_found',
-            'scope_denied',
-            'invalid_input',
-            'invalid_output',
-            'handler_failed',
-        ]),
+        error: z.enum(['route_not_found', 'scope_denied', 'invalid_input', 'invalid_output', 'handler_failed']),
         details: z.unknown().optional(),
     }),
 ]);
@@ -154,10 +148,7 @@ export interface ExecuteVerbContext {
      * `{ main: routeData }` outputs envelope; multi-step workflows
      * return their full outputs map as `data`.
      */
-    dispatchByUri?: (
-        uri: string,
-        inputs: Record<string, unknown>,
-    ) => Promise<DispatchResult>;
+    dispatchByUri?: (uri: string, inputs: Record<string, unknown>) => Promise<DispatchResult>;
 }
 
 /**
@@ -214,15 +205,11 @@ export async function handleExecute(
             ok: false,
             error: 'handler_failed',
             details: {
-                message:
-                    'execute verb: ctx.dispatchByUri not wired — backend tool-surface composer must supply it',
+                message: 'execute verb: ctx.dispatchByUri not wired — backend tool-surface composer must supply it',
             },
         };
     }
-    const dispatched = await ctx.dispatchByUri(
-        parsed.data.uri,
-        (params as Record<string, unknown>) ?? {},
-    );
+    const dispatched = await ctx.dispatchByUri(parsed.data.uri, (params as Record<string, unknown>) ?? {});
     if (!dispatched.ok) return dispatched;
 
     // Archive + preview projection. Previously buried inside
@@ -286,9 +273,7 @@ export async function handleExecute(
         preview = dispatched.data;
     } else if (previewLimit > 0) {
         const custom = registry.getCompactor?.(parsed.data.uri);
-        preview = custom
-            ? custom(dispatched.data, previewLimit)
-            : compactify(dispatched.data, previewLimit);
+        preview = custom ? custom(dispatched.data, previewLimit) : compactify(dispatched.data, previewLimit);
     }
 
     return {

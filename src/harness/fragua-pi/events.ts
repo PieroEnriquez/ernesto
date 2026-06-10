@@ -53,21 +53,9 @@
  *   `false` at the harness layer.**
  */
 
-import type {
-    AgentEvent,
-    AgentMessage,
-} from '@mariozechner/pi-agent-core';
-import type {
-    AssistantMessage,
-    AssistantMessageEvent,
-    ToolCall as PiToolCall,
-    ToolResultMessage,
-} from '@mariozechner/pi-ai';
-import type {
-    AssistantBlock,
-    HarnessEvent,
-    RunStatus,
-} from '../types';
+import type { AgentEvent, AgentMessage } from '@mariozechner/pi-agent-core';
+import type { AssistantMessage, AssistantMessageEvent, ToolCall as PiToolCall, ToolResultMessage } from '@mariozechner/pi-ai';
+import type { AssistantBlock, HarnessEvent, RunStatus } from '../types';
 
 /** Per-stream state needed across rows. We track tool-call ids opened
  *  by the assistant turn so the matching `tool_execution_end` can emit
@@ -125,10 +113,7 @@ export function mapStopReason(s: string | undefined): RunStatus {
  * function exists for tests + the rare consumer that holds an
  * already-collected event sequence.
  */
-export async function* mapPiAgentStream(
-    events: AsyncIterable<AgentEvent>,
-    runId: string,
-): AsyncGenerator<HarnessEvent> {
+export async function* mapPiAgentStream(events: AsyncIterable<AgentEvent>, runId: string): AsyncGenerator<HarnessEvent> {
     const state = createTranslatorState();
     for await (const ev of events) {
         for (const out of mapPiAgentEvent(ev, runId, state)) {
@@ -142,11 +127,7 @@ export async function* mapPiAgentStream(
  * asserts the emitted `HarnessEvent[]` per row. The same translator is
  * driven by `send.ts`'s `agent.subscribe` callback.
  */
-export function mapPiAgentEvent(
-    ev: AgentEvent,
-    runId: string,
-    state: TranslatorState,
-): HarnessEvent[] {
+export function mapPiAgentEvent(ev: AgentEvent, runId: string, state: TranslatorState): HarnessEvent[] {
     switch (ev.type) {
         case 'agent_start':
             return mapAgentStart(runId, state);
@@ -183,10 +164,7 @@ function mapAgentStart(runId: string, state: TranslatorState): HarnessEvent[] {
     return [{ kind: 'status', status: 'running', runId }];
 }
 
-function mapAgentEnd(
-    ev: Extract<AgentEvent, { type: 'agent_end' }>,
-    runId: string,
-): HarnessEvent[] {
+function mapAgentEnd(ev: Extract<AgentEvent, { type: 'agent_end' }>, runId: string): HarnessEvent[] {
     // Pull the terminal status from the trailing assistant message's
     // `stopReason`. A run that ended on a tool result still has the
     // assistant message we want one step back; walk from the tail.
@@ -215,10 +193,7 @@ function mapAgentEnd(
     return out;
 }
 
-function mapMessageUpdate(
-    ev: Extract<AgentEvent, { type: 'message_update' }>,
-    runId: string,
-): HarnessEvent[] {
+function mapMessageUpdate(ev: Extract<AgentEvent, { type: 'message_update' }>, runId: string): HarnessEvent[] {
     const inner = ev.assistantMessageEvent as AssistantMessageEvent;
     // `text_delta` is the per-token text stream.
     if (inner.type === 'text_delta' && typeof inner.delta === 'string') {
@@ -233,11 +208,7 @@ function mapMessageUpdate(
     return [];
 }
 
-function mapMessageEnd(
-    ev: Extract<AgentEvent, { type: 'message_end' }>,
-    runId: string,
-    state: TranslatorState,
-): HarnessEvent[] {
+function mapMessageEnd(ev: Extract<AgentEvent, { type: 'message_end' }>, runId: string, state: TranslatorState): HarnessEvent[] {
     const message = ev.message as AgentMessage;
     if (isAssistantMessage(message)) {
         return mapAssistantMessage(message, runId, state);
@@ -250,11 +221,7 @@ function mapMessageEnd(
     return [];
 }
 
-function mapAssistantMessage(
-    msg: AssistantMessage,
-    runId: string,
-    state: TranslatorState,
-): HarnessEvent[] {
+function mapAssistantMessage(msg: AssistantMessage, runId: string, state: TranslatorState): HarnessEvent[] {
     const out: HarnessEvent[] = [];
     const blocks: AssistantBlock[] = [];
     const thinking: string[] = [];
@@ -303,11 +270,7 @@ function mapAssistantMessage(
     return out;
 }
 
-function mapToolResultMessage(
-    msg: ToolResultMessage,
-    runId: string,
-    state: TranslatorState,
-): HarnessEvent[] {
+function mapToolResultMessage(msg: ToolResultMessage, runId: string, state: TranslatorState): HarnessEvent[] {
     // We may not have seen `tool_execution_end` (the high-level
     // `message_end` of a tool-result message can arrive without one in
     // some pi-agent-core paths) — emit the canonical `tool_result`
@@ -380,12 +343,7 @@ function mapToolExecutionEnd(
  *  We probe the discriminator and a key field. */
 function isAssistantMessage(m: AgentMessage): m is AssistantMessage {
     const mm = m as { role?: string; content?: unknown; usage?: unknown };
-    return (
-        mm.role === 'assistant' &&
-        Array.isArray(mm.content) &&
-        typeof mm.usage === 'object' &&
-        mm.usage !== null
-    );
+    return mm.role === 'assistant' && Array.isArray(mm.content) && typeof mm.usage === 'object' && mm.usage !== null;
 }
 
 function isToolResultMessage(m: AgentMessage): m is ToolResultMessage {

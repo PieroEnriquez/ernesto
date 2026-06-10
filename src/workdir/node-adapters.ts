@@ -1,10 +1,7 @@
 import { promises as fsp } from 'fs';
 import * as path from 'path';
 import { spawn } from 'child_process';
-import {
-    FsAdapter, MasterFsAdapter, MasterFsResolution,
-    GlobOptions, GrepOptions, GrepResult, GrepOutputMode,
-} from './types';
+import { FsAdapter, MasterFsAdapter, MasterFsResolution, GlobOptions, GrepOptions, GrepResult, GrepOutputMode } from './types';
 import { compileGlob, safeSubpath } from './glob-util';
 
 /** Backend & CLI default. Wraps node `fs`, rooted at `workingTreeRoot`. */
@@ -36,7 +33,9 @@ export function makeNodeFsAdapter(workingTreeRoot: string): FsAdapter {
             await fsp.mkdir(path.dirname(a), { recursive: true });
             try {
                 await fsp.unlink(a);
-            } catch { /* not present */ }
+            } catch {
+                /* not present */
+            }
             await fsp.link(sourcePath, a);
         },
         async remove(p) {
@@ -79,7 +78,7 @@ export function makeNodeFsAdapter(workingTreeRoot: string): FsAdapter {
             await walk(startRel);
             // Newest-first to match Claude Code's native Glob behavior.
             collected.sort((a, b) => b.mtimeMs - a.mtimeMs);
-            return collected.map(c => c.relPath);
+            return collected.map((c) => c.relPath);
         },
         async grep(options: GrepOptions): Promise<GrepResult> {
             return runRipgrep(workingTreeRoot, options);
@@ -226,14 +225,17 @@ async function runRipgrep(workingTreeRoot: string, opts: GrepOptions): Promise<G
                 }
                 out += d.toString('utf8');
             });
-            child.stderr.on('data', (d: Buffer) => { err += d.toString('utf8'); });
+            child.stderr.on('data', (d: Buffer) => {
+                err += d.toString('utf8');
+            });
             child.on('error', (e: NodeJS.ErrnoException) => {
                 if (e.code === 'ENOENT') reject(new RipgrepNotInstalledError());
                 else reject(e);
             });
             child.on('close', (code: number | null) => {
                 if (code === 0) resolve(out);
-                else if (code === 1) resolve(''); // no matches
+                else if (code === 1)
+                    resolve(''); // no matches
                 else reject(new Error(`ripgrep_failed: ${err.slice(0, 200)}`));
             });
         });

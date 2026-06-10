@@ -226,12 +226,7 @@ describe('workspaceAllocatorMiddleware', () => {
         }));
         runner.use(workspaceAllocatorMiddleware({ allocate }));
 
-        const run = await runner.dispatch(
-            'reader-agent-wf',
-            { prompt: 'go' },
-            userPrincipal('u', []),
-            {},
-        );
+        const run = await runner.dispatch('reader-agent-wf', { prompt: 'go' }, userPrincipal('u', []), {});
         expect(run.status).toBe('completed');
         expect(allocate).toHaveBeenCalledTimes(1);
         expect(observedWorkdirRoot).toBe('/tmp/reader-default-workdir');
@@ -241,9 +236,7 @@ describe('workspaceAllocatorMiddleware', () => {
 describe('sandboxBindMiddleware', () => {
     it('builds hooks when policy.tools.native === sandboxed + workdir present', async () => {
         const runner = createRunner();
-        const build = vi.fn(
-            (workdirRoot: string) => `hooks-for-${workdirRoot}`,
-        );
+        const build = vi.fn((workdirRoot: string) => `hooks-for-${workdirRoot}`);
         let observedHooks: unknown;
         runner.registerStepKind('route', async () => ({
             kind: 'completed',
@@ -270,10 +263,7 @@ describe('sandboxBindMiddleware', () => {
 
         await runner.dispatch('wf', {}, userPrincipal('u', []), {});
         expect(build).toHaveBeenCalledTimes(1);
-        expect(build).toHaveBeenCalledWith(
-            '/tmp/sandbox-test',
-            expect.objectContaining({ kind: 'wf' }),
-        );
+        expect(build).toHaveBeenCalledWith('/tmp/sandbox-test', expect.objectContaining({ kind: 'wf' }));
         expect(observedHooks).toBe('hooks-for-/tmp/sandbox-test');
     });
 
@@ -509,13 +499,6 @@ describe('workspace-tier middleware composition', () => {
         // before: allocate → bind → compose
         // step runs
         // after (reverse): teardown → release   (sandbox-bind has no after)
-        expect(events).toEqual([
-            'allocate',
-            'bind:/tmp/wt',
-            'compose:/tmp/wt:thread-99',
-            'step',
-            'teardown',
-            'release',
-        ]);
+        expect(events).toEqual(['allocate', 'bind:/tmp/wt', 'compose:/tmp/wt:thread-99', 'step', 'teardown', 'release']);
     });
 });

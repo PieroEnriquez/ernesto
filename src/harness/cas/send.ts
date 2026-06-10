@@ -10,18 +10,9 @@
 
 import debug from 'debug';
 import { query as casQuery } from '@anthropic-ai/claude-agent-sdk';
-import type {
-    Options,
-    Query,
-    SDKMessage,
-    SDKResultMessage,
-} from '@anthropic-ai/claude-agent-sdk';
+import type { Options, Query, SDKMessage, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { CompiledAgent } from '../../managed-agents/types';
-import type {
-    AssistantBlock,
-    RunHandle,
-    RunResult,
-} from '../types';
+import type { AssistantBlock, RunHandle, RunResult } from '../types';
 import { makeRunHandle } from '../run-handle';
 import { compileAgentToSdkOptions, type CompileContext } from './compile';
 import { createTranslatorState, mapSdkMessage } from './events';
@@ -66,15 +57,7 @@ export interface MapResultInput {
  * "missing" from "zero".
  */
 export function mapResult(input: MapResultInput): RunResult {
-    const {
-        runId,
-        status,
-        finalAssistant,
-        usage,
-        durationMs,
-        errorMessage,
-        sdkResult,
-    } = input;
+    const { runId, status, finalAssistant, usage, durationMs, errorMessage, sdkResult } = input;
 
     const result: RunResult = {
         runId,
@@ -133,10 +116,7 @@ export function mapResult(input: MapResultInput): RunResult {
         }
         // `structured_output` also only on `SDKResultSuccess`. This is
         // the gap-3 fix — historically dropped on the floor.
-        if (
-            sdkResult.subtype === 'success' &&
-            sdkResult.structured_output !== undefined
-        ) {
+        if (sdkResult.subtype === 'success' && sdkResult.structured_output !== undefined) {
             result.structuredOutput = sdkResult.structured_output;
         }
     }
@@ -225,8 +205,7 @@ function buildRunHandle(
         runId,
         source: sdkQuery as AsyncIterable<SDKMessage>,
         createState: createTranslatorState,
-        mapMessage: (msg, id, state) =>
-            mapSdkMessage(msg, id, state as ReturnType<typeof createTranslatorState>),
+        mapMessage: (msg, id, state) => mapSdkMessage(msg, id, state as ReturnType<typeof createTranslatorState>),
         // Capture the SDK's terminal `result` row so `mapResult` can read
         // the SDK-specific extras (duration_api_ms, modelUsage, subtype,
         // result text, structured_output, session_id) off it.
@@ -243,14 +222,10 @@ function buildRunHandle(
             mapResult({
                 runId: fold.runId,
                 status: fold.status,
-                ...(fold.finalAssistant !== undefined
-                    ? { finalAssistant: fold.finalAssistant }
-                    : {}),
+                ...(fold.finalAssistant !== undefined ? { finalAssistant: fold.finalAssistant } : {}),
                 usage: fold.usage,
                 durationMs: fold.durationMs,
-                ...(fold.errorMessage !== undefined
-                    ? { errorMessage: fold.errorMessage }
-                    : {}),
+                ...(fold.errorMessage !== undefined ? { errorMessage: fold.errorMessage } : {}),
                 ...(raw ? { sdkResult: raw as SDKResultMessage } : {}),
             }),
     });

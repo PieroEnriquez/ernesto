@@ -7,25 +7,14 @@
  */
 
 import { load as yamlLoad, YAMLException } from 'js-yaml';
-import type {
-    WorkflowDeclaration,
-    WorkflowStep,
-    AgentStep,
-    AgentHarness,
-    RouteStep,
-    WorkflowInput,
-    WorkflowOutput,
-} from './types';
+import type { WorkflowDeclaration, WorkflowStep, AgentStep, AgentHarness, RouteStep, WorkflowInput, WorkflowOutput } from './types';
 
 export interface ParseWorkflowOptions {
     /** Used in error messages. */
     filename?: string;
 }
 
-export function parseWorkflowYaml(
-    text: string,
-    opts: ParseWorkflowOptions = {},
-): WorkflowDeclaration {
+export function parseWorkflowYaml(text: string, opts: ParseWorkflowOptions = {}): WorkflowDeclaration {
     const filename = opts.filename ?? '<workflow>';
     let raw: unknown;
     try {
@@ -33,12 +22,8 @@ export function parseWorkflowYaml(
     } catch (e) {
         if (e instanceof YAMLException) {
             const mark = e.mark;
-            const where = mark
-                ? ` (line ${mark.line + 1}, column ${mark.column + 1})`
-                : '';
-            throw new Error(
-                `${filename}: malformed YAML${where}: ${e.reason ?? e.message}`,
-            );
+            const where = mark ? ` (line ${mark.line + 1}, column ${mark.column + 1})` : '';
+            throw new Error(`${filename}: malformed YAML${where}: ${e.reason ?? e.message}`);
         }
         throw new Error(`${filename}: malformed YAML: ${(e as Error).message}`);
     }
@@ -54,21 +39,24 @@ export function parseWorkflowYaml(
 // ─── projection (raw → typed) ────────────────────────────────────────────
 
 const ALLOWED_TOP_KEYS = new Set([
-    'name', 'description', 'version', 'callableAs', 'scope',
-    'tags', 'owner', 'inputs', 'steps', 'outputs',
-    'trigger', 'concurrency',
+    'name',
+    'description',
+    'version',
+    'callableAs',
+    'scope',
+    'tags',
+    'owner',
+    'inputs',
+    'steps',
+    'outputs',
+    'trigger',
+    'concurrency',
 ]);
 
-function projectWorkflow(
-    raw: Record<string, unknown>,
-    filename: string,
-): WorkflowDeclaration {
+function projectWorkflow(raw: Record<string, unknown>, filename: string): WorkflowDeclaration {
     for (const k of Object.keys(raw)) {
         if (!ALLOWED_TOP_KEYS.has(k)) {
-            throw new Error(
-                `${filename}: unknown top-level key "${k}" ` +
-                `(allowed: ${[...ALLOWED_TOP_KEYS].sort().join(', ')})`,
-            );
+            throw new Error(`${filename}: unknown top-level key "${k}" ` + `(allowed: ${[...ALLOWED_TOP_KEYS].sort().join(', ')})`);
         }
     }
 
@@ -76,9 +64,7 @@ function projectWorkflow(
     const description = requireString(raw, 'description', filename);
     const version = raw.version;
     if (version !== 1) {
-        throw new Error(
-            `${filename}: "version" must be the literal number 1 (got ${JSON.stringify(version)})`,
-        );
+        throw new Error(`${filename}: "version" must be the literal number 1 (got ${JSON.stringify(version)})`);
     }
 
     const steps = projectSteps(raw.steps, filename);
@@ -115,10 +101,7 @@ function projectWorkflow(
     return decl;
 }
 
-function projectTrigger(
-    v: unknown,
-    filename: string,
-): WorkflowDeclaration['trigger'] {
+function projectTrigger(v: unknown, filename: string): WorkflowDeclaration['trigger'] {
     if (v === undefined || v === null) return undefined;
     if (typeof v !== 'object' || Array.isArray(v)) {
         throw new Error(`${filename}: "trigger" must be a mapping`);
@@ -137,10 +120,7 @@ function projectTrigger(
     return out;
 }
 
-function projectSteps(
-    v: unknown,
-    filename: string,
-): Record<string, WorkflowStep> {
+function projectSteps(v: unknown, filename: string): Record<string, WorkflowStep> {
     if (v === undefined || v === null) {
         throw new Error(`${filename}: "steps" is required`);
     }
@@ -158,21 +138,14 @@ function projectSteps(
     return out;
 }
 
-function projectStep(
-    stepId: string,
-    v: unknown,
-    filename: string,
-): WorkflowStep {
+function projectStep(stepId: string, v: unknown, filename: string): WorkflowStep {
     if (v === null || typeof v !== 'object' || Array.isArray(v)) {
         throw new Error(`${filename}: step "${stepId}" must be a mapping`);
     }
     const raw = v as Record<string, unknown>;
     const kind = raw.kind;
     if (typeof kind !== 'string') {
-        throw new Error(
-            `${filename}: step "${stepId}" is missing "kind:" ` +
-            `(expected one of call | route | input | agent | group)`,
-        );
+        throw new Error(`${filename}: step "${stepId}" is missing "kind:" ` + `(expected one of call | route | input | agent | group)`);
     }
     const base = projectStepBase(raw, stepId, filename);
 
@@ -209,7 +182,9 @@ function projectStep(
                 schema: raw.schema as Record<string, unknown>,
                 prompt,
                 ...(raw.defaults !== undefined ? { defaults: asRecord(raw.defaults, `step "${stepId}".defaults`, filename) } : {}),
-                ...(raw.skipIfProvided !== undefined ? { skipIfProvided: asBoolean(raw.skipIfProvided, `step "${stepId}".skipIfProvided`, filename) } : {}),
+                ...(raw.skipIfProvided !== undefined
+                    ? { skipIfProvided: asBoolean(raw.skipIfProvided, `step "${stepId}".skipIfProvided`, filename) }
+                    : {}),
                 ...(raw.timeout !== undefined ? { timeout: projectTimeout(raw.timeout, stepId, filename) } : {}),
                 ...base,
             };
@@ -219,18 +194,10 @@ function projectStep(
             // (model + systemPrompt + prompt) share the same shape;
             // validate.ts enforces "ref XOR required inline fields".
             const harness = projectHarness(raw.harness, stepId, filename);
-            const ref = raw.ref === undefined
-                ? undefined
-                : requireString(raw, 'ref', `${filename}: agent step "${stepId}"`);
-            const model = raw.model === undefined
-                ? undefined
-                : requireString(raw, 'model', `${filename}: agent step "${stepId}"`);
-            const prompt = raw.prompt === undefined
-                ? undefined
-                : requireString(raw, 'prompt', `${filename}: agent step "${stepId}"`);
-            const systemPrompt = raw.systemPrompt === undefined
-                ? undefined
-                : projectSystemPrompt(raw.systemPrompt, stepId, filename);
+            const ref = raw.ref === undefined ? undefined : requireString(raw, 'ref', `${filename}: agent step "${stepId}"`);
+            const model = raw.model === undefined ? undefined : requireString(raw, 'model', `${filename}: agent step "${stepId}"`);
+            const prompt = raw.prompt === undefined ? undefined : requireString(raw, 'prompt', `${filename}: agent step "${stepId}"`);
+            const systemPrompt = raw.systemPrompt === undefined ? undefined : projectSystemPrompt(raw.systemPrompt, stepId, filename);
             const outputFormat = projectOutputFormat(raw.outputFormat, stepId, filename);
             // providerOverride only legal when resolved harness is fragua-pi.
             // Parser-level rule: if the step pins `harness:` to anything
@@ -239,7 +206,7 @@ function projectStep(
             if (raw.providerOverride !== undefined && harness && harness !== 'fragua-pi') {
                 throw new Error(
                     `${filename}: agent step "${stepId}" has "providerOverride" but harness is "${harness}"; ` +
-                    `providerOverride is only valid when harness resolves to "fragua-pi"`,
+                        `providerOverride is only valid when harness resolves to "fragua-pi"`,
                 );
             }
             const providerOverride = projectProviderOverride(raw.providerOverride, stepId, filename);
@@ -254,14 +221,10 @@ function projectStep(
                     );
                 }
                 if (systemPrompt === undefined) {
-                    throw new Error(
-                        `${filename}: agent step "${stepId}" (inline form) is missing "systemPrompt"`,
-                    );
+                    throw new Error(`${filename}: agent step "${stepId}" (inline form) is missing "systemPrompt"`);
                 }
                 if (prompt === undefined) {
-                    throw new Error(
-                        `${filename}: agent step "${stepId}" (inline form) is missing "prompt"`,
-                    );
+                    throw new Error(`${filename}: agent step "${stepId}" (inline form) is missing "prompt"`);
                 }
             }
             const out: AgentStep = {
@@ -272,9 +235,13 @@ function projectStep(
                 ...(model !== undefined ? { model } : {}),
                 ...(systemPrompt !== undefined ? { systemPrompt } : {}),
                 ...(raw.maxTurns !== undefined ? { maxTurns: asInt(raw.maxTurns, `step "${stepId}".maxTurns`, filename) } : {}),
-                ...(raw.mcpServers !== undefined ? { mcpServers: projectStringArray(raw.mcpServers, `step "${stepId}".mcpServers`, filename) ?? [] } : {}),
+                ...(raw.mcpServers !== undefined
+                    ? { mcpServers: projectStringArray(raw.mcpServers, `step "${stepId}".mcpServers`, filename) ?? [] }
+                    : {}),
                 ...(raw.tools !== undefined ? { tools: projectStringArray(raw.tools, `step "${stepId}".tools`, filename) ?? [] } : {}),
-                ...(raw.disallowedTools !== undefined ? { disallowedTools: projectStringArray(raw.disallowedTools, `step "${stepId}".disallowedTools`, filename) ?? [] } : {}),
+                ...(raw.disallowedTools !== undefined
+                    ? { disallowedTools: projectStringArray(raw.disallowedTools, `step "${stepId}".disallowedTools`, filename) ?? [] }
+                    : {}),
                 ...(outputFormat ? { outputFormat } : {}),
                 ...(prompt !== undefined ? { prompt } : {}),
                 ...(raw.subagents !== undefined ? { subagents: projectSubagents(raw.subagents, stepId, filename) } : {}),
@@ -290,9 +257,7 @@ function projectStep(
             // children resolve at run time.
             const stepsRaw = raw.steps;
             if (typeof stepsRaw !== 'object' || stepsRaw === null || Array.isArray(stepsRaw)) {
-                throw new Error(
-                    `${filename}: group step "${stepId}".steps must be a mapping of stepId → step`,
-                );
+                throw new Error(`${filename}: group step "${stepId}".steps must be a mapping of stepId → step`);
             }
             const steps: Record<string, WorkflowStep> = {};
             for (const [sk, sv] of Object.entries(stepsRaw as Record<string, unknown>)) {
@@ -301,12 +266,8 @@ function projectStep(
             return {
                 kind: 'group',
                 steps,
-                ...(raw.concurrency !== undefined
-                    ? { concurrency: asInt(raw.concurrency, `step "${stepId}".concurrency`, filename) }
-                    : {}),
-                ...(raw.outputs !== undefined
-                    ? { outputs: projectOutputs(raw.outputs, filename) ?? {} }
-                    : {}),
+                ...(raw.concurrency !== undefined ? { concurrency: asInt(raw.concurrency, `step "${stepId}".concurrency`, filename) } : {}),
+                ...(raw.outputs !== undefined ? { outputs: projectOutputs(raw.outputs, filename) ?? {} } : {}),
                 ...base,
             };
         }
@@ -323,11 +284,7 @@ function projectStep(
     }
 }
 
-function projectRender(
-    v: unknown,
-    stepId: string,
-    filename: string,
-): RouteStepRender {
+function projectRender(v: unknown, stepId: string, filename: string): RouteStepRender {
     const allowed = ['chart', 'table', 'value', 'markdown', 'json', 'none'];
     if (typeof v === 'string' && allowed.includes(v)) {
         return v as RouteStepRender;
@@ -340,27 +297,19 @@ function projectRender(
         for (let i = 0; i < v.length; i++) {
             const e = v[i];
             if (!e || typeof e !== 'object' || Array.isArray(e)) {
-                throw new Error(
-                    `${filename}: step "${stepId}".render[${i}] must be an object`,
-                );
+                throw new Error(`${filename}: step "${stepId}".render[${i}] must be an object`);
             }
             const o = e as { path?: unknown; ui?: unknown };
             if (typeof o.path !== 'string') {
-                throw new Error(
-                    `${filename}: step "${stepId}".render[${i}].path must be a string`,
-                );
+                throw new Error(`${filename}: step "${stepId}".render[${i}].path must be a string`);
             }
             if (typeof o.ui !== 'string') {
-                throw new Error(
-                    `${filename}: step "${stepId}".render[${i}].ui must be a string`,
-                );
+                throw new Error(`${filename}: step "${stepId}".render[${i}].ui must be a string`);
             }
         }
         return v as unknown as RouteStepRender;
     }
-    throw new Error(
-        `${filename}: step "${stepId}".render must be a string hint (${allowed.join(' | ')}) or a RenderEntry[] manifest`,
-    );
+    throw new Error(`${filename}: step "${stepId}".render must be a string hint (${allowed.join(' | ')}) or a RenderEntry[] manifest`);
 }
 // Mirror of `RouteStep['render']`. The validator only shape-checks
 // `{ path, ui }` at the array form (deeper validation lives in
@@ -393,11 +342,7 @@ function projectStepBase(
     return base;
 }
 
-function projectTimeout(
-    v: unknown,
-    stepId: string,
-    filename: string,
-): { afterMs: number; then: string } {
+function projectTimeout(v: unknown, stepId: string, filename: string): { afterMs: number; then: string } {
     if (typeof v !== 'object' || v === null || Array.isArray(v)) {
         throw new Error(`${filename}: step "${stepId}".timeout must be { afterMs, then }`);
     }
@@ -407,14 +352,12 @@ function projectTimeout(
     return { afterMs, then };
 }
 
-function projectSystemPrompt(
-    v: unknown,
-    stepId: string,
-    filename: string,
-): import('./types').SystemPromptConfig {
+function projectSystemPrompt(v: unknown, stepId: string, filename: string): import('./types').SystemPromptConfig {
     if (typeof v === 'string') return v;
     if (
-        v !== null && typeof v === 'object' && !Array.isArray(v) &&
+        v !== null &&
+        typeof v === 'object' &&
+        !Array.isArray(v) &&
         (v as Record<string, unknown>).type === 'preset' &&
         (v as Record<string, unknown>).preset === 'claude_code'
     ) {
@@ -428,16 +371,10 @@ function projectSystemPrompt(
             ...(typeof o.append === 'string' ? { append: o.append } : {}),
         };
     }
-    throw new Error(
-        `${filename}: agent step "${stepId}".systemPrompt must be a string or { type: preset, preset: claude_code, append? }`,
-    );
+    throw new Error(`${filename}: agent step "${stepId}".systemPrompt must be a string or { type: preset, preset: claude_code, append? }`);
 }
 
-function projectOutputFormat(
-    v: unknown,
-    stepId: string,
-    filename: string,
-): import('./types').JsonSchemaOutputFormat | undefined {
+function projectOutputFormat(v: unknown, stepId: string, filename: string): import('./types').JsonSchemaOutputFormat | undefined {
     if (v === undefined) return undefined;
     if (typeof v !== 'object' || v === null || Array.isArray(v)) {
         throw new Error(`${filename}: agent step "${stepId}".outputFormat must be an object`);
@@ -456,11 +393,7 @@ function projectOutputFormat(
     };
 }
 
-function projectSubagents(
-    v: unknown,
-    stepId: string,
-    filename: string,
-): Record<string, { ref: string }> {
+function projectSubagents(v: unknown, stepId: string, filename: string): Record<string, { ref: string }> {
     if (typeof v !== 'object' || v === null || Array.isArray(v)) {
         throw new Error(`${filename}: agent step "${stepId}".subagents must be a mapping`);
     }
@@ -478,23 +411,15 @@ function projectSubagents(
     return out;
 }
 
-function projectHarness(
-    v: unknown,
-    stepId: string,
-    filename: string,
-): AgentHarness | undefined {
+function projectHarness(v: unknown, stepId: string, filename: string): AgentHarness | undefined {
     if (v === undefined) return undefined;
     if (v === 'cas' || v === 'cursor' || v === 'fragua-pi' || v === 'remote-vm') {
         return v;
     }
-    throw new Error(
-        `${filename}: agent step "${stepId}".harness must be "cas" | "cursor" | "fragua-pi" | "remote-vm"`,
-    );
+    throw new Error(`${filename}: agent step "${stepId}".harness must be "cas" | "cursor" | "fragua-pi" | "remote-vm"`);
 }
 
-const PROVIDER_OVERRIDES = new Set([
-    'anthropic', 'openai', 'google', 'ollama', 'openrouter',
-]);
+const PROVIDER_OVERRIDES = new Set(['anthropic', 'openai', 'google', 'ollama', 'openrouter']);
 
 function projectProviderOverride(
     v: unknown,
@@ -503,17 +428,12 @@ function projectProviderOverride(
 ): 'anthropic' | 'openai' | 'google' | 'ollama' | 'openrouter' | undefined {
     if (v === undefined) return undefined;
     if (typeof v !== 'string' || !PROVIDER_OVERRIDES.has(v)) {
-        throw new Error(
-            `${filename}: agent step "${stepId}".providerOverride must be one of ${[...PROVIDER_OVERRIDES].join(' | ')}`,
-        );
+        throw new Error(`${filename}: agent step "${stepId}".providerOverride must be one of ${[...PROVIDER_OVERRIDES].join(' | ')}`);
     }
     return v as 'anthropic' | 'openai' | 'google' | 'ollama' | 'openrouter';
 }
 
-function projectInputs(
-    v: unknown,
-    filename: string,
-): Record<string, WorkflowInput> | undefined {
+function projectInputs(v: unknown, filename: string): Record<string, WorkflowInput> | undefined {
     if (v === undefined) return undefined;
     if (typeof v !== 'object' || v === null || Array.isArray(v)) {
         throw new Error(`${filename}: "inputs" must be a mapping`);
@@ -527,20 +447,14 @@ function projectInputs(
 
 const INPUT_TYPES = new Set(['string', 'number', 'boolean', 'date_range', 'object', 'array']);
 
-function projectInput(
-    name: string,
-    v: unknown,
-    filename: string,
-): WorkflowInput {
+function projectInput(name: string, v: unknown, filename: string): WorkflowInput {
     if (typeof v !== 'object' || v === null || Array.isArray(v)) {
         throw new Error(`${filename}: inputs.${name} must be a mapping`);
     }
     const r = v as Record<string, unknown>;
     const type = r.type;
     if (typeof type !== 'string' || !INPUT_TYPES.has(type)) {
-        throw new Error(
-            `${filename}: inputs.${name}.type must be one of ${[...INPUT_TYPES].join(' | ')}`,
-        );
+        throw new Error(`${filename}: inputs.${name}.type must be one of ${[...INPUT_TYPES].join(' | ')}`);
     }
     const out: WorkflowInput = { type: type as WorkflowInput['type'] };
     if (r.enum !== undefined) {
@@ -573,10 +487,7 @@ function projectInput(
     return out;
 }
 
-function projectOutputs(
-    v: unknown,
-    filename: string,
-): Record<string, WorkflowOutput> | undefined {
+function projectOutputs(v: unknown, filename: string): Record<string, WorkflowOutput> | undefined {
     if (v === undefined) return undefined;
     if (typeof v !== 'object' || v === null || Array.isArray(v)) {
         throw new Error(`${filename}: "outputs" must be a mapping`);
@@ -588,11 +499,7 @@ function projectOutputs(
     return out;
 }
 
-function projectOutput(
-    name: string,
-    v: unknown,
-    filename: string,
-): WorkflowOutput {
+function projectOutput(name: string, v: unknown, filename: string): WorkflowOutput {
     if (typeof v !== 'object' || v === null || Array.isArray(v)) {
         throw new Error(`${filename}: outputs.${name} must be a mapping`);
     }
@@ -602,7 +509,7 @@ function projectOutput(
     }
     let from: string | string[];
     if (typeof r.from === 'string') from = r.from;
-    else if (Array.isArray(r.from) && r.from.every(x => typeof x === 'string')) {
+    else if (Array.isArray(r.from) && r.from.every((x) => typeof x === 'string')) {
         from = r.from as string[];
     } else {
         throw new Error(`${filename}: outputs.${name}.from must be a string or array of strings`);
@@ -625,11 +532,7 @@ function projectOutput(
 
 // ─── primitive helpers ───────────────────────────────────────────────────
 
-function requireString(
-    obj: Record<string, unknown>,
-    key: string,
-    where: string,
-): string {
+function requireString(obj: Record<string, unknown>, key: string, where: string): string {
     const v = obj[key];
     if (typeof v !== 'string' || v.length === 0) {
         throw new Error(`${where}: "${key}" must be a non-empty string`);
@@ -661,13 +564,9 @@ function asRecord(v: unknown, where: string, filename: string): Record<string, u
     return v as Record<string, unknown>;
 }
 
-function projectStringArray(
-    v: unknown,
-    where: string,
-    filename?: string,
-): string[] | undefined {
+function projectStringArray(v: unknown, where: string, filename?: string): string[] | undefined {
     if (v === undefined) return undefined;
-    if (!Array.isArray(v) || !v.every(x => typeof x === 'string')) {
+    if (!Array.isArray(v) || !v.every((x) => typeof x === 'string')) {
         throw new Error(`${filename ?? '<workflow>'}: ${where} must be an array of strings`);
     }
     return v as string[];

@@ -129,7 +129,11 @@ describe('JS block cross-checks', () => {
     metrics:
       - { col: a, label: A, format: int }`);
         let caught: DashboardSpecError | null = null;
-        try { parseDashboard(raw); } catch (e) { caught = e as DashboardSpecError; }
+        try {
+            parseDashboard(raw);
+        } catch (e) {
+            caught = e as DashboardSpecError;
+        }
         expect(caught).toBeInstanceOf(DashboardSpecError);
         expect(caught?.details?.join('\n') ?? '').toMatch(/unknown block "ghost"/);
     });
@@ -146,7 +150,11 @@ describe('JS block cross-checks', () => {
     metrics:
       - { col: a, label: A, format: int }`);
         let caught: DashboardSpecError | null = null;
-        try { parseDashboard(raw); } catch (e) { caught = e as DashboardSpecError; }
+        try {
+            parseDashboard(raw);
+        } catch (e) {
+            caught = e as DashboardSpecError;
+        }
         expect(caught).toBeInstanceOf(DashboardSpecError);
         expect(caught?.details?.join('\n') ?? '').toMatch(/markdown block "note"/);
     });
@@ -161,7 +169,11 @@ describe('JS block cross-checks', () => {
     metrics:
       - { col: a, label: A, format: int }`);
         let caught: DashboardSpecError | null = null;
-        try { parseDashboard(raw); } catch (e) { caught = e as DashboardSpecError; }
+        try {
+            parseDashboard(raw);
+        } catch (e) {
+            caught = e as DashboardSpecError;
+        }
         expect(caught).toBeInstanceOf(DashboardSpecError);
         expect(caught?.details?.join('\n') ?? '').toMatch(/lists itself/);
     });
@@ -183,7 +195,11 @@ describe('JS block cross-checks', () => {
     metrics:
       - { col: x, label: X, format: int }`);
         let caught: DashboardSpecError | null = null;
-        try { parseDashboard(raw); } catch (e) { caught = e as DashboardSpecError; }
+        try {
+            parseDashboard(raw);
+        } catch (e) {
+            caught = e as DashboardSpecError;
+        }
         expect(caught).toBeInstanceOf(DashboardSpecError);
         expect(caught?.details?.join('\n') ?? '').toMatch(/Dataflow cycle/);
     });

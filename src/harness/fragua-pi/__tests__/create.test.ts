@@ -42,7 +42,7 @@ vi.mock('@mariozechner/pi-ai', () => {
     return {
         Type: {
             Object: () => ({}),
-            Unsafe: <T,>(s: T) => s,
+            Unsafe: <T>(s: T) => s,
         },
         getModel: vi.fn((provider: string, modelId: string) => ({
             id: modelId,
@@ -99,10 +99,7 @@ describe('fraguaPiCreateAgent', () => {
     });
 
     it('parses bare model id with defaultProvider fallback', async () => {
-        await fraguaPiCreateAgent(
-            { ...baseDef, model: 'gpt-4o' },
-            { transcriptId: 'a2', providerOverride: 'openai' },
-        );
+        await fraguaPiCreateAgent({ ...baseDef, model: 'gpt-4o' }, { transcriptId: 'a2', providerOverride: 'openai' });
         const opts = agentConstructorSpy.mock.calls[0]?.[0] as {
             initialState?: { model?: { id?: string; provider?: string } };
         };
@@ -111,10 +108,7 @@ describe('fraguaPiCreateAgent', () => {
     });
 
     it('parses provider-prefixed model id correctly', async () => {
-        await fraguaPiCreateAgent(
-            { ...baseDef, model: 'openrouter/anthropic/claude-3.5' },
-            { transcriptId: 'a3' },
-        );
+        await fraguaPiCreateAgent({ ...baseDef, model: 'openrouter/anthropic/claude-3.5' }, { transcriptId: 'a3' });
         const opts = agentConstructorSpy.mock.calls[0]?.[0] as {
             initialState?: { model?: { id?: string; provider?: string } };
         };
@@ -130,10 +124,7 @@ describe('fraguaPiCreateAgent', () => {
             schema: { type: 'object' },
             handler: async () => 42,
         };
-        await fraguaPiCreateAgent(
-            { ...baseDef, tools: [fnTool] },
-            { transcriptId: 'a4' },
-        );
+        await fraguaPiCreateAgent({ ...baseDef, tools: [fnTool] }, { transcriptId: 'a4' });
         const opts = agentConstructorSpy.mock.calls[0]?.[0] as {
             initialState?: { tools?: Array<{ name: string }> };
         };
@@ -143,10 +134,7 @@ describe('fraguaPiCreateAgent', () => {
 
     it('drops mcp-kind tools at compile (no bridge yet) and tracks warnings', async () => {
         const tool: ToolSpec = { kind: 'mcp', serverName: 'github' };
-        await fraguaPiCreateAgent(
-            { ...baseDef, tools: [tool] },
-            { transcriptId: 'a5' },
-        );
+        await fraguaPiCreateAgent({ ...baseDef, tools: [tool] }, { transcriptId: 'a5' });
         const opts = agentConstructorSpy.mock.calls[0]?.[0] as {
             initialState?: { tools?: unknown[] };
         };
@@ -186,10 +174,7 @@ describe('fraguaPiCreateAgent', () => {
             schema: {},
             handler: async () => null,
         };
-        await fraguaPiCreateAgent(
-            { ...baseDef, tools: [allow, block] },
-            { transcriptId: 'a8', defaultDisallowedTools: ['blocked'] },
-        );
+        await fraguaPiCreateAgent({ ...baseDef, tools: [allow, block] }, { transcriptId: 'a8', defaultDisallowedTools: ['blocked'] });
         const opts = agentConstructorSpy.mock.calls[0]?.[0] as {
             initialState?: { tools?: Array<{ name: string }> };
         };

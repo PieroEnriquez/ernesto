@@ -1,10 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-    latestHitl,
-    synthesizeHitlFromText,
-    extractTurnState,
-    type StepEmissionSummary,
-} from '../step-emissions';
+import { latestHitl, synthesizeHitlFromText, extractTurnState, type StepEmissionSummary } from '../step-emissions';
 import type { HitlComponent, UiComponent } from '../../components/types';
 
 describe('latestHitl', () => {
@@ -89,18 +84,14 @@ describe('extractTurnState', () => {
         };
         const result = extractTurnState(summary);
         expect(result.synthesized).toBe(true);
-        expect(result.hitl.props.render).toEqual([
-            { kind: 'markdown', props: { body: 'done — the answer is 42' } },
-        ]);
+        expect(result.hitl.props.render).toEqual([{ kind: 'markdown', props: { body: 'done — the answer is 42' } }]);
     });
 
     it('falls back to "(no response)" when there is no text', () => {
         const summary: StepEmissionSummary = { components: [] };
         const result = extractTurnState(summary);
         expect(result.synthesized).toBe(true);
-        expect(result.hitl.props.render).toEqual([
-            { kind: 'markdown', props: { body: '(no response)' } },
-        ]);
+        expect(result.hitl.props.render).toEqual([{ kind: 'markdown', props: { body: '(no response)' } }]);
     });
 
     it('treats whitespace-only text as no text (placeholder)', () => {
@@ -110,8 +101,6 @@ describe('extractTurnState', () => {
         };
         const result = extractTurnState(summary);
         expect(result.synthesized).toBe(true);
-        expect(result.hitl.props.render).toEqual([
-            { kind: 'markdown', props: { body: '(no response)' } },
-        ]);
+        expect(result.hitl.props.render).toEqual([{ kind: 'markdown', props: { body: '(no response)' } }]);
     });
 });

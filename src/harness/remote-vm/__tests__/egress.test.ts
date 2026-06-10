@@ -3,9 +3,7 @@ import { buildEgressPolicy, hostOf } from '../egress';
 
 describe('hostOf', () => {
     it('parses https URLs to a bare hostname', () => {
-        expect(hostOf('https://api.example.internal/vm/manifest')).toBe(
-            'api.example.internal',
-        );
+        expect(hostOf('https://api.example.internal/vm/manifest')).toBe('api.example.internal');
     });
     it('strips port from host:port', () => {
         expect(hostOf('api.anthropic.com:443')).toBe('api.anthropic.com');
@@ -27,10 +25,7 @@ describe('buildEgressPolicy', () => {
         const p = buildEgressPolicy({
             backendBaseUrl: 'https://api.example.internal',
         });
-        expect(p.allowDomains).toEqual([
-            'api.example.internal',
-            'api.anthropic.com',
-        ]);
+        expect(p.allowDomains).toEqual(['api.example.internal', 'api.anthropic.com']);
         // Deny-all is implied: no wildcard, exactly two entries.
         expect(p.allowDomains).toHaveLength(2);
     });
@@ -61,9 +56,7 @@ describe('buildEgressPolicy', () => {
     });
 
     it('threads CIDRs through only when non-empty', () => {
-        expect(
-            buildEgressPolicy({ backendBaseUrl: 'https://b.host' }).allowCidrs,
-        ).toBeUndefined();
+        expect(buildEgressPolicy({ backendBaseUrl: 'https://b.host' }).allowCidrs).toBeUndefined();
         const withCidr = buildEgressPolicy({
             backendBaseUrl: 'https://b.host',
             allowCidrs: ['10.0.0.0/8'],

@@ -73,12 +73,7 @@ export interface WalkInput {
     resume?: { seed: GraphSeed; promptId: string };
 }
 
-export async function walk(
-    runId: string,
-    declaration: WorkflowDeclaration,
-    input: WalkInput,
-    deps: WalkerDeps,
-): Promise<WalkResult> {
+export async function walk(runId: string, declaration: WorkflowDeclaration, input: WalkInput, deps: WalkerDeps): Promise<WalkResult> {
     const routing = buildRouting(input);
     const storeRouting = routingForStore(routing, input.principal);
     const signal = input.opts.abortSignal ?? new AbortController().signal;
@@ -160,12 +155,8 @@ export async function walk(
     const result = await runGraph(
         {
             steps: declaration.steps,
-            ...(declaration.concurrency !== undefined
-                ? { concurrency: declaration.concurrency }
-                : {}),
-            ...(declaration.outputs !== undefined
-                ? { outputs: declaration.outputs }
-                : {}),
+            ...(declaration.concurrency !== undefined ? { concurrency: declaration.concurrency } : {}),
+            ...(declaration.outputs !== undefined ? { outputs: declaration.outputs } : {}),
         },
         graphDeps,
     );
@@ -251,9 +242,7 @@ function routingForStore(r: HandlerRouting, p: Principal): Record<string, unknow
         ...(r.parentRunId !== undefined ? { parentRunId: r.parentRunId } : {}),
         ...(r.conversationKey !== undefined ? { conversationKey: r.conversationKey } : {}),
         principalKind: p.kind,
-        ...(p.kind === 'user'
-            ? { userId: p.userId, scopes: [...p.scopes] }
-            : { workerId: p.workerId, requestId: p.requestId }),
+        ...(p.kind === 'user' ? { userId: p.userId, scopes: [...p.scopes] } : { workerId: p.workerId, requestId: p.requestId }),
     };
 }
 

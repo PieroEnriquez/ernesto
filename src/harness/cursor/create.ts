@@ -35,14 +35,7 @@ import type {
     SettingSource,
     InteractionUpdate,
 } from '@cursor/sdk';
-import type {
-    AgentDefinition,
-    AgentHandle,
-    HarnessMessage,
-    RunHandle,
-    SendOptions,
-    UserMessage,
-} from '../types';
+import type { AgentDefinition, AgentHandle, HarnessMessage, RunHandle, SendOptions, UserMessage } from '../types';
 import { compileAgentToCursorOptions } from './compile';
 import { wrapFnToolsAsMcpServers, type SynthMcpServerHandle } from './mcp-bridge';
 import { cursorSend } from './send';
@@ -108,10 +101,7 @@ export interface CursorAgentHandle extends AgentHandle {
  * `SDKAgent` instance. Synth MCP servers spin up once per fn tool and
  * live for the agent's lifetime.
  */
-export async function cursorCreateAgent(
-    def: AgentDefinition,
-    opts: CursorCreateOptions = {},
-): Promise<CursorAgentHandle> {
+export async function cursorCreateAgent(def: AgentDefinition, opts: CursorCreateOptions = {}): Promise<CursorAgentHandle> {
     const agentId = opts.agentId ?? `cursor-${randomUUID()}`;
 
     // 1. Synthesize MCP servers for fn-shaped tools.
@@ -156,10 +146,7 @@ export async function cursorCreateAgent(
         }
     }
 
-    const send = async (
-        msg: UserMessage,
-        sendOpts: CursorAgentSendOptions = {},
-    ): Promise<RunHandle> => {
+    const send = async (msg: UserMessage, sendOpts: CursorAgentSendOptions = {}): Promise<RunHandle> => {
         const prompt = typeof msg === 'string' ? msg : msg.text;
         const runId = sendOpts.runId ?? `run-${randomUUID()}`;
         return cursorSend({

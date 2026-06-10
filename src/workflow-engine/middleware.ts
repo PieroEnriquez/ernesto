@@ -64,25 +64,17 @@ export interface DispatchMiddleware {
     /** Pre-dispatch hook. Runs in registration order. May transform
      *  ctx or throw to abort dispatch. Returning the same ctx object
      *  is fine — mutate in place or return a fresh one. */
-    before?(
-        ctx: DispatchPreContext,
-    ): Promise<DispatchPreContext> | DispatchPreContext;
+    before?(ctx: DispatchPreContext): Promise<DispatchPreContext> | DispatchPreContext;
     /** Post-dispatch hook. Runs in REVERSE order (LIFO) so resource
      *  acquisition + release nest correctly. Errors here are logged
      *  but don't override the dispatch result. */
-    after?(
-        ctx: DispatchPreContext,
-        run: Run,
-    ): Promise<void> | void;
+    after?(ctx: DispatchPreContext, run: Run): Promise<void> | void;
 }
 
 /** Run the middleware chain's `before` hooks, in registration order.
  *  Returns the final transformed ctx. Errors in `before` propagate —
  *  the caller catches and rejects the dispatch. */
-export async function runBefore(
-    middlewares: ReadonlyArray<DispatchMiddleware>,
-    ctx: DispatchPreContext,
-): Promise<DispatchPreContext> {
+export async function runBefore(middlewares: ReadonlyArray<DispatchMiddleware>, ctx: DispatchPreContext): Promise<DispatchPreContext> {
     let cur = ctx;
     for (const mw of middlewares) {
         if (!mw.before) continue;

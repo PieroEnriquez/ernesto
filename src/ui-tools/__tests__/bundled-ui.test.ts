@@ -18,14 +18,11 @@ function makeCtx(opts?: { hitl?: UiHitlPauser }) {
     const emitted: { type: 'fact.component'; component: UiComponent }[] = [];
     const warnings: { msg: string; meta?: unknown }[] = [];
     const ctx = {
-        emit: (ev: { type: 'fact.component'; component: UiComponent }) =>
-            emitted.push(ev),
+        emit: (ev: { type: 'fact.component'; component: UiComponent }) => emitted.push(ev),
         log: {
             warn: (msg: string, meta?: unknown) => warnings.push({ msg, meta }),
         },
-        ...(opts?.hitl
-            ? { hitl: opts.hitl, runId: 'r-1', stepId: 's-1' }
-            : {}),
+        ...(opts?.hitl ? { hitl: opts.hitl, runId: 'r-1', stepId: 's-1' } : {}),
     };
     return { ctx, emitted, warnings };
 }
@@ -59,10 +56,7 @@ describe('extractAndEmitBundledUi — emission', () => {
             kind: 'status',
             props: { text: 'Querying…', level: 'progress' },
         };
-        const result = await extractAndEmitBundledUi(
-            { uri: 'test://x', params: {}, ui: [status] },
-            ctx,
-        );
+        const result = await extractAndEmitBundledUi({ uri: 'test://x', params: {}, ui: [status] }, ctx);
         expect(result.emittedCount).toBe(1);
         expect(result.skippedCount).toBe(0);
         expect(result.cleanedArgs).toEqual({ uri: 'test://x', params: {} });
@@ -80,16 +74,9 @@ describe('extractAndEmitBundledUi — emission', () => {
             { kind: 'status', props: { text: 'go' } },
             { kind: 'progress', props: { label: 'p', current: 1, total: 3 } },
         ];
-        const result = await extractAndEmitBundledUi(
-            { uri: 'test://x', ui },
-            ctx,
-        );
+        const result = await extractAndEmitBundledUi({ uri: 'test://x', ui }, ctx);
         expect(result.emittedCount).toBe(3);
-        expect(emitted.map((e) => e.component.kind)).toEqual([
-            'thinking',
-            'status',
-            'progress',
-        ]);
+        expect(emitted.map((e) => e.component.kind)).toEqual(['thinking', 'status', 'progress']);
     });
 
     it('skips invalid components but emits the valid ones', async () => {
@@ -99,17 +86,11 @@ describe('extractAndEmitBundledUi — emission', () => {
             { kind: 'bogus-kind', props: {} },
             { kind: 'thinking', props: { text: 'still here' } },
         ];
-        const result = await extractAndEmitBundledUi(
-            { uri: 'test://x', ui },
-            ctx,
-        );
+        const result = await extractAndEmitBundledUi({ uri: 'test://x', ui }, ctx);
         expect(result.emittedCount).toBe(2);
         expect(result.skippedCount).toBe(1);
         expect(emitted).toHaveLength(2);
-        expect(emitted.map((e) => e.component.kind)).toEqual([
-            'status',
-            'thinking',
-        ]);
+        expect(emitted.map((e) => e.component.kind)).toEqual(['status', 'thinking']);
         expect(warnings).toHaveLength(1);
         expect(warnings[0].msg).toContain('skipping invalid component');
     });
@@ -132,11 +113,9 @@ describe('extractAndEmitBundledUi — HITL pause', () => {
             startedAt: Date.now(),
         });
 
-        const emitted: { type: 'fact.component'; component: UiComponent }[] =
-            [];
+        const emitted: { type: 'fact.component'; component: UiComponent }[] = [];
         const ctx = {
-            emit: (ev: { type: 'fact.component'; component: UiComponent }) =>
-                emitted.push(ev),
+            emit: (ev: { type: 'fact.component'; component: UiComponent }) => emitted.push(ev),
             log: { warn: vi.fn() },
             hitl,
             runId: 'r-1',
@@ -155,19 +134,13 @@ describe('extractAndEmitBundledUi — HITL pause', () => {
             },
         ];
 
-        const pending = extractAndEmitBundledUi(
-            { uri: 'test://x', ui },
-            ctx,
-        );
+        const pending = extractAndEmitBundledUi({ uri: 'test://x', ui }, ctx);
 
         // Yield to the pause flow.
         await new Promise((r) => setImmediate(r));
         // Both components should be emitted before the pause settles.
         expect(emitted).toHaveLength(2);
-        expect(emitted.map((e) => e.component.kind)).toEqual([
-            'status',
-            'hitl',
-        ]);
+        expect(emitted.map((e) => e.component.kind)).toEqual(['status', 'hitl']);
         const paused = events.find((e) => e.type === 'fact.run_paused_human');
         expect(paused).toBeDefined();
         const promptId = (paused!.payload as { promptId: string }).promptId;
@@ -193,10 +166,7 @@ describe('extractAndEmitBundledUi — HITL pause', () => {
                 },
             },
         ];
-        const result = await extractAndEmitBundledUi(
-            { uri: 'test://x', ui },
-            ctx,
-        );
+        const result = await extractAndEmitBundledUi({ uri: 'test://x', ui }, ctx);
         expect(pause).not.toHaveBeenCalled();
         expect(result.emittedCount).toBe(1);
         expect(emitted).toHaveLength(1);
@@ -216,17 +186,12 @@ describe('extractAndEmitBundledUi — HITL pause', () => {
                 },
             },
         ];
-        const result = await extractAndEmitBundledUi(
-            { uri: 'test://x', ui },
-            ctx,
-        );
+        const result = await extractAndEmitBundledUi({ uri: 'test://x', ui }, ctx);
         expect(result.emittedCount).toBe(1);
         expect(emitted).toHaveLength(1);
         expect(emitted[0].component.kind).toBe('hitl');
         expect(result.hitlResponse).toBeUndefined();
         // One warn about the missing hitl context.
-        expect(warnings.some((w) => w.msg.includes('no hitl context'))).toBe(
-            true,
-        );
+        expect(warnings.some((w) => w.msg.includes('no hitl context'))).toBe(true);
     });
 });

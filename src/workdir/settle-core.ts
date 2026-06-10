@@ -86,10 +86,7 @@ export const GENERATED_FILES = ['attachments.yaml', '.derived-from-sha'] as cons
  *  each declared leaf maps to BOTH its conventional `workspaces/<leaf>` path
  *  and its current resolved location, so a relocation's rename is paired and a
  *  nested workspace's changes are not silently excluded from the gate. */
-export async function resolveScopedPaths(
-    root: string,
-    workspaces: ReadonlyArray<string>,
-): Promise<string[]> {
+export async function resolveScopedPaths(root: string, workspaces: ReadonlyArray<string>): Promise<string[]> {
     const boundaries = await scanWorkspaceBoundaries(root);
     const wsPaths = new Set<string>();
     for (const w of workspaces) {
@@ -121,7 +118,10 @@ export async function resolveWorkspaceStagePaths(
 ): Promise<{ stagePaths: string[]; diffPaths: string[] }> {
     const boundaries = await scanWorkspaceBoundaries(root);
     const exists = (rel: string): Promise<boolean> =>
-        stat(nodePath.join(root, rel)).then(() => true, () => false);
+        stat(nodePath.join(root, rel)).then(
+            () => true,
+            () => false,
+        );
     const stagePaths: string[] = [];
     const diffPaths = new Set<string>();
     for (const w of workspaces) {
@@ -148,15 +148,17 @@ export async function resolveWorkspaceStagePaths(
  * that matches a pattern is reported NOT ignored (git never ignores tracked
  * files), so such a path stays excluded — exactly what we want.
  */
-async function gitIgnoredSubset(
-    root: string,
-    candidates: ReadonlyArray<string>,
-): Promise<ReadonlySet<string>> {
+async function gitIgnoredSubset(root: string, candidates: ReadonlyArray<string>): Promise<ReadonlySet<string>> {
     if (candidates.length === 0) return new Set();
     const r = await tryRunGit(root, ['check-ignore', '--stdin'], {
         stdin: candidates.join('\n'),
     });
-    return new Set(r.stdout.split('\n').map((s) => s.trim()).filter(Boolean));
+    return new Set(
+        r.stdout
+            .split('\n')
+            .map((s) => s.trim())
+            .filter(Boolean),
+    );
 }
 
 /**
@@ -179,10 +181,7 @@ async function gitIgnoredSubset(
  * would have stripped). `root` is the repo whose `.gitignore`/index the filter
  * is evaluated against.
  */
-export async function buildStageAddArgs(
-    root: string,
-    stagePaths: ReadonlyArray<string>,
-): Promise<string[] | null> {
+export async function buildStageAddArgs(root: string, stagePaths: ReadonlyArray<string>): Promise<string[] | null> {
     if (stagePaths.length === 0) return null;
     const candidates: string[] = [];
     for (const p of stagePaths) {
@@ -205,10 +204,7 @@ export async function buildStageAddArgs(
     return addArgs;
 }
 
-export function formatCommitMessage(
-    message: string,
-    trailers?: Readonly<Record<string, string>>,
-): string {
+export function formatCommitMessage(message: string, trailers?: Readonly<Record<string, string>>): string {
     if (!trailers || Object.keys(trailers).length === 0) return message;
     const trailerLines = Object.entries(trailers).map(([k, v]) => `${k}: ${v}`);
     return `${message}\n\n${trailerLines.join('\n')}`;
@@ -237,14 +233,9 @@ export interface SettleCoreInput {
  * Assumes the caller already staged its changes into the index under
  * `workdir.lock(…)`.
  */
-export async function runSettleCore(
-    workdir: Workdir,
-    input: SettleCoreInput,
-): Promise<SettleResult> {
+export async function runSettleCore(workdir: Workdir, input: SettleCoreInput): Promise<SettleResult> {
     const root = workdir.workingTreeRoot;
-    const scopedPaths = input.scopedPaths
-        ? [...input.scopedPaths]
-        : await resolveScopedPaths(root, input.workspaces);
+    const scopedPaths = input.scopedPaths ? [...input.scopedPaths] : await resolveScopedPaths(root, input.workspaces);
 
     const diff = await runGit(root, ['diff', '--cached', '--', ...scopedPaths]);
 
@@ -265,9 +256,7 @@ export async function runSettleCore(
     // Ground-truth committed scope: the staged paths within the lint scope, just
     // before the commit. Path-granular so a caller can forget exactly the
     // settled subset of a per-user draft (not the whole draft).
-    const committedPaths = (
-        await runGit(root, ['diff', '--cached', '--name-only', '-z', '--', ...scopedPaths])
-    )
+    const committedPaths = (await runGit(root, ['diff', '--cached', '--name-only', '-z', '--', ...scopedPaths]))
         .split('\0')
         .filter((p) => p.length > 0);
 

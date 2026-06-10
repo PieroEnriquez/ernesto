@@ -21,18 +21,9 @@
 import type { ManagedAgentMd } from '../managed-agents/from-md';
 import { toAgentDeclaration } from '../managed-agents/from-md';
 import { resolveHarness } from '../managed-agents/resolve-harness';
-import type {
-    WorkflowDeclaration,
-    AgentStep,
-    WorkflowInput,
-    WorkflowOutput,
-    JsonSchemaOutputFormat,
-    SystemPromptConfig,
-} from './types';
+import type { WorkflowDeclaration, AgentStep, WorkflowInput, WorkflowOutput, JsonSchemaOutputFormat, SystemPromptConfig } from './types';
 
-export function compileManagedAgentMdToWorkflow(
-    md: ManagedAgentMd,
-): WorkflowDeclaration {
+export function compileManagedAgentMdToWorkflow(md: ManagedAgentMd): WorkflowDeclaration {
     // Re-use the existing field-projection: it already handles every
     // frontmatter quirk (provider, harness, outputFormat shape,
     // scope/callableAs strict typing, slug regex). The systemPrompt it
@@ -57,9 +48,7 @@ export function compileManagedAgentMdToWorkflow(
         // step. The legacy `next: 'outputs.result'` was the pre-DAG
         // marker that the new lint rule rejects (the hint string in
         // `validate.ts` calls out this exact case).
-        ...(harness === 'fragua-pi' && decl.provider === 'OPEN_ROUTER'
-            ? { providerOverride: 'openrouter' as const }
-            : {}),
+        ...(harness === 'fragua-pi' && decl.provider === 'OPEN_ROUTER' ? { providerOverride: 'openrouter' as const } : {}),
     };
     if (decl.outputFormat) {
         mainStep.outputFormat = decl.outputFormat as JsonSchemaOutputFormat;

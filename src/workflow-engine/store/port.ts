@@ -7,12 +7,7 @@
 
 import type { StoredEvent } from '../types/event';
 
-export type RunStatus =
-    | 'running'
-    | 'paused'
-    | 'completed'
-    | 'errored'
-    | 'aborted';
+export type RunStatus = 'running' | 'paused' | 'completed' | 'errored' | 'aborted';
 
 /** A single step parked on a step-level pause, awaiting `resumeRun`.
  *  Persisted inside {@link ResumeState} so a fresh process (after a

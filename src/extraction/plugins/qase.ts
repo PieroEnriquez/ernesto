@@ -83,12 +83,8 @@ export function qasePlugin(opts: QasePluginOptions): ExtractionPlugin {
     return defineExtraction({
         source: 'qase',
         scope: 'extraction:qase:read',
-        description:
-            'Fetch Qase test suites and cases. Targets: project:{code}, suite:{code}:{suiteId}, case:{code}:{caseId}.',
-        fetch: async (
-            req: ExtractionRequest,
-            ctx: ExtractionContext,
-        ): Promise<ExtractionResult> => {
+        description: 'Fetch Qase test suites and cases. Targets: project:{code}, suite:{code}:{suiteId}, case:{code}:{caseId}.',
+        fetch: async (req: ExtractionRequest, ctx: ExtractionContext): Promise<ExtractionResult> => {
             const target = parseTarget(req.target);
             const fetchedAt = new Date().toISOString();
             const httpOpts = {
@@ -129,12 +125,7 @@ export function qasePlugin(opts: QasePluginOptions): ExtractionPlugin {
                 }
                 const suitePayload = unwrapResult(suiteRes);
 
-                const cases = await fetchAllCasesInSuite(
-                    target.projectCode,
-                    target.id!,
-                    pageSize,
-                    httpOpts,
-                );
+                const cases = await fetchAllCasesInSuite(target.projectCode, target.id!, pageSize, httpOpts);
 
                 const entries: ExtractionEntry[] = [
                     {
@@ -177,9 +168,7 @@ export function qasePlugin(opts: QasePluginOptions): ExtractionPlugin {
 function parseTarget(target: string): ParsedTarget {
     const parts = target.split(':');
     if (parts.length < 2 || parts.some((p) => p.length === 0)) {
-        throw new Error(
-            `qase: target must look like "project:{code}", "suite:{code}:{suiteId}", or "case:{code}:{caseId}"`,
-        );
+        throw new Error(`qase: target must look like "project:{code}", "suite:{code}:{suiteId}", or "case:{code}:{caseId}"`);
     }
     const kindRaw = parts[0];
     if (kindRaw !== 'project' && kindRaw !== 'suite' && kindRaw !== 'case') {
@@ -194,9 +183,7 @@ function parseTarget(target: string): ParsedTarget {
     }
 
     if (parts.length !== 3) {
-        throw new Error(
-            `qase: ${kindRaw} target must be "${kindRaw}:{code}:{id}"`,
-        );
+        throw new Error(`qase: ${kindRaw} target must be "${kindRaw}:{code}:{id}"`);
     }
     return { kind: kindRaw, projectCode: parts[1], id: parts[2] };
 }
@@ -215,11 +202,7 @@ interface CallMeta {
     id: string;
 }
 
-async function qaseRequest(
-    url: string,
-    opts: HttpOpts,
-    meta: CallMeta,
-): Promise<unknown | 'not_found'> {
+async function qaseRequest(url: string, opts: HttpOpts, meta: CallMeta): Promise<unknown | 'not_found'> {
     const res = await httpFetchWithRetry(url, {
         timeoutMs: opts.timeoutMs,
         maxRetries: opts.maxRetries,
@@ -241,12 +224,7 @@ async function qaseRequest(
     return (await res.json()) as unknown;
 }
 
-async function fetchAllCasesInSuite(
-    projectCode: string,
-    suiteId: string,
-    pageSize: number,
-    opts: HttpOpts,
-): Promise<unknown[]> {
+async function fetchAllCasesInSuite(projectCode: string, suiteId: string, pageSize: number, opts: HttpOpts): Promise<unknown[]> {
     const out: unknown[] = [];
     let offset = 0;
 
@@ -273,8 +251,7 @@ async function fetchAllCasesInSuite(
         const page = Array.isArray(result.entities) ? result.entities : [];
         out.push(...page);
 
-        const filtered =
-            typeof result.filtered === 'number' ? result.filtered : undefined;
+        const filtered = typeof result.filtered === 'number' ? result.filtered : undefined;
         const fetchedCount = page.length;
         if (fetchedCount === 0) break;
         if (filtered !== undefined && out.length >= filtered) break;
@@ -300,11 +277,7 @@ function unwrapResult(payload: unknown): unknown {
 }
 
 function getCaseId(testCase: unknown): string {
-    if (
-        testCase !== null &&
-        typeof testCase === 'object' &&
-        'id' in testCase
-    ) {
+    if (testCase !== null && typeof testCase === 'object' && 'id' in testCase) {
         const id = (testCase as { id: unknown }).id;
         if (typeof id === 'number' || typeof id === 'string') {
             return String(id);

@@ -13,10 +13,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type {
-    SDKMessage,
-    SDKResultMessage,
-} from '@anthropic-ai/claude-agent-sdk';
+import type { SDKMessage, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { HarnessEvent } from '../../types';
 import { createTranslatorState, mapSdkMessage } from '../events';
 import { mapResult } from '../send';
@@ -91,9 +88,7 @@ describe('mapSdkMessage', () => {
         const assistant = events[1];
         expect(assistant && assistant.kind === 'assistant_message').toBe(true);
         if (assistant && assistant.kind === 'assistant_message') {
-            expect(assistant.content).toEqual([
-                { type: 'text', text: 'hello there' },
-            ]);
+            expect(assistant.content).toEqual([{ type: 'text', text: 'hello there' }]);
         }
         const usage = events[2];
         if (usage && usage.kind === 'usage') {
@@ -104,9 +99,7 @@ describe('mapSdkMessage', () => {
             expect(usage.costUsd).toBe(0.0012);
         }
         const last = events[events.length - 1];
-        expect(last?.kind === 'status' && last.status === 'completed').toBe(
-            true,
-        );
+        expect(last?.kind === 'status' && last.status === 'completed').toBe(true);
     });
 
     it('tool call roundtrip: tool_call precedes tool_result with matching toolUseId', () => {
@@ -399,9 +392,7 @@ describe('mapSdkMessage', () => {
         // Synthetic cancel injection happens at the send.ts layer; we
         // simulate it here for the assertion.
         out.push({ kind: 'status', status: 'canceled', runId: RUN_ID });
-        const cancelIndex = out.findIndex(
-            (e) => e.kind === 'status' && e.status === 'canceled',
-        );
+        const cancelIndex = out.findIndex((e) => e.kind === 'status' && e.status === 'canceled');
         expect(cancelIndex).toBeGreaterThanOrEqual(0);
         const afterCancel = out.slice(cancelIndex + 1);
         const hasUsageAfter = afterCancel.some((e) => e.kind === 'usage');

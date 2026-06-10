@@ -153,9 +153,7 @@ function parseTarget(target: string): ParsedTarget {
     if (target === 'playbooks') return { kind: 'playbooks' };
     const idx = target.indexOf(':');
     if (idx < 0) {
-        throw new Error(
-            `devin: target must be "playbooks" or "playbook:{id}" (got ${JSON.stringify(target)})`,
-        );
+        throw new Error(`devin: target must be "playbooks" or "playbook:{id}" (got ${JSON.stringify(target)})`);
     }
     const kindRaw = target.slice(0, idx);
     const id = target.slice(idx + 1).trim();
@@ -177,11 +175,7 @@ interface HttpCtx {
     log: ExtractionContext['log'];
 }
 
-function fetchWithRetry(
-    url: string,
-    http: HttpCtx,
-    meta: { kind: string; id: string },
-): Promise<Response | 'not_found'> {
+function fetchWithRetry(url: string, http: HttpCtx, meta: { kind: string; id: string }): Promise<Response | 'not_found'> {
     return httpFetchWithRetry(url, {
         timeoutMs: http.timeoutMs,
         maxRetries: http.maxRetries,

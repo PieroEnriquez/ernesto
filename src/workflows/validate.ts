@@ -37,18 +37,9 @@ export interface WorkflowValidateContext {
 
 // Parser-input kinds. Internal kinds are a subset — the parser
 // normalizes `call` → `route` (alias during the workspace-wide rename).
-const KNOWN_STEP_KINDS = new Set([
-    'call',
-    'route',
-    'input',
-    'agent',
-    'group',
-]);
+const KNOWN_STEP_KINDS = new Set(['call', 'route', 'input', 'agent', 'group']);
 
-export function validateWorkflow(
-    decl: WorkflowDeclaration,
-    ctx: WorkflowValidateContext = {},
-): WorkflowValidationResult {
+export function validateWorkflow(decl: WorkflowDeclaration, ctx: WorkflowValidateContext = {}): WorkflowValidationResult {
     const errors: WorkflowValidationError[] = [];
 
     checkNameMatchesFilename(decl, ctx, errors);
@@ -66,11 +57,7 @@ export function validateWorkflow(
 
 // ─── workflow_name_mismatch ──────────────────────────────────────────────
 
-function checkNameMatchesFilename(
-    decl: WorkflowDeclaration,
-    ctx: WorkflowValidateContext,
-    errors: WorkflowValidationError[],
-): void {
+function checkNameMatchesFilename(decl: WorkflowDeclaration, ctx: WorkflowValidateContext, errors: WorkflowValidationError[]): void {
     if (!ctx.filename) return;
     const stem = filenameStem(ctx.filename);
     if (stem === undefined) return;
@@ -97,11 +84,7 @@ function filenameStem(filename: string): string | undefined {
 
 // ─── workflow_unknown_kind ──────────────────────────────────────────────
 
-function checkSchemaShape(
-    decl: WorkflowDeclaration,
-    _ctx: WorkflowValidateContext,
-    errors: WorkflowValidationError[],
-): void {
+function checkSchemaShape(decl: WorkflowDeclaration, _ctx: WorkflowValidateContext, errors: WorkflowValidationError[]): void {
     if (decl.version !== 1) {
         errors.push({
             code: 'workflow_unknown_kind', // closest documented code
@@ -111,10 +94,7 @@ function checkSchemaShape(
     }
 }
 
-function checkStepKindsKnown(
-    decl: WorkflowDeclaration,
-    errors: WorkflowValidationError[],
-): void {
+function checkStepKindsKnown(decl: WorkflowDeclaration, errors: WorkflowValidationError[]): void {
     for (const [stepId, step] of Object.entries(decl.steps)) {
         if (!KNOWN_STEP_KINDS.has(step.kind)) {
             errors.push({
@@ -136,10 +116,7 @@ function checkStepKindsKnown(
 // step runs (topologically), and a step with no dependents is a valid
 // sink.
 
-function checkDag(
-    decl: WorkflowDeclaration,
-    errors: WorkflowValidationError[],
-): void {
+function checkDag(decl: WorkflowDeclaration, errors: WorkflowValidationError[]): void {
     const stepIds = Object.keys(decl.steps);
     if (stepIds.length === 0) return;
     const ids = new Set(stepIds);
@@ -172,9 +149,7 @@ function checkDag(
                 // false-positive here. Catch the pattern explicitly and
                 // suggest the fix — bind `outputs.<name>.from` to the
                 // step's id directly; terminal steps have no `next:`.
-                const isLegacyOutputsForm =
-                    step.next === 'outputs' ||
-                    step.next.startsWith('outputs.');
+                const isLegacyOutputsForm = step.next === 'outputs' || step.next.startsWith('outputs.');
                 const hint = isLegacyOutputsForm
                     ? ' — terminal steps have no `next:`. Bind `outputs.<name>.from: ' +
                       JSON.stringify(id) +
@@ -184,9 +159,7 @@ function checkDag(
                     code: 'workflow_step_unreachable',
                     stepId: id,
                     field: 'next',
-                    message:
-                        `step "${id}" has next: "${step.next}" which is not a declared step` +
-                        hint,
+                    message: `step "${id}" has next: "${step.next}" which is not a declared step` + hint,
                 });
             } else {
                 dependsOf.get(step.next)!.push(id);
@@ -226,11 +199,7 @@ function checkDag(
 
 // ─── workflow_unknown_route ─────────────────────────────────────────────
 
-function checkRoutes(
-    decl: WorkflowDeclaration,
-    ctx: WorkflowValidateContext,
-    errors: WorkflowValidationError[],
-): void {
+function checkRoutes(decl: WorkflowDeclaration, ctx: WorkflowValidateContext, errors: WorkflowValidationError[]): void {
     if (!ctx.knownRoutes) return;
     for (const [id, step] of Object.entries(decl.steps)) {
         if (step.kind !== 'route') continue;
@@ -262,11 +231,7 @@ function checkRoutes(
  * ref-form steps resolve harness from the referenced declaration —
  * neither is the parser's concern.
  */
-function checkHarnesses(
-    decl: WorkflowDeclaration,
-    ctx: WorkflowValidateContext,
-    errors: WorkflowValidationError[],
-): void {
+function checkHarnesses(decl: WorkflowDeclaration, ctx: WorkflowValidateContext, errors: WorkflowValidationError[]): void {
     if (!ctx.knownHarnesses) return;
     for (const [id, step] of Object.entries(decl.steps)) {
         if (step.kind !== 'agent') continue;
@@ -284,10 +249,7 @@ function checkHarnesses(
     }
 }
 
-function closestHarness(
-    needle: string,
-    haystack: ReadonlySet<string>,
-): string | undefined {
+function closestHarness(needle: string, haystack: ReadonlySet<string>): string | undefined {
     let best: { name: string; d: number } | undefined;
     for (const h of haystack) {
         const d = editDistance(needle, h);
@@ -301,7 +263,8 @@ function closestHarness(
 
 function editDistance(a: string, b: string): number {
     if (a === b) return 0;
-    const m = a.length, n = b.length;
+    const m = a.length,
+        n = b.length;
     if (m === 0) return n;
     if (n === 0) return m;
     const prev = new Array<number>(n + 1);
@@ -320,11 +283,7 @@ function editDistance(a: string, b: string): number {
 
 // ─── workflow_scope_widens ──────────────────────────────────────────────
 
-function checkScopeWidens(
-    decl: WorkflowDeclaration,
-    ctx: WorkflowValidateContext,
-    errors: WorkflowValidationError[],
-): void {
+function checkScopeWidens(decl: WorkflowDeclaration, ctx: WorkflowValidateContext, errors: WorkflowValidationError[]): void {
     // The top-level workflow.scope shouldn't widen vs the workspace's
     // declared scopes. Step-level widening doesn't apply post-subworkflow-
     // removal — dispatches through `kind: route` to other workflows
@@ -356,18 +315,13 @@ function checkScopeWidens(
  *
  * A reference like `inputs` (no dot) or `steps.unknown.output` flags.
  */
-function checkTemplateRefs(
-    decl: WorkflowDeclaration,
-    errors: WorkflowValidationError[],
-): void {
+function checkTemplateRefs(decl: WorkflowDeclaration, errors: WorkflowValidationError[]): void {
     const knownInputs = new Set(Object.keys(decl.inputs ?? {}));
     const knownSteps = new Set(Object.keys(decl.steps));
 
     for (const [stepId, step] of Object.entries(decl.steps)) {
         for (const ref of collectTemplateRefs(step)) {
-            const err = checkTemplateReference(
-                ref.text, knownInputs, knownSteps,
-            );
+            const err = checkTemplateReference(ref.text, knownInputs, knownSteps);
             if (err) {
                 errors.push({
                     code: 'workflow_template_unresolved',
@@ -399,9 +353,7 @@ function checkTemplateRefs(
                     TEMPLATE_RE.lastIndex = 0;
                     let m: RegExpExecArray | null;
                     while ((m = TEMPLATE_RE.exec(from)) !== null) {
-                        const refErr = checkTemplateReference(
-                            m[1].trim(), knownInputs, knownSteps,
-                        );
+                        const refErr = checkTemplateReference(m[1].trim(), knownInputs, knownSteps);
                         if (refErr) {
                             errors.push({
                                 code: 'workflow_template_unresolved',
@@ -475,11 +427,7 @@ function collectTemplateRefs(step: WorkflowStep): TemplateRef[] {
     return refs;
 }
 
-function checkTemplateReference(
-    expr: string,
-    knownInputs: Set<string>,
-    knownSteps: Set<string>,
-): string | null {
+function checkTemplateReference(expr: string, knownInputs: Set<string>, knownSteps: Set<string>): string | null {
     // Trim simple `| json` / `| ...` filter pipes — we just check the
     // left-hand-side path.
     const path = expr.split('|')[0].trim();
@@ -541,10 +489,7 @@ function checkTemplateReference(
  *   - `required` is an array of strings if present
  *   - each property's nested schema also passes the same check
  */
-function checkInputSchemas(
-    decl: WorkflowDeclaration,
-    errors: WorkflowValidationError[],
-): void {
+function checkInputSchemas(decl: WorkflowDeclaration, errors: WorkflowValidationError[]): void {
     for (const [stepId, step] of Object.entries(decl.steps)) {
         if (step.kind !== 'input') continue;
         const issues = validateJsonSchemaShape((step as InputStep).schema);
@@ -559,19 +504,14 @@ function checkInputSchemas(
     }
 }
 
-const JSON_SCHEMA_TYPES = new Set([
-    'string', 'number', 'integer', 'boolean', 'object', 'array', 'null',
-]);
+const JSON_SCHEMA_TYPES = new Set(['string', 'number', 'integer', 'boolean', 'object', 'array', 'null']);
 
 interface SchemaIssue {
     path: string;
     message: string;
 }
 
-function validateJsonSchemaShape(
-    schema: unknown,
-    path = '',
-): SchemaIssue[] {
+function validateJsonSchemaShape(schema: unknown, path = ''): SchemaIssue[] {
     const issues: SchemaIssue[] = [];
     if (typeof schema !== 'object' || schema === null || Array.isArray(schema)) {
         issues.push({ path, message: 'must be an object' });
@@ -612,7 +552,7 @@ function validateJsonSchemaShape(
         }
     }
     if (s.required !== undefined) {
-        if (!Array.isArray(s.required) || !s.required.every(x => typeof x === 'string')) {
+        if (!Array.isArray(s.required) || !s.required.every((x) => typeof x === 'string')) {
             issues.push({ path: `${path}.required`, message: 'must be an array of strings' });
         }
     }

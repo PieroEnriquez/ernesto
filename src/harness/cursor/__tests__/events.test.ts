@@ -9,12 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SDKMessage as CursorSDKMessage } from '@cursor/sdk';
 import type { HarnessEvent } from '../../types';
-import {
-    createTranslatorState,
-    mapCursorMessage,
-    mapCursorDelta,
-    mapCursorRunStatus,
-} from '../events';
+import { createTranslatorState, mapCursorMessage, mapCursorDelta, mapCursorRunStatus } from '../events';
 
 const RUN_ID = 'run-test';
 
@@ -181,18 +176,12 @@ describe('mapCursorMessage', () => {
                 thinking_duration_ms: 12,
             },
         ]);
-        expect(events).toEqual([
-            { kind: 'thinking', text: 'considering', runId: RUN_ID },
-        ]);
+        expect(events).toEqual([{ kind: 'thinking', text: 'considering', runId: RUN_ID }]);
     });
 
     it('status FINISHED emits status:completed', () => {
-        const events = runAll([
-            { type: 'status', agent_id: 'a', run_id: 'r', status: 'FINISHED' },
-        ]);
-        expect(events).toEqual([
-            { kind: 'status', status: 'completed', runId: RUN_ID },
-        ]);
+        const events = runAll([{ type: 'status', agent_id: 'a', run_id: 'r', status: 'FINISHED' }]);
+        expect(events).toEqual([{ kind: 'status', status: 'completed', runId: RUN_ID }]);
     });
 
     it('status ERROR with message emits error + status:errored', () => {
@@ -212,9 +201,7 @@ describe('mapCursorMessage', () => {
     });
 
     it('status RUNNING is suppressed on the stream (init already emitted leader)', () => {
-        const events = runAll([
-            { type: 'status', agent_id: 'a', run_id: 'r', status: 'RUNNING' },
-        ]);
+        const events = runAll([{ type: 'status', agent_id: 'a', run_id: 'r', status: 'RUNNING' }]);
         expect(events).toEqual([]);
     });
 
@@ -235,10 +222,7 @@ describe('mapCursorMessage', () => {
                 text: 'reviewer',
             },
         ]);
-        expect(events.map((e) => e.kind)).toEqual([
-            'subagent_started',
-            'subagent_completed',
-        ]);
+        expect(events.map((e) => e.kind)).toEqual(['subagent_started', 'subagent_completed']);
         const start = events[0]!;
         if (start.kind !== 'subagent_started') throw new Error('expected start');
         expect(start.slug).toBe('reviewer');
@@ -259,18 +243,12 @@ describe('mapCursorMessage', () => {
 
 describe('mapCursorDelta', () => {
     it('textDelta update becomes assistant_delta', () => {
-        const ev = mapCursorDelta(
-            { type: 'textDelta', text: 'partial' } as never,
-            RUN_ID,
-        );
+        const ev = mapCursorDelta({ type: 'textDelta', text: 'partial' } as never, RUN_ID);
         expect(ev).toEqual({ kind: 'assistant_delta', text: 'partial', runId: RUN_ID });
     });
 
     it('non-text deltas are dropped', () => {
-        const ev = mapCursorDelta(
-            { type: 'thinkingDelta', text: 'pondering' } as never,
-            RUN_ID,
-        );
+        const ev = mapCursorDelta({ type: 'thinkingDelta', text: 'pondering' } as never, RUN_ID);
         expect(ev).toBeNull();
     });
 });

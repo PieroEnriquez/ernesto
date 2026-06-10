@@ -37,22 +37,14 @@ export class DashboardSpecError extends Error {
 }
 
 /** Reserved bind names the runtime always populates from a `date-range` filter. */
-export const RESERVED_BIND_NAMES = new Set<string>([
-    'startDate',
-    'endDate',
-    'startDateId',
-    'endDateId',
-    'dateGrain',
-]);
+export const RESERVED_BIND_NAMES = new Set<string>(['startDate', 'endDate', 'startDateId', 'endDateId', 'dateGrain']);
 
 const BIND_REFERENCE_RE = /(?<![:\w]):([a-zA-Z][a-zA-Z0-9_]*)/g;
 
 export function parseDashboard(raw: string): ParsedDashboard {
     const { frontMatter, body } = readFrontmatter(raw);
     if (frontMatter === '') {
-        throw new DashboardSpecError(
-            'Missing YAML frontmatter — file must start with "---" and close with "---".',
-        );
+        throw new DashboardSpecError('Missing YAML frontmatter — file must start with "---" and close with "---".');
     }
     let yamlObj: unknown;
     try {
@@ -66,7 +58,7 @@ export function parseDashboard(raw: string): ParsedDashboard {
         spec = dashboardSpecSchema.parse(yamlObj);
     } catch (e) {
         if (e instanceof ZodError) {
-            const details = e.issues.map(i => `${i.path.join('.') || '<root>'}: ${i.message}`);
+            const details = e.issues.map((i) => `${i.path.join('.') || '<root>'}: ${i.message}`);
             throw new DashboardSpecError('Spec schema validation failed.', details);
         }
         throw e;
@@ -119,13 +111,11 @@ function crossCheck(spec: DashboardSpec): void {
                 errors.push(`Block "${block.id}" lists itself as an input`);
                 continue;
             }
-            const ref = spec.blocks.find(b => b.id === inputId);
+            const ref = spec.blocks.find((b) => b.id === inputId);
             if (!ref) {
                 errors.push(`Block "${block.id}" inputs reference unknown block "${inputId}"`);
             } else if (ref.kind === 'markdown' || ref.kind === 'narrative') {
-                errors.push(
-                    `Block "${block.id}" inputs reference ${ref.kind} block "${inputId}" (only data blocks produce results)`,
-                );
+                errors.push(`Block "${block.id}" inputs reference ${ref.kind} block "${inputId}" (only data blocks produce results)`);
             }
         }
     }

@@ -23,11 +23,7 @@
  * `workspaces/`; the overlay SETTLE (mutation) lives in `workdir/`.
  */
 
-import {
-    boundaryForName,
-    boundaryForPath,
-    type WorkspaceBoundary,
-} from './boundaries';
+import { boundaryForName, boundaryForPath, type WorkspaceBoundary } from './boundaries';
 import { RESERVED_SYSTEM_WORKSPACES } from '../lint/lint-workspace';
 import { parseWorkspaceFrontmatter, canRead } from './access';
 import type { WorkspaceVisibility } from './visibility';
@@ -38,9 +34,7 @@ const ERNESTO_WORKSPACE = '_ernesto';
 /** Subtrees never descended into while hunting for boundaries — master-FS
  *  mirrors, generated output, archived content. Mirrors `boundaries.ts`'s
  *  PRUNE_DIRS so the overlay scan and the on-disk scan agree. */
-const PRUNE_DIRS = new Set([
-    'extracted', 'attached', '_results', 'archive', 'node_modules', '.git',
-]);
+const PRUNE_DIRS = new Set(['extracted', 'attached', '_results', 'archive', 'node_modules', '.git']);
 
 /** One directory entry surfaced by an {@link FsReader}. */
 export interface FsReaderDirent {
@@ -114,10 +108,7 @@ export interface OverlayView {
     scanBoundaries(): Promise<WorkspaceBoundary[]>;
     /** The principal's merged read view (boundaries + readable leaf names),
      *  deciding each boundary against its merged-view `WORKSPACE.md`. */
-    computeVisibility(
-        scopes: ReadonlySet<string>,
-        opts: ComputeOverlayVisibilityOptions,
-    ): Promise<WorkspaceVisibility>;
+    computeVisibility(scopes: ReadonlySet<string>, opts: ComputeOverlayVisibilityOptions): Promise<WorkspaceVisibility>;
 }
 
 /** Build an {@link OverlayView} over a lower-layer {@link FsReader} + a patch. */
@@ -234,10 +225,7 @@ export function makeOverlayView(lower: FsReader, patch: WorkspacePatch): Overlay
         return out;
     }
 
-    async function computeVisibility(
-        scopes: ReadonlySet<string>,
-        opts: ComputeOverlayVisibilityOptions,
-    ): Promise<WorkspaceVisibility> {
+    async function computeVisibility(scopes: ReadonlySet<string>, opts: ComputeOverlayVisibilityOptions): Promise<WorkspaceVisibility> {
         const all = await scanBoundaries();
         if (all.length === 0) {
             return { all, readableNames: new Set([ERNESTO_WORKSPACE]) };

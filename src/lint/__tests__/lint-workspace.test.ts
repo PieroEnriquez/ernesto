@@ -14,11 +14,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm, mkdir, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import * as path from 'path';
-import {
-    lintWorkspace,
-    makeLintWorkspace,
-    UNREGISTERED_EXTRACTION_SOURCE,
-} from '../lint-workspace';
+import { lintWorkspace, makeLintWorkspace, UNREGISTERED_EXTRACTION_SOURCE } from '../lint-workspace';
 import { buildWorkdir, seedWorkspace } from '../../__tests__/kit';
 import { runGit } from '../../workdir/run-git';
 
@@ -42,8 +38,8 @@ async function writeStagedFile(root: string, p: string, body: string): Promise<v
 }
 
 function diffModify(p: string, beforeBody: string, afterBody: string): string {
-    const before = beforeBody.split('\n').map(l => `-${l}`);
-    const after = afterBody.split('\n').map(l => `+${l}`);
+    const before = beforeBody.split('\n').map((l) => `-${l}`);
+    const after = afterBody.split('\n').map((l) => `+${l}`);
     return [
         `diff --git a/${p} b/${p}`,
         `index 0000001..0000002 100644`,
@@ -57,7 +53,7 @@ function diffModify(p: string, beforeBody: string, afterBody: string): string {
 }
 
 function diffAdd(p: string, body: string): string {
-    const added = body.split('\n').map(l => `+${l}`);
+    const added = body.split('\n').map((l) => `+${l}`);
     return [
         `diff --git a/${p} b/${p}`,
         `new file mode 100644`,
@@ -71,7 +67,7 @@ function diffAdd(p: string, body: string): string {
 }
 
 function diffDelete(p: string, body: string): string {
-    const removed = body.split('\n').map(l => `-${l}`);
+    const removed = body.split('\n').map((l) => `-${l}`);
     return [
         `diff --git a/${p} b/${p}`,
         `deleted file mode 100644`,
@@ -132,8 +128,7 @@ describe('lintWorkspace (scope-less)', () => {
         {
             name: 'flags out_of_scope_path for files outside any declared workspace',
             setup: async () => diffAdd('README.md', '# repo readme\n'),
-            check: errors =>
-                expect(errors.some(e => e.code === 'out_of_scope_path' && e.path === 'README.md')).toBe(true),
+            check: (errors) => expect(errors.some((e) => e.code === 'out_of_scope_path' && e.path === 'README.md')).toBe(true),
         },
         {
             name: 'flags missing_frontmatter on a new WORKSPACE.md without YAML',
@@ -142,16 +137,13 @@ describe('lintWorkspace (scope-less)', () => {
                 await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', noFm);
                 return diffAdd('workspaces/hr/WORKSPACE.md', noFm);
             },
-            check: errors =>
-                expect(errors.some(e => e.code === 'missing_frontmatter' && e.workspace === 'hr')).toBe(true),
+            check: (errors) => expect(errors.some((e) => e.code === 'missing_frontmatter' && e.workspace === 'hr')).toBe(true),
         },
         {
             name: 'flags forbidden_generated_path under extracted/ or attached/',
-            setup: async () =>
-                diffAdd('workspaces/hr/extracted/sheet.md', '# y\n') +
-                diffAdd('workspaces/hr/attached/note.txt', 'x\n'),
-            check: errors => {
-                const paths = errors.filter(e => e.code === 'forbidden_generated_path').map(e => e.path);
+            setup: async () => diffAdd('workspaces/hr/extracted/sheet.md', '# y\n') + diffAdd('workspaces/hr/attached/note.txt', 'x\n'),
+            check: (errors) => {
+                const paths = errors.filter((e) => e.code === 'forbidden_generated_path').map((e) => e.path);
                 expect(paths).toContain('workspaces/hr/extracted/sheet.md');
                 expect(paths).toContain('workspaces/hr/attached/note.txt');
             },
@@ -159,20 +151,14 @@ describe('lintWorkspace (scope-less)', () => {
         {
             name: 'flags forbidden_workspace_md_delete when WORKSPACE.md is removed',
             setup: async () => diffDelete('workspaces/hr/WORKSPACE.md', VALID_HR),
-            check: errors =>
-                expect(errors.some(e =>
-                    e.code === 'forbidden_workspace_md_delete' && e.workspace === 'hr',
-                )).toBe(true),
+            check: (errors) => expect(errors.some((e) => e.code === 'forbidden_workspace_md_delete' && e.workspace === 'hr')).toBe(true),
         },
         {
             name: 'allows a WORKSPACE.md delete when the same workspace is re-created elsewhere (relocation)',
             setup: async () =>
-                diffDelete('workspaces/cs-scheduler/WORKSPACE.md', VALID_HR) +
-                diffAdd('workspaces/cs/cs-scheduler/WORKSPACE.md', VALID_HR),
-            check: errors =>
-                expect(errors.some(e =>
-                    e.code === 'forbidden_workspace_md_delete' && e.workspace === 'cs-scheduler',
-                )).toBe(false),
+                diffDelete('workspaces/cs-scheduler/WORKSPACE.md', VALID_HR) + diffAdd('workspaces/cs/cs-scheduler/WORKSPACE.md', VALID_HR),
+            check: (errors) =>
+                expect(errors.some((e) => e.code === 'forbidden_workspace_md_delete' && e.workspace === 'cs-scheduler')).toBe(false),
         },
         {
             name: 'flags workspace_md_missing when other files in a workspace exist without WORKSPACE.md',
@@ -181,8 +167,7 @@ describe('lintWorkspace (scope-less)', () => {
                 await writeStagedFile(root, 'workspaces/hr/note.md', '# n\n');
                 return diffAdd('workspaces/hr/note.md', '# n\n');
             },
-            check: errors =>
-                expect(errors.some(e => e.code === 'workspace_md_missing' && e.workspace === 'hr')).toBe(true),
+            check: (errors) => expect(errors.some((e) => e.code === 'workspace_md_missing' && e.workspace === 'hr')).toBe(true),
         },
         {
             name: 'flags project_md_missing when a projects/<name>/ has files but no PROJECT.md',
@@ -190,8 +175,7 @@ describe('lintWorkspace (scope-less)', () => {
                 await writeStagedFile(root, 'workspaces/hr/projects/onboarding/note.md', '# n\n');
                 return diffAdd('workspaces/hr/projects/onboarding/note.md', '# n\n');
             },
-            check: errors =>
-                expect(errors.some(e => e.code === 'project_md_missing' && e.workspace === 'hr')).toBe(true),
+            check: (errors) => expect(errors.some((e) => e.code === 'project_md_missing' && e.workspace === 'hr')).toBe(true),
         },
         {
             name: 'flags file_too_large when a staged file exceeds 1 MiB',
@@ -200,23 +184,16 @@ describe('lintWorkspace (scope-less)', () => {
                 await writeStagedFile(root, 'workspaces/hr/big.txt', big);
                 return diffAdd('workspaces/hr/big.txt', '');
             },
-            check: errors => expect(errors.some(e => e.code === 'file_too_large')).toBe(true),
+            check: (errors) => expect(errors.some((e) => e.code === 'file_too_large')).toBe(true),
         },
         {
             name: 'flags merge_markers on staged files with unresolved conflict markers',
             setup: async () => {
-                const conflicted = [
-                    '# notes', '',
-                    '<<<<<<< HEAD',
-                    'ours',
-                    '=======',
-                    'theirs',
-                    '>>>>>>> origin/main', '',
-                ].join('\n');
+                const conflicted = ['# notes', '', '<<<<<<< HEAD', 'ours', '=======', 'theirs', '>>>>>>> origin/main', ''].join('\n');
                 await writeStagedFile(root, 'workspaces/hr/notes.md', conflicted);
                 return diffAdd('workspaces/hr/notes.md', conflicted);
             },
-            check: errors => expect(errors.some(e => e.code === 'merge_markers')).toBe(true),
+            check: (errors) => expect(errors.some((e) => e.code === 'merge_markers')).toBe(true),
         },
     ];
 
@@ -228,88 +205,52 @@ describe('lintWorkspace (scope-less)', () => {
     });
 
     it('flags invalid_frontmatter when name does not match dir', async () => {
-        const body = [
-            '---',
-            'name: not-hr',
-            'description: HR',
-            'admin: hr-admin',
-            '---',
-        ].join('\n');
+        const body = ['---', 'name: not-hr', 'description: HR', 'admin: hr-admin', '---'].join('\n');
         await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', body);
         const diff = diffModify('workspaces/hr/WORKSPACE.md', VALID_HR, body);
         const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
         const failed = expectErrors(result);
-        expect(failed.errors.some(e =>
-            e.code === 'invalid_frontmatter' &&
-            e.workspace === 'hr' &&
-            /does not match/.test(e.message),
-        )).toBe(true);
+        expect(
+            failed.errors.some((e) => e.code === 'invalid_frontmatter' && e.workspace === 'hr' && /does not match/.test(e.message)),
+        ).toBe(true);
     });
 
     it('flags invalid_frontmatter when admin is missing', async () => {
-        const body = [
-            '---',
-            'name: hr',
-            'description: HR',
-            '---',
-        ].join('\n');
+        const body = ['---', 'name: hr', 'description: HR', '---'].join('\n');
         await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', body);
         const diff = diffModify('workspaces/hr/WORKSPACE.md', VALID_HR, body);
         const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
         const failed = expectErrors(result);
-        expect(failed.errors.some(e =>
-            e.code === 'invalid_frontmatter' &&
-            e.workspace === 'hr' &&
-            /admin/.test(e.message),
-        )).toBe(true);
+        expect(failed.errors.some((e) => e.code === 'invalid_frontmatter' && e.workspace === 'hr' && /admin/.test(e.message))).toBe(true);
     });
 
     it('flags forbidden_workspace_name on an underscore-prefixed new workspace', async () => {
-        const body = [
-            '---',
-            'name: _hidden',
-            'description: x',
-            'admin: hidden-admin',
-            '---',
-        ].join('\n');
+        const body = ['---', 'name: _hidden', 'description: x', 'admin: hidden-admin', '---'].join('\n');
         await writeStagedFile(root, 'workspaces/_hidden/WORKSPACE.md', body);
         const diff = diffAdd('workspaces/_hidden/WORKSPACE.md', body);
         const result = await lintWorkspace({ diff, workspaces: ['_hidden'], workingTreeRoot: root });
         const failed = expectErrors(result);
-        expect(failed.errors.some(e => e.code === 'forbidden_workspace_name' && e.workspace === '_hidden')).toBe(true);
+        expect(failed.errors.some((e) => e.code === 'forbidden_workspace_name' && e.workspace === '_hidden')).toBe(true);
     });
 
     it('flags forbidden_workspace_name on a name that fails the regex', async () => {
-        const body = [
-            '---',
-            'name: BadName',
-            'description: x',
-            'admin: bad-admin',
-            '---',
-        ].join('\n');
+        const body = ['---', 'name: BadName', 'description: x', 'admin: bad-admin', '---'].join('\n');
         await writeStagedFile(root, 'workspaces/BadName/WORKSPACE.md', body);
         const diff = diffAdd('workspaces/BadName/WORKSPACE.md', body);
         const result = await lintWorkspace({ diff, workspaces: ['BadName'], workingTreeRoot: root });
         const failed = expectErrors(result);
-        expect(failed.errors.some(e => e.code === 'forbidden_workspace_name')).toBe(true);
+        expect(failed.errors.some((e) => e.code === 'forbidden_workspace_name')).toBe(true);
     });
 
     it('flags archived_workspace_edit on writes to an archived workspace', async () => {
-        const archived = [
-            '---',
-            'name: hr',
-            'description: HR',
-            'admin: hr-admin',
-            'archived: true',
-            '---',
-        ].join('\n');
+        const archived = ['---', 'name: hr', 'description: HR', 'admin: hr-admin', 'archived: true', '---'].join('\n');
         await seedWorkspace(root, 'hr', archived);
         await commitAll(root, 'archive');
         await writeStagedFile(root, 'workspaces/hr/note.md', '# n\n');
         const diff = diffAdd('workspaces/hr/note.md', '# n\n');
         const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
         const failed = expectErrors(result);
-        expect(failed.errors.some(e => e.code === 'archived_workspace_edit' && e.workspace === 'hr')).toBe(true);
+        expect(failed.errors.some((e) => e.code === 'archived_workspace_edit' && e.workspace === 'hr')).toBe(true);
     });
 
     it('allows the archive transition (not archived at HEAD -> archived: true)', async () => {
@@ -343,7 +284,7 @@ describe('lintWorkspace (scope-less)', () => {
         const diff = diffModify('workspaces/hr/WORKSPACE.md', before, after);
         const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
         const failed = expectErrors(result);
-        expect(failed.errors.some(e => e.code === 'archived_workspace_edit' && e.workspace === 'hr')).toBe(true);
+        expect(failed.errors.some((e) => e.code === 'archived_workspace_edit' && e.workspace === 'hr')).toBe(true);
     });
 
     it('allows a projects/<name>/ that includes a PROJECT.md', async () => {
@@ -364,15 +305,12 @@ describe('lintWorkspace (scope-less)', () => {
     });
 
     it('does not flag merge_markers on prose using ======= as a thematic break', async () => {
-        const benign = [
-            '# title', '', 'Some intro.', '', '=======', '', 'Section after.', '',
-        ].join('\n');
+        const benign = ['# title', '', 'Some intro.', '', '=======', '', 'Section after.', ''].join('\n');
         await writeStagedFile(root, 'workspaces/hr/notes.md', benign);
         const diff = diffAdd('workspaces/hr/notes.md', benign);
         const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
         expect(result).toEqual({ ok: true });
     });
-
 });
 
 describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
@@ -398,14 +336,7 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
     });
 
     it('read_denied when read scope set and principal lacks it', async () => {
-        const restricted = [
-            '---',
-            'name: hr', 'description: HR',
-            'read: hr-read',
-            'write: hr-write',
-            'admin: hr-admin',
-            '---',
-        ].join('\n');
+        const restricted = ['---', 'name: hr', 'description: HR', 'read: hr-read', 'write: hr-write', 'admin: hr-admin', '---'].join('\n');
         await seedWorkspace(root, 'hr', restricted);
         await commitAll(root, 'seed');
         const lint = makeLintWorkspace({ scopes: new Set(['payments:read']), email: 'x@example.com' });
@@ -413,18 +344,11 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
         const diff = diffAdd('workspaces/hr/note.md', '# n\n');
         const result = await lint({ diff, workspaces: ['hr'], workingTreeRoot: root });
         const failed = expectErrors(result);
-        expect(failed.errors.some(e => e.code === 'read_denied' && e.workspace === 'hr')).toBe(true);
+        expect(failed.errors.some((e) => e.code === 'read_denied' && e.workspace === 'hr')).toBe(true);
     });
 
     it('write_denied when read passes but write scope is missing', async () => {
-        const restricted = [
-            '---',
-            'name: hr', 'description: HR',
-            'read: hr-read',
-            'write: hr-write',
-            'admin: hr-admin',
-            '---',
-        ].join('\n');
+        const restricted = ['---', 'name: hr', 'description: HR', 'read: hr-read', 'write: hr-write', 'admin: hr-admin', '---'].join('\n');
         await seedWorkspace(root, 'hr', restricted);
         await commitAll(root, 'seed');
         const lint = makeLintWorkspace({ scopes: new Set(['hr-read']), email: 'x@example.com' });
@@ -432,16 +356,11 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
         const diff = diffAdd('workspaces/hr/note.md', '# n\n');
         const result = await lint({ diff, workspaces: ['hr'], workingTreeRoot: root });
         const failed = expectErrors(result);
-        expect(failed.errors.some(e => e.code === 'write_denied')).toBe(true);
+        expect(failed.errors.some((e) => e.code === 'write_denied')).toBe(true);
     });
 
     it('write scope passes prose edits', async () => {
-        const restricted = [
-            '---',
-            'name: hr', 'description: HR',
-            'read: hr-read', 'write: hr-write', 'admin: hr-admin',
-            '---',
-        ].join('\n');
+        const restricted = ['---', 'name: hr', 'description: HR', 'read: hr-read', 'write: hr-write', 'admin: hr-admin', '---'].join('\n');
         await seedWorkspace(root, 'hr', restricted);
         await commitAll(root, 'seed');
         const lint = makeLintWorkspace({ scopes: new Set(['hr-write']), email: 'x@example.com' });
@@ -454,18 +373,13 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
     it('admin_denied when modifying WORKSPACE.md frontmatter without admin', async () => {
         await seedWorkspace(root, 'hr', VALID_HR);
         await commitAll(root, 'seed');
-        const newFm = [
-            '---',
-            'name: hr', 'description: HR (rephrased)',
-            'admin: hr-admin',
-            '---',
-        ].join('\n');
+        const newFm = ['---', 'name: hr', 'description: HR (rephrased)', 'admin: hr-admin', '---'].join('\n');
         await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', newFm);
         const diff = diffModify('workspaces/hr/WORKSPACE.md', VALID_HR, newFm);
         const lint = makeLintWorkspace({ scopes: new Set([]), email: 'x@example.com' });
         const result = await lint({ diff, workspaces: ['hr'], workingTreeRoot: root });
         const failed = expectErrors(result);
-        expect(failed.errors.some(e => e.code === 'admin_denied')).toBe(true);
+        expect(failed.errors.some((e) => e.code === 'admin_denied')).toBe(true);
     });
 
     it('WORKSPACE.md body-only edit only requires write', async () => {
@@ -492,12 +406,7 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
     it('admin scope satisfies frontmatter changes', async () => {
         await seedWorkspace(root, 'hr', VALID_HR);
         await commitAll(root, 'seed');
-        const newFm = [
-            '---',
-            'name: hr', 'description: HR (rephrased)',
-            'admin: hr-admin',
-            '---',
-        ].join('\n');
+        const newFm = ['---', 'name: hr', 'description: HR (rephrased)', 'admin: hr-admin', '---'].join('\n');
         await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', newFm);
         const diff = diffModify('workspaces/hr/WORKSPACE.md', VALID_HR, newFm);
         const lint = makeLintWorkspace({ scopes: new Set(['hr-admin']), email: 'x@example.com' });
@@ -506,24 +415,16 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
     });
 
     it('ernesto:agent-ops bypasses everything', async () => {
-        const restricted = [
-            '---',
-            'name: hr', 'description: HR',
-            'read: hr-read', 'write: hr-write', 'admin: hr-admin',
-            '---',
-        ].join('\n');
+        const restricted = ['---', 'name: hr', 'description: HR', 'read: hr-read', 'write: hr-write', 'admin: hr-admin', '---'].join('\n');
         await seedWorkspace(root, 'hr', restricted);
         await commitAll(root, 'seed');
         const lint = makeLintWorkspace({
             scopes: new Set(['ernesto:agent-ops']),
             email: 'ops@example.com',
         });
-        const newFm = [
-            '---',
-            'name: hr', 'description: HR (changed)',
-            'read: hr-read', 'write: hr-write', 'admin: new-admin',
-            '---',
-        ].join('\n');
+        const newFm = ['---', 'name: hr', 'description: HR (changed)', 'read: hr-read', 'write: hr-write', 'admin: new-admin', '---'].join(
+            '\n',
+        );
         await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', newFm);
         const diff = diffModify('workspaces/hr/WORKSPACE.md', restricted, newFm);
         const result = await lint({ diff, workspaces: ['hr'], workingTreeRoot: root });
@@ -531,20 +432,14 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
     });
 
     it('creating a new workspace requires the principal to hold the declared admin scope', async () => {
-        const newWs = [
-            '---',
-            'name: newthing',
-            'description: a new workspace',
-            'admin: newthing-admin',
-            '---',
-        ].join('\n');
+        const newWs = ['---', 'name: newthing', 'description: a new workspace', 'admin: newthing-admin', '---'].join('\n');
         await writeStagedFile(root, 'workspaces/newthing/WORKSPACE.md', newWs);
         const diff = diffAdd('workspaces/newthing/WORKSPACE.md', newWs);
 
         const denied = makeLintWorkspace({ scopes: new Set([]), email: 'x@example.com' });
         const fail = await denied({ diff, workspaces: ['newthing'], workingTreeRoot: root });
         const failed = expectErrors(fail);
-        expect(failed.errors.some(e => e.code === 'admin_denied')).toBe(true);
+        expect(failed.errors.some((e) => e.code === 'admin_denied')).toBe(true);
 
         const allowed = makeLintWorkspace({ scopes: new Set(['newthing-admin']), email: 'x@example.com' });
         const ok = await allowed({ diff, workspaces: ['newthing'], workingTreeRoot: root });
@@ -575,7 +470,7 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
         const denied = makeLintWorkspace({ scopes: new Set([]), email: 'random@example.com' });
         const fail = await denied({ diff, workspaces: ['_ernesto'], workingTreeRoot: root });
         const failed = expectErrors(fail);
-        expect(failed.errors.some(e => e.code === 'write_denied' && e.workspace === '_ernesto')).toBe(true);
+        expect(failed.errors.some((e) => e.code === 'write_denied' && e.workspace === '_ernesto')).toBe(true);
 
         // Same edit with agent-ops → passes.
         const allowed = makeLintWorkspace({ scopes: new Set(['ernesto:agent-ops']), email: 'ops@example.com' });
@@ -591,9 +486,7 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
         const noteBody = 'inline note\n';
         await writeStagedFile(root, 'workspaces/hr/extracted/sheet.md', sheetBody);
         await writeStagedFile(root, 'workspaces/hr/attached/note.txt', noteBody);
-        const diff =
-            diffAdd('workspaces/hr/extracted/sheet.md', sheetBody) +
-            diffAdd('workspaces/hr/attached/note.txt', noteBody);
+        const diff = diffAdd('workspaces/hr/extracted/sheet.md', sheetBody) + diffAdd('workspaces/hr/attached/note.txt', noteBody);
 
         // Without bypass: both files are rejected.
         const blocked = await makeLintWorkspace({
@@ -601,9 +494,7 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
             email: 'ops@example.com',
         })({ diff, workspaces: ['hr'], workingTreeRoot: root });
         const blockedFailed = expectErrors(blocked);
-        const blockedPaths = blockedFailed.errors
-            .filter(e => e.code === 'forbidden_generated_path')
-            .map(e => e.path);
+        const blockedPaths = blockedFailed.errors.filter((e) => e.code === 'forbidden_generated_path').map((e) => e.path);
         expect(blockedPaths).toContain('workspaces/hr/extracted/sheet.md');
         expect(blockedPaths).toContain('workspaces/hr/attached/note.txt');
 
@@ -621,11 +512,14 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
         await commitAll(root, 'seed');
         const swapAdmin = [
             '---',
-            'name: hr', 'description: HR policies and procedures',
+            'name: hr',
+            'description: HR policies and procedures',
             'admin: malicious-admin',
             '---',
             '',
-            '# HR', '', 'Body content here.',
+            '# HR',
+            '',
+            'Body content here.',
         ].join('\n');
         await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', swapAdmin);
         const diff = diffModify('workspaces/hr/WORKSPACE.md', VALID_HR, swapAdmin);
@@ -633,7 +527,7 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
         const lint = makeLintWorkspace({ scopes: new Set(['malicious-admin']), email: 'attacker@example.com' });
         const result = await lint({ diff, workspaces: ['hr'], workingTreeRoot: root });
         const failed = expectErrors(result);
-        expect(failed.errors.some(e => e.code === 'admin_denied')).toBe(true);
+        expect(failed.errors.some((e) => e.code === 'admin_denied')).toBe(true);
     });
 });
 
@@ -650,12 +544,7 @@ describe('unregistered_extraction_source — registry-driven validation', () => 
     });
 
     function makeMd(name: string, extractions: ReadonlyArray<{ source: string; target: string }>): string {
-        const lines = [
-            '---',
-            `name: ${name}`,
-            `description: ${name} workspace`,
-            `admin: ${name}-admin`,
-        ];
+        const lines = ['---', `name: ${name}`, `description: ${name} workspace`, `admin: ${name}-admin`];
         if (extractions.length > 0) {
             lines.push('extractions:');
             for (const e of extractions) {
@@ -705,7 +594,7 @@ describe('unregistered_extraction_source — registry-driven validation', () => 
         );
         const result = await lint({ diff, workspaces: ['hr'], workingTreeRoot: root });
         const failed = expectErrors(result);
-        const ext = failed.errors.filter(e => e.code === UNREGISTERED_EXTRACTION_SOURCE);
+        const ext = failed.errors.filter((e) => e.code === UNREGISTERED_EXTRACTION_SOURCE);
         expect(ext.length).toBe(1);
         expect(ext[0].workspace).toBe('hr');
         expect(ext[0].message).toContain('mystery-source');
@@ -729,11 +618,8 @@ describe('unregistered_extraction_source — registry-driven validation', () => 
         );
         const result = await lint({ diff, workspaces: ['hr'], workingTreeRoot: root });
         const failed = expectErrors(result);
-        const bad = failed.errors.filter(e => e.code === UNREGISTERED_EXTRACTION_SOURCE);
-        expect(bad.map(e => e.message)).toEqual([
-            expect.stringContaining('mystery-a'),
-            expect.stringContaining('mystery-b'),
-        ]);
+        const bad = failed.errors.filter((e) => e.code === UNREGISTERED_EXTRACTION_SOURCE);
+        expect(bad.map((e) => e.message)).toEqual([expect.stringContaining('mystery-a'), expect.stringContaining('mystery-b')]);
     });
 
     it('is skipped entirely when getRegisteredSources is not wired', async () => {
@@ -815,16 +701,9 @@ describe('navigation frontmatter — section / order / title', () => {
 
     /** WORKSPACE.md body declaring an ordered `sections:` list. */
     function hrWithSections(sectionsYaml: string): string {
-        return [
-            '---',
-            'name: hr',
-            'description: HR policies and procedures',
-            'admin: hr-admin',
-            sectionsYaml,
-            '---',
-            '',
-            '# HR',
-        ].join('\n');
+        return ['---', 'name: hr', 'description: HR policies and procedures', 'admin: hr-admin', sectionsYaml, '---', '', '# HR'].join(
+            '\n',
+        );
     }
 
     function contentFile(fmLines: string[]): string {
@@ -860,34 +739,33 @@ describe('navigation frontmatter — section / order / title', () => {
         ['title is not a string', ['title: 123', 'order: 1'], 'workspaces/hr/bad-title.md', /title/],
     ];
 
-    it.each(navShapeCases)(
-        'flags invalid_nav_frontmatter when %s',
-        async (_label, fmLines, fileName, fieldRegex) => {
-            const body = contentFile(fmLines);
-            const result = await lintContent(fileName, body);
-            const failed = expectErrors(result);
-            expect(failed.errors.some(e =>
-                e.code === 'invalid_nav_frontmatter' &&
-                e.path === fileName &&
-                fieldRegex.test(e.message),
-            )).toBe(true);
-        },
-    );
+    it.each(navShapeCases)('flags invalid_nav_frontmatter when %s', async (_label, fmLines, fileName, fieldRegex) => {
+        const body = contentFile(fmLines);
+        const result = await lintContent(fileName, body);
+        const failed = expectErrors(result);
+        expect(failed.errors.some((e) => e.code === 'invalid_nav_frontmatter' && e.path === fileName && fieldRegex.test(e.message))).toBe(
+            true,
+        );
+    });
 
     it('does NOT shape-check nav keys on WORKSPACE.md itself', async () => {
         // A section/order on the contract file is not a content-nav key.
         const wsBody = [
             '---',
-            'name: hr', 'description: HR policies and procedures', 'admin: hr-admin',
+            'name: hr',
+            'description: HR policies and procedures',
+            'admin: hr-admin',
             'order: not-a-number',
-            '---', '', '# HR',
+            '---',
+            '',
+            '# HR',
         ].join('\n');
         await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', wsBody);
         const diff = diffModify('workspaces/hr/WORKSPACE.md', VALID_HR, wsBody);
         const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
         // No invalid_nav_frontmatter for WORKSPACE.md.
         if (!result.ok) {
-            expect((result as FailedLint).errors.every(e => e.code !== 'invalid_nav_frontmatter')).toBe(true);
+            expect((result as FailedLint).errors.every((e) => e.code !== 'invalid_nav_frontmatter')).toBe(true);
         } else {
             expect(result).toEqual({ ok: true });
         }
@@ -909,7 +787,7 @@ describe('navigation frontmatter — section / order / title', () => {
         const body = contentFile(['section: Onboarding']);
         const result = await lintContent('workspaces/hr/onb.md', body);
         const failed = expectErrors(result);
-        const err = failed.errors.find(e => e.code === 'unknown_section');
+        const err = failed.errors.find((e) => e.code === 'unknown_section');
         expect(err).toBeDefined();
         expect(err!.workspace).toBe('hr');
         expect(err!.path).toBe('workspaces/hr/onb.md');
@@ -929,9 +807,7 @@ describe('navigation frontmatter — section / order / title', () => {
         const diff = diffModify('workspaces/hr/WORKSPACE.md', VALID_HR, ws);
         const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
         const failed = expectErrors(result);
-        expect(failed.errors.some(e =>
-            e.code === 'invalid_workspace_sections' && e.workspace === 'hr',
-        )).toBe(true);
+        expect(failed.errors.some((e) => e.code === 'invalid_workspace_sections' && e.workspace === 'hr')).toBe(true);
     });
 
     it('flags invalid_workspace_sections when sections is an array of non-strings', async () => {
@@ -940,7 +816,7 @@ describe('navigation frontmatter — section / order / title', () => {
         const diff = diffModify('workspaces/hr/WORKSPACE.md', VALID_HR, ws);
         const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
         const failed = expectErrors(result);
-        expect(failed.errors.some(e => e.code === 'invalid_workspace_sections')).toBe(true);
+        expect(failed.errors.some((e) => e.code === 'invalid_workspace_sections')).toBe(true);
     });
 
     it('does not fire unknown_section when sections is malformed (only invalid_workspace_sections)', async () => {
@@ -954,7 +830,7 @@ describe('navigation frontmatter — section / order / title', () => {
         // invalid_workspace_sections won't fire here; the key point is that
         // unknown_section must NOT fire off a malformed declared list.
         if (!result.ok) {
-            expect((result as FailedLint).errors.every(e => e.code !== 'unknown_section')).toBe(true);
+            expect((result as FailedLint).errors.every((e) => e.code !== 'unknown_section')).toBe(true);
         } else {
             expect(result).toEqual({ ok: true });
         }
@@ -970,9 +846,7 @@ describe('navigation frontmatter — section / order / title', () => {
         const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
         const failed = expectErrors(result);
         // It will fail on forbidden_generated_path, but NOT on nav rules.
-        expect(failed.errors.every(e =>
-            e.code !== 'invalid_nav_frontmatter' && e.code !== 'unknown_section',
-        )).toBe(true);
+        expect(failed.errors.every((e) => e.code !== 'invalid_nav_frontmatter' && e.code !== 'unknown_section')).toBe(true);
     });
 
     it('also validates .mdx content files', async () => {
@@ -982,7 +856,7 @@ describe('navigation frontmatter — section / order / title', () => {
         const body = contentFile(['section: Ghost']);
         const result = await lintContent('workspaces/hr/page.mdx', body);
         const failed = expectErrors(result);
-        expect(failed.errors.some(e => e.code === 'unknown_section')).toBe(true);
+        expect(failed.errors.some((e) => e.code === 'unknown_section')).toBe(true);
     });
 });
 
@@ -1034,10 +908,7 @@ describe('lintWorkspace — nested sub-workspaces', () => {
         // Declaring only `hr` must NOT admit a file that belongs to `recruiting`.
         const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
         const failed = expectErrors(result);
-        expect(failed.errors.some(e =>
-            e.code === 'out_of_scope_path' &&
-            e.path === 'workspaces/hr/recruiting/roles/eng.md',
-        )).toBe(true);
+        expect(failed.errors.some((e) => e.code === 'out_of_scope_path' && e.path === 'workspaces/hr/recruiting/roles/eng.md')).toBe(true);
     });
 
     it('a file directly under the parent (above the nested boundary) still attributes to the parent', async () => {
@@ -1049,9 +920,7 @@ describe('lintWorkspace — nested sub-workspaces', () => {
 
     it("a nested WORKSPACE.md's name must equal its LEAF segment", async () => {
         // name matches leaf → OK.
-        const ok = diffModify(
-            'workspaces/hr/recruiting/WORKSPACE.md', VALID_RECRUITING, VALID_RECRUITING + '\n\nmore.\n',
-        );
+        const ok = diffModify('workspaces/hr/recruiting/WORKSPACE.md', VALID_RECRUITING, VALID_RECRUITING + '\n\nmore.\n');
         await writeStagedFile(root, 'workspaces/hr/recruiting/WORKSPACE.md', VALID_RECRUITING + '\n\nmore.\n');
         const okResult = await lintWorkspace({ diff: ok, workspaces: ['recruiting'], workingTreeRoot: root });
         expect(okResult).toEqual({ ok: true });
@@ -1063,17 +932,17 @@ describe('lintWorkspace — nested sub-workspaces', () => {
         const diff = diffModify('workspaces/hr/recruiting/WORKSPACE.md', VALID_RECRUITING, wrong);
         const result = await lintWorkspace({ diff, workspaces: ['recruiting'], workingTreeRoot: root });
         const failed = expectErrors(result);
-        expect(failed.errors.some(e =>
-            e.code === 'invalid_frontmatter' &&
-            /does not match directory name 'recruiting'/.test(e.message),
-        )).toBe(true);
+        expect(
+            failed.errors.some((e) => e.code === 'invalid_frontmatter' && /does not match directory name 'recruiting'/.test(e.message)),
+        ).toBe(true);
     });
 
     it('validates a freshly-created nested sub-workspace by its leaf name', async () => {
         // New sub-workspace `hr/sourcing` created from scratch.
-        const body = VALID_RECRUITING
-            .replace('name: recruiting', 'name: sourcing')
-            .replace('admin: recruiting-admin', 'admin: recruiting-admin');
+        const body = VALID_RECRUITING.replace('name: recruiting', 'name: sourcing').replace(
+            'admin: recruiting-admin',
+            'admin: recruiting-admin',
+        );
         await writeStagedFile(root, 'workspaces/hr/sourcing/WORKSPACE.md', body);
         const diff = diffAdd('workspaces/hr/sourcing/WORKSPACE.md', body);
         const result = await lintWorkspace({ diff, workspaces: ['sourcing'], workingTreeRoot: root });
@@ -1086,11 +955,14 @@ describe('lintWorkspace — nested sub-workspaces', () => {
         // enclosing parent `hr`, so declare both to isolate the delete rule.
         const result = await lintWorkspace({ diff, workspaces: ['hr', 'recruiting'], workingTreeRoot: root });
         const failed = expectErrors(result);
-        expect(failed.errors.some(e =>
-            e.code === 'forbidden_workspace_md_delete' &&
-            e.workspace === 'recruiting' &&
-            e.path === 'workspaces/hr/recruiting/WORKSPACE.md',
-        )).toBe(true);
+        expect(
+            failed.errors.some(
+                (e) =>
+                    e.code === 'forbidden_workspace_md_delete' &&
+                    e.workspace === 'recruiting' &&
+                    e.path === 'workspaces/hr/recruiting/WORKSPACE.md',
+            ),
+        ).toBe(true);
     });
 
     it('flags extracted/ under a nested sub-workspace as a generated path', async () => {
@@ -1098,10 +970,13 @@ describe('lintWorkspace — nested sub-workspaces', () => {
         const diff = diffAdd('workspaces/hr/recruiting/extracted/x.md', 'data\n');
         const result = await lintWorkspace({ diff, workspaces: ['recruiting'], workingTreeRoot: root });
         const failed = expectErrors(result);
-        expect(failed.errors.some(e =>
-            e.code === 'forbidden_generated_path' &&
-            e.workspace === 'recruiting' &&
-            e.path === 'workspaces/hr/recruiting/extracted/x.md',
-        )).toBe(true);
+        expect(
+            failed.errors.some(
+                (e) =>
+                    e.code === 'forbidden_generated_path' &&
+                    e.workspace === 'recruiting' &&
+                    e.path === 'workspaces/hr/recruiting/extracted/x.md',
+            ),
+        ).toBe(true);
     });
 });

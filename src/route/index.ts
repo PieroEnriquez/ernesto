@@ -1,15 +1,5 @@
-export {
-    defineRoute,
-    resolveRouteScope,
-    isDynamicScope,
-} from './define-route';
-export type {
-    Route,
-    RouteConfig,
-    RouteContext,
-    RouteScope,
-    DynamicScope,
-} from './define-route';
+export { defineRoute, resolveRouteScope, isDynamicScope } from './define-route';
+export type { Route, RouteConfig, RouteContext, RouteScope, DynamicScope } from './define-route';
 
 export { RouteRegistry } from './route-registry';
 

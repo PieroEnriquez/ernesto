@@ -51,10 +51,7 @@ describe('redshiftSchemaPlugin', () => {
         const plugin = redshiftSchemaPlugin({ query });
         const result = await plugin.fetch({ target: 'tables' }, makeCtx());
 
-        expect(result.entries.map((e) => e.path).sort()).toEqual([
-            'tables/public.agg_orders.json',
-            'tables/public.fact_users.json',
-        ]);
+        expect(result.entries.map((e) => e.path).sort()).toEqual(['tables/public.agg_orders.json', 'tables/public.fact_users.json']);
 
         const agg = JSON.parse(result.entries.find((e) => e.path.includes('agg_orders'))!.content);
         expect(agg.column_count).toBe(2);

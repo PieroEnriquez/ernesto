@@ -41,28 +41,21 @@ export interface ModelRouterOpts {
      * Callers pass a custom resolver to add providers (e.g.
      * Bedrock, Vertex, Ollama).
      */
-    providerEnv?: Record<
-        string,
-        (env: NodeJS.ProcessEnv) => Record<string, string>
-    >;
+    providerEnv?: Record<string, (env: NodeJS.ProcessEnv) => Record<string, string>>;
 }
 
 const DEFAULT_RESOLVERS: NonNullable<ModelRouterOpts['providerEnv']> = {
     ANTHROPIC: (env) => {
         const key = env.ANTHROPIC_API_KEY;
         if (!key) {
-            throw new ModelRouterError(
-                'provider ANTHROPIC requires env ANTHROPIC_API_KEY',
-            );
+            throw new ModelRouterError('provider ANTHROPIC requires env ANTHROPIC_API_KEY');
         }
         return { ANTHROPIC_API_KEY: key };
     },
     OPEN_ROUTER: (env) => {
         const key = env.OPENROUTER_API_KEY;
         if (!key) {
-            throw new ModelRouterError(
-                'provider OPEN_ROUTER requires env OPENROUTER_API_KEY',
-            );
+            throw new ModelRouterError('provider OPEN_ROUTER requires env OPENROUTER_API_KEY');
         }
         return {
             OPENROUTER_API_KEY: key,
@@ -74,9 +67,7 @@ const DEFAULT_RESOLVERS: NonNullable<ModelRouterOpts['providerEnv']> = {
     },
 };
 
-export function modelRouterMiddleware(
-    opts: ModelRouterOpts = {},
-): DispatchMiddleware {
+export function modelRouterMiddleware(opts: ModelRouterOpts = {}): DispatchMiddleware {
     const resolvers = { ...DEFAULT_RESOLVERS, ...(opts.providerEnv ?? {}) };
 
     return {
@@ -88,9 +79,7 @@ export function modelRouterMiddleware(
             const provider = policy.provider ?? 'ANTHROPIC';
             const resolver = resolvers[provider];
             if (!resolver) {
-                throw new ModelRouterError(
-                    `unknown provider "${provider}" — register a resolver via modelRouterMiddleware({providerEnv})`,
-                );
+                throw new ModelRouterError(`unknown provider "${provider}" — register a resolver via modelRouterMiddleware({providerEnv})`);
             }
             const providerEnv = resolver(process.env);
 

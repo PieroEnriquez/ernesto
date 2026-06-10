@@ -19,10 +19,7 @@ import { describe, expect, it } from 'vitest';
 import type { Harness, HarnessEvent } from '../../types';
 
 const HAS_KEY = Boolean(
-    process.env.ANTHROPIC_API_KEY ||
-        process.env.OPENAI_API_KEY ||
-        process.env.GOOGLE_API_KEY ||
-        process.env.OPENROUTER_API_KEY,
+    process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || process.env.GOOGLE_API_KEY || process.env.OPENROUTER_API_KEY,
 );
 const block = HAS_KEY ? describe : describe.skip;
 
@@ -31,12 +28,8 @@ function makeHarness(): Harness {
     const mod = require('../index') as typeof import('../index');
     return mod.createFraguaPiHarness({
         apiKeys: {
-            ...(process.env.ANTHROPIC_API_KEY
-                ? { anthropic: process.env.ANTHROPIC_API_KEY }
-                : {}),
-            ...(process.env.OPENAI_API_KEY
-                ? { openai: process.env.OPENAI_API_KEY }
-                : {}),
+            ...(process.env.ANTHROPIC_API_KEY ? { anthropic: process.env.ANTHROPIC_API_KEY } : {}),
+            ...(process.env.OPENAI_API_KEY ? { openai: process.env.OPENAI_API_KEY } : {}),
         },
     });
 }

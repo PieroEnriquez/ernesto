@@ -16,13 +16,13 @@ The agent's built-in tools already cover the same surface — and do it
 better, because they participate in the harness's permission and audit
 model:
 
-| LocalSource capability       | Native agent equivalent              |
-|------------------------------|--------------------------------------|
-| Recursive directory walk     | `Glob` (`**/*.md`, etc.)             |
-| Read file contents           | `Read` (with line ranges, images, PDFs) |
-| Filter by extension          | `Glob` pattern / `Grep --type`       |
-| Content-type sniffing        | `Read` handles md/txt/pdf/png/ipynb  |
-| Search inside files          | `Grep` (ripgrep)                     |
+| LocalSource capability   | Native agent equivalent                 |
+| ------------------------ | --------------------------------------- |
+| Recursive directory walk | `Glob` (`**/*.md`, etc.)                |
+| Read file contents       | `Read` (with line ranges, images, PDFs) |
+| Filter by extension      | `Glob` pattern / `Grep --type`          |
+| Content-type sniffing    | `Read` handles md/txt/pdf/png/ipynb     |
+| Search inside files      | `Grep` (ripgrep)                        |
 
 A plugin wrapper would add a second, weaker path to the same bytes —
 duplicated traversal logic, duplicated path-traversal hardening, and a
@@ -30,7 +30,7 @@ duplicated traversal logic, duplicated path-traversal hardening, and a
 That's a scope we don't want to grant when the agent can already read
 exactly what it needs through audited tools.
 
-## When a plugin *would* be justified
+## When a plugin _would_ be justified
 
 Only if extraction needs to reach **outside the workspace tree** — a sibling
 repo, a shared docs mount, an asset store on a different volume. That's a

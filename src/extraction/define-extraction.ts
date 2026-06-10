@@ -67,9 +67,7 @@ export interface ExtractionPlugin {
 }
 
 export function defineExtraction(config: ExtractionPluginConfig): ExtractionPlugin {
-    const scope = Array.isArray(config.scope)
-        ? Object.freeze([...config.scope])
-        : Object.freeze([config.scope as ExtractionScope]);
+    const scope = Array.isArray(config.scope) ? Object.freeze([...config.scope]) : Object.freeze([config.scope as ExtractionScope]);
     return Object.freeze({
         source: config.source,
         scope,

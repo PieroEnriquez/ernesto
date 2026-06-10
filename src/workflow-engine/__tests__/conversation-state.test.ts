@@ -110,11 +110,7 @@ describe('conversation-state', () => {
 
     it('loadConversationState returns undefined for malformed JSON', async () => {
         await fs.mkdir(path.join(workdir, '.ernesto'), { recursive: true });
-        await fs.writeFile(
-            path.join(workdir, '.ernesto', 'state.json'),
-            '{not json',
-            'utf8',
-        );
+        await fs.writeFile(path.join(workdir, '.ernesto', 'state.json'), '{not json', 'utf8');
         expect(await loadConversationState(workdir)).toBeUndefined();
     });
 });
@@ -178,9 +174,7 @@ describe('decideRendererAction (strategy-driven)', () => {
                     promptId: 'p-1',
                     expect: { kind: 'message' },
                     resumePrompt: '',
-                    render: [
-                        { kind: 'markdown', props: { body: 'Approve change?' } },
-                    ],
+                    render: [{ kind: 'markdown', props: { body: 'Approve change?' } }],
                 },
             },
             { kind: 'new_message', text: 'forget it, do X instead' },
@@ -241,32 +235,27 @@ describe('decideRendererAction (strategy-driven)', () => {
         });
     });
 
-    it.each(['completed', 'errored', 'canceled'] as const)(
-        'clean continuation when status is %s (resumeTranscript carried)',
-        (status) => {
-            const action = decideRendererAction(
-                {
-                    version: CONVERSATION_STATE_VERSION,
-                    status,
-                    sessionId: SID,
-                    lastTransitionAt: 0,
-                    ...(status === 'errored'
-                        ? { lastError: { code: 'X', message: 'boom' } }
-                        : {}),
-                },
-                { kind: 'new_message', text: 'try again' },
-            );
-            expect(action.kind).toBe('dispatch_continuation');
-            if (action.kind === 'dispatch_continuation') {
-                expect(action.resumeTranscript).toBe(SID);
-                expect(action.reason).toBe(status);
-                expect(action.prompt).toContain('try again');
-                if (status === 'errored') {
-                    expect(action.prompt).toContain('boom');
-                }
+    it.each(['completed', 'errored', 'canceled'] as const)('clean continuation when status is %s (resumeTranscript carried)', (status) => {
+        const action = decideRendererAction(
+            {
+                version: CONVERSATION_STATE_VERSION,
+                status,
+                sessionId: SID,
+                lastTransitionAt: 0,
+                ...(status === 'errored' ? { lastError: { code: 'X', message: 'boom' } } : {}),
+            },
+            { kind: 'new_message', text: 'try again' },
+        );
+        expect(action.kind).toBe('dispatch_continuation');
+        if (action.kind === 'dispatch_continuation') {
+            expect(action.resumeTranscript).toBe(SID);
+            expect(action.reason).toBe(status);
+            expect(action.prompt).toContain('try again');
+            if (status === 'errored') {
+                expect(action.prompt).toContain('boom');
             }
-        },
-    );
+        }
+    });
 
     it('renderer strategy hooks compose with lib defaults', () => {
         const slackish: RendererPromptStrategy = {
@@ -298,13 +287,9 @@ describe('composeStrategy', () => {
             forCanceled: (input) => `[custom cancel] ${input.text}`,
         };
         const composed = composeStrategy(custom);
-        expect(
-            composed.forCanceled({ kind: 'new_message', text: 'retry' }, {}),
-        ).toBe('[custom cancel] retry');
+        expect(composed.forCanceled({ kind: 'new_message', text: 'retry' }, {})).toBe('[custom cancel] retry');
         // unrelated hook still falls back to default
-        expect(
-            composed.forNew({ kind: 'new_message', text: 'hi' }),
-        ).toBe('hi');
+        expect(composed.forNew({ kind: 'new_message', text: 'hi' })).toBe('hi');
     });
 });
 
@@ -345,11 +330,7 @@ describe('appendHitlToTrail', () => {
         await appendHitlToTrail(workdir, 'run-3', hitl(3));
         const loaded = await loadConversationState(workdir);
         expect(loaded?.uiTrail).toHaveLength(3);
-        expect(loaded?.uiTrail?.map((e) => e.runId)).toEqual([
-            'run-1',
-            'run-2',
-            'run-3',
-        ]);
+        expect(loaded?.uiTrail?.map((e) => e.runId)).toEqual(['run-1', 'run-2', 'run-3']);
     });
 
     it('honors the rolling cap — 51st entry drops the oldest', async () => {
@@ -359,9 +340,7 @@ describe('appendHitlToTrail', () => {
         const loaded = await loadConversationState(workdir);
         expect(loaded?.uiTrail).toHaveLength(UI_TRAIL_CAP);
         expect(loaded?.uiTrail?.[0]?.runId).toBe('run-1');
-        expect(loaded?.uiTrail?.[UI_TRAIL_CAP - 1]?.runId).toBe(
-            `run-${UI_TRAIL_CAP}`,
-        );
+        expect(loaded?.uiTrail?.[UI_TRAIL_CAP - 1]?.runId).toBe(`run-${UI_TRAIL_CAP}`);
     });
 
     it('writes atomically — no .tmp leftover', async () => {
@@ -396,9 +375,7 @@ describe('decideRendererAction — prev.uiTrail threading', () => {
             hitl: {
                 kind: 'hitl',
                 props: {
-                    render: [
-                        { kind: 'markdown', props: { body: 'first answer' } },
-                    ],
+                    render: [{ kind: 'markdown', props: { body: 'first answer' } }],
                     expect: { kind: 'message' },
                     resumePrompt: '',
                 },

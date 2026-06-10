@@ -22,18 +22,8 @@
 import { randomUUID } from 'crypto';
 import type { McpServerConfig, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import { compileAgent } from '../../managed-agents/compile-agent';
-import type {
-    AgentContext,
-    CompiledAgent,
-    Transport,
-} from '../../managed-agents/types';
-import type {
-    AgentDefinition,
-    AgentHandle,
-    RunHandle,
-    SendOptions,
-    UserMessage,
-} from '../types';
+import type { AgentContext, CompiledAgent, Transport } from '../../managed-agents/types';
+import type { AgentDefinition, AgentHandle, RunHandle, SendOptions, UserMessage } from '../types';
 import { compileAgentToSdkOptions, type SdkHooks } from './compile';
 import { casSendWithOptions } from './send';
 
@@ -116,10 +106,7 @@ export interface CasAgentHandle extends AgentHandle {
  * once here; each `agent.send(prompt)` issues a fresh `query()` against
  * the cached options.
  */
-export async function casCreateAgent(
-    def: AgentDefinition,
-    opts: CasCreateOptions = {},
-): Promise<CasAgentHandle> {
+export async function casCreateAgent(def: AgentDefinition, opts: CasCreateOptions = {}): Promise<CasAgentHandle> {
     const compiled = coerceToCompiledAgent(def, opts);
     const agentId = opts.agentId ?? `cas-${randomUUID()}`;
     const transcriptId = opts.transcriptId ?? agentId;
@@ -139,18 +126,14 @@ export async function casCreateAgent(
         defaultDisallowedTools: opts.defaultDisallowedTools,
     });
 
-    const send = async (
-        msg: UserMessage,
-        sendOpts: CasAgentSendOptions = {},
-    ): Promise<RunHandle> => {
+    const send = async (msg: UserMessage, sendOpts: CasAgentSendOptions = {}): Promise<RunHandle> => {
         const prompt = typeof msg === 'string' ? msg : msg.text;
         const runId = sendOpts.runId ?? `run-${randomUUID()}`;
         // Honor a per-send abort controller by swapping it into the
         // options for this query. Other fields stay byte-stable across
         // sends so the SDK's prompt cache treats them as identical.
         const perCallOptions =
-            sendOpts.abortController !== undefined &&
-            sendOpts.abortController !== sdkOptions.abortController
+            sendOpts.abortController !== undefined && sendOpts.abortController !== sdkOptions.abortController
                 ? { ...sdkOptions, abortController: sendOpts.abortController }
                 : sdkOptions;
         return casSendWithOptions({
@@ -182,10 +165,7 @@ export async function casCreateAgent(
  * `tools[]` / `subagents` (those require post-step-1 fn-tool / subagent
  * wiring not yet plumbed through CAS).
  */
-function coerceToCompiledAgent(
-    def: AgentDefinition,
-    opts: CasCreateOptions,
-): CompiledAgent {
+function coerceToCompiledAgent(def: AgentDefinition, opts: CasCreateOptions): CompiledAgent {
     // Pass-through only when the caller hasn't asked for transport
     // composition. When `opts.transport` is set we must run
     // `compileAgent` so the platform body (`_ernesto/WORKSPACE.md` +
@@ -209,8 +189,7 @@ function coerceToCompiledAgent(
         };
     }
 
-    const modelId =
-        typeof def.model === 'string' ? def.model : def.model.id;
+    const modelId = typeof def.model === 'string' ? def.model : def.model.id;
 
     const ctx: AgentContext = {
         cwd: opts.cwd,

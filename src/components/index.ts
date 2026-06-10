@@ -10,10 +10,7 @@
  * doc (taxonomy + per-transport render table + emission flow).
  */
 
-export {
-    UI_COMPONENT_KINDS,
-    RENDERABLE_COMPONENT_KINDS,
-} from './types';
+export { UI_COMPONENT_KINDS, RENDERABLE_COMPONENT_KINDS } from './types';
 
 export type {
     // Top-level

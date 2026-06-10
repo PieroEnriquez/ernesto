@@ -61,10 +61,7 @@ export interface UsageFields {
  * `cacheRead` / `cacheWrite` / `costUsd` are included only when a number
  * was supplied. Used by every backend's terminal/usage row mapper.
  */
-export function buildUsageEvent(
-    runId: string,
-    fields: UsageFields,
-): Extract<HarnessEvent, { kind: 'usage' }> {
+export function buildUsageEvent(runId: string, fields: UsageFields): Extract<HarnessEvent, { kind: 'usage' }> {
     const ev: Extract<HarnessEvent, { kind: 'usage' }> = {
         kind: 'usage',
         inputTokens: fields.inputTokens,

@@ -32,13 +32,7 @@
  */
 
 import debug from 'debug';
-import type {
-    AssistantBlock,
-    HarnessEvent,
-    RunHandle,
-    RunResult,
-    RunStatus,
-} from './types';
+import type { AssistantBlock, HarnessEvent, RunHandle, RunResult, RunStatus } from './types';
 
 const log = debug('ernesto:harness:run-handle');
 
@@ -216,10 +210,7 @@ export function makeRunHandle<Raw>(spec: HarnessAdapterSpec<Raw>): RunHandle {
             if (drainDone) return;
             // The drain promise resolves only at termination; for
             // incremental progress we race a micro-tick.
-            await Promise.race([
-                drain,
-                new Promise<void>((resolve) => setTimeout(resolve, 0)),
-            ]);
+            await Promise.race([drain, new Promise<void>((resolve) => setTimeout(resolve, 0))]);
         }
     };
 
@@ -246,12 +237,7 @@ export function makeRunHandle<Raw>(spec: HarnessAdapterSpec<Raw>): RunHandle {
             }
         }
 
-        const terminal: RunResult['status'] =
-            status === 'canceled'
-                ? 'canceled'
-                : status === 'errored'
-                    ? 'errored'
-                    : 'completed';
+        const terminal: RunResult['status'] = status === 'canceled' ? 'canceled' : status === 'errored' ? 'errored' : 'completed';
 
         const fold: TerminalFold = {
             runId,

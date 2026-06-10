@@ -66,13 +66,13 @@ describe('makeRedisWorkdirLock', () => {
 
         const a = lock(async () => {
             order.push('a-start');
-            await new Promise(r => setTimeout(r, 50));
+            await new Promise((r) => setTimeout(r, 50));
             order.push('a-end');
             return 'a';
         });
         const b = lock(async () => {
             order.push('b-start');
-            await new Promise(r => setTimeout(r, 10));
+            await new Promise((r) => setTimeout(r, 10));
             order.push('b-end');
             return 'b';
         });
@@ -108,7 +108,7 @@ describe('makeRedisWorkdirLock', () => {
 
         const result = await lock(async () => {
             // Run ~3x ttlMs — without renew the entry would have expired.
-            await new Promise(r => setTimeout(r, 250));
+            await new Promise((r) => setTimeout(r, 250));
             const entry = redis._store.get('ernesto:workdir-lock:wd-renew');
             // While fn is still running, the lock must still be alive.
             expect(entry).toBeDefined();
@@ -126,7 +126,11 @@ describe('makeRedisWorkdirLock', () => {
         const lock = makeRedisWorkdirLock(redis, 'wd-err');
         const boom = new Error('boom');
 
-        await expect(lock(async () => { throw boom; })).rejects.toBe(boom);
+        await expect(
+            lock(async () => {
+                throw boom;
+            }),
+        ).rejects.toBe(boom);
         expect(redis._store.has('ernesto:workdir-lock:wd-err')).toBe(false);
 
         // Subsequent acquisition still works.

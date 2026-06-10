@@ -89,11 +89,7 @@ function coerceColumn(col: unknown): unknown {
     }
     if (isPlainObject(col)) {
         // Repair `{id: '', label: 'Region'}` by re-slugging from the label.
-        if (
-            (col.id === '' || col.id === undefined || col.id === null) &&
-            typeof col.label === 'string' &&
-            col.label.length > 0
-        ) {
+        if ((col.id === '' || col.id === undefined || col.id === null) && typeof col.label === 'string' && col.label.length > 0) {
             return { ...col, id: slugify(col.label) };
         }
     }
@@ -147,9 +143,7 @@ export function coerceUiComponent(raw: unknown): unknown {
     //      inside `props`, fold them in. Common quirk.
     if (kind && KNOWN_PROPS_FIELDS[kind]) {
         const knownProps = KNOWN_PROPS_FIELDS[kind];
-        const migrated: Record<string, unknown> = isPlainObject(out.props)
-            ? { ...out.props }
-            : {};
+        const migrated: Record<string, unknown> = isPlainObject(out.props) ? { ...out.props } : {};
         let didMigrate = false;
         for (const field of knownProps) {
             if (field in out && !(field in migrated) && field !== 'props') {
@@ -180,10 +174,7 @@ export function coerceUiComponent(raw: unknown): unknown {
         if (Array.isArray(props.render)) {
             props.render = props.render.map((r) => coerceUiComponent(r));
         }
-        if (
-            typeof props.resumePrompt !== 'string' ||
-            props.resumePrompt.length === 0
-        ) {
+        if (typeof props.resumePrompt !== 'string' || props.resumePrompt.length === 0) {
             props.resumePrompt = DEFAULT_RESUME_PROMPT;
         }
         out.props = props;

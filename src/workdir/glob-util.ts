@@ -22,7 +22,7 @@ export function safeSubpath(sub: string | undefined): string {
     if (sub.startsWith('/') || sub.includes('\\')) {
         throw new Error('invalid_path');
     }
-    if (sub.split('/').some(seg => seg === '..')) {
+    if (sub.split('/').some((seg) => seg === '..')) {
         throw new Error('parent_segment_not_allowed');
     }
     return sub.replace(/^\.\/+/, '').replace(/\/+$/, '');

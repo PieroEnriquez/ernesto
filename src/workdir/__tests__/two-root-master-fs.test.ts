@@ -116,7 +116,8 @@ describe('two-root flag ON (cutover): generated MISS → not-found (master-FS in
         await write(generatedRoot, EXTRACTED, 'NEW');
         const master = makeVolumeMasterFs(masterFsRoot, generatedRoot, isGenerated, true);
         expect(await master.resolve(EXTRACTED)).toEqual({
-            kind: 'hardlink', sourcePath: path.join(generatedRoot, EXTRACTED),
+            kind: 'hardlink',
+            sourcePath: path.join(generatedRoot, EXTRACTED),
         });
     });
 
@@ -124,7 +125,8 @@ describe('two-root flag ON (cutover): generated MISS → not-found (master-FS in
         await write(masterFsRoot, AUTHORED, 'WS');
         const master = makeVolumeMasterFs(masterFsRoot, generatedRoot, isGenerated, true);
         expect(await master.resolve(AUTHORED)).toEqual({
-            kind: 'hardlink', sourcePath: path.join(masterFsRoot, AUTHORED),
+            kind: 'hardlink',
+            sourcePath: path.join(masterFsRoot, AUTHORED),
         });
     });
 });

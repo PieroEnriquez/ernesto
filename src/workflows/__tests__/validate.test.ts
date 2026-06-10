@@ -30,39 +30,44 @@ describe('validateWorkflow', () => {
     it('emits workflow_name_mismatch when filename stem ≠ name', () => {
         const res = validateWorkflow(baseDecl(), { filename: 'other.yaml' });
         expect(res.ok).toBe(false);
-        expect(res.errors.find(e => e.code === 'workflow_name_mismatch')).toBeTruthy();
+        expect(res.errors.find((e) => e.code === 'workflow_name_mismatch')).toBeTruthy();
     });
 
     it('accepts when filename stem === name', () => {
         const res = validateWorkflow(baseDecl(), { filename: 'demo.yaml' });
-        expect(res.errors.some(e => e.code === 'workflow_name_mismatch')).toBe(false);
+        expect(res.errors.some((e) => e.code === 'workflow_name_mismatch')).toBe(false);
     });
 
     it('accepts ${{ workspace.root }} / ${{ workspace.name }} references (reader-resolved)', () => {
         const decl = baseDecl({
             steps: {
                 main: {
-                    kind: 'agent', model: 'm', systemPrompt: 'sys',
+                    kind: 'agent',
+                    model: 'm',
+                    systemPrompt: 'sys',
                     prompt: 'Read ${{ workspace.root }}/rubric.md for ${{ workspace.name }}',
                     next: 'outputs.r',
                 },
             },
         });
         const res = validateWorkflow(decl, { filename: 'demo.yaml' });
-        expect(res.errors.some(e => e.code === 'workflow_template_unresolved')).toBe(false);
+        expect(res.errors.some((e) => e.code === 'workflow_template_unresolved')).toBe(false);
     });
 
     it('still rejects an unknown reference root', () => {
         const decl = baseDecl({
             steps: {
                 main: {
-                    kind: 'agent', model: 'm', systemPrompt: 'sys',
-                    prompt: '${{ bogus.field }}', next: 'outputs.r',
+                    kind: 'agent',
+                    model: 'm',
+                    systemPrompt: 'sys',
+                    prompt: '${{ bogus.field }}',
+                    next: 'outputs.r',
                 },
             },
         });
         const res = validateWorkflow(decl, { filename: 'demo.yaml' });
-        expect(res.errors.some(e => e.code === 'workflow_template_unresolved')).toBe(true);
+        expect(res.errors.some((e) => e.code === 'workflow_template_unresolved')).toBe(true);
     });
 
     it('emits workflow_step_unreachable for a depends on an unknown step', () => {
@@ -74,7 +79,7 @@ describe('validateWorkflow', () => {
             outputs: { r: { from: 'first' } },
         });
         const res = validateWorkflow(decl);
-        expect(res.errors.some(e => e.code === 'workflow_step_unreachable' && e.stepId === 'second')).toBe(true);
+        expect(res.errors.some((e) => e.code === 'workflow_step_unreachable' && e.stepId === 'second')).toBe(true);
     });
 
     it('emits workflow_step_dead_end for a depends cycle', () => {
@@ -86,7 +91,7 @@ describe('validateWorkflow', () => {
             outputs: { r: { from: 'a' } },
         });
         const res = validateWorkflow(decl);
-        expect(res.errors.some(e => e.code === 'workflow_step_dead_end')).toBe(true);
+        expect(res.errors.some((e) => e.code === 'workflow_step_dead_end')).toBe(true);
     });
 
     it('accepts a plain multi-root DAG (independent sinks are valid)', () => {
@@ -98,8 +103,8 @@ describe('validateWorkflow', () => {
             outputs: { r: { from: 'one' } },
         });
         const res = validateWorkflow(decl);
-        expect(res.errors.some(e => e.code === 'workflow_step_unreachable')).toBe(false);
-        expect(res.errors.some(e => e.code === 'workflow_step_dead_end')).toBe(false);
+        expect(res.errors.some((e) => e.code === 'workflow_step_unreachable')).toBe(false);
+        expect(res.errors.some((e) => e.code === 'workflow_step_dead_end')).toBe(false);
     });
 
     it('emits workflow_unknown_kind for a foreign step kind', () => {
@@ -111,7 +116,7 @@ describe('validateWorkflow', () => {
             outputs: { r: { from: 'main' } },
         });
         const res = validateWorkflow(decl);
-        expect(res.errors.some(e => e.code === 'workflow_unknown_kind')).toBe(true);
+        expect(res.errors.some((e) => e.code === 'workflow_unknown_kind')).toBe(true);
     });
 
     it('emits workflow_unknown_route when ctx.knownRoutes lacks the uri', () => {
@@ -122,7 +127,7 @@ describe('validateWorkflow', () => {
             outputs: { r: { from: 'main' } },
         });
         const res = validateWorkflow(decl, { knownRoutes: new Set(['redshift://query']) });
-        expect(res.errors.some(e => e.code === 'workflow_unknown_route')).toBe(true);
+        expect(res.errors.some((e) => e.code === 'workflow_unknown_route')).toBe(true);
     });
 
     it('accepts when ctx.knownRoutes includes the uri', () => {
@@ -133,7 +138,7 @@ describe('validateWorkflow', () => {
             outputs: { r: { from: 'main' } },
         });
         const res = validateWorkflow(decl, { knownRoutes: new Set(['redshift://query']) });
-        expect(res.errors.some(e => e.code === 'workflow_unknown_route')).toBe(false);
+        expect(res.errors.some((e) => e.code === 'workflow_unknown_route')).toBe(false);
     });
 
     it('emits workflow_unknown_harness when explicit harness is not in registered set', () => {
@@ -143,13 +148,15 @@ describe('validateWorkflow', () => {
                     kind: 'agent',
                     harness: 'fragua-pi' as never,
                     model: 'm',
-                    systemPrompt: 'sys', prompt: 'p', next: 'outputs.r',
+                    systemPrompt: 'sys',
+                    prompt: 'p',
+                    next: 'outputs.r',
                 },
             },
             outputs: { r: { from: 'main' } },
         });
         const res = validateWorkflow(decl, { knownHarnesses: new Set(['cas', 'cursor']) });
-        expect(res.errors.some(e => e.code === 'workflow_unknown_harness')).toBe(true);
+        expect(res.errors.some((e) => e.code === 'workflow_unknown_harness')).toBe(true);
     });
 
     it('emits workflow_unknown_harness with a "did you mean" hint on typo', () => {
@@ -159,7 +166,9 @@ describe('validateWorkflow', () => {
                     kind: 'agent',
                     harness: 'claude' as never,
                     model: 'm',
-                    systemPrompt: 'sys', prompt: 'p', next: 'outputs.r',
+                    systemPrompt: 'sys',
+                    prompt: 'p',
+                    next: 'outputs.r',
                 },
             },
             outputs: { r: { from: 'main' } },
@@ -167,7 +176,7 @@ describe('validateWorkflow', () => {
         const res = validateWorkflow(decl, {
             knownHarnesses: new Set(['cas', 'cursor']),
         });
-        const hit = res.errors.find(e => e.code === 'workflow_unknown_harness');
+        const hit = res.errors.find((e) => e.code === 'workflow_unknown_harness');
         expect(hit).toBeTruthy();
         expect(hit?.message).toMatch(/did you mean cas\?/);
     });
@@ -179,7 +188,9 @@ describe('validateWorkflow', () => {
                     kind: 'agent',
                     harness: 'cursor',
                     model: 'm',
-                    systemPrompt: 'sys', prompt: 'p', next: 'outputs.r',
+                    systemPrompt: 'sys',
+                    prompt: 'p',
+                    next: 'outputs.r',
                 },
             },
             outputs: { r: { from: 'main' } },
@@ -187,7 +198,7 @@ describe('validateWorkflow', () => {
         const res = validateWorkflow(decl, {
             knownHarnesses: new Set(['cas', 'cursor', 'fragua-pi']),
         });
-        expect(res.errors.some(e => e.code === 'workflow_unknown_harness')).toBe(false);
+        expect(res.errors.some((e) => e.code === 'workflow_unknown_harness')).toBe(false);
     });
 
     it('emits workflow_scope_widens when workflow scope exceeds workspace scope', () => {
@@ -205,14 +216,16 @@ describe('validateWorkflow', () => {
         const res = validateWorkflow(decl, {
             declaredWorkspaceScopes: ['payments:read'],
         });
-        expect(res.errors.some(e => e.code === 'workflow_scope_widens')).toBe(true);
+        expect(res.errors.some((e) => e.code === 'workflow_scope_widens')).toBe(true);
     });
 
     it('emits workflow_template_unresolved for unknown inputs.* refs', () => {
         const decl = baseDecl({
             steps: {
                 main: {
-                    kind: 'agent', model: 'm', systemPrompt: 'sys',
+                    kind: 'agent',
+                    model: 'm',
+                    systemPrompt: 'sys',
                     prompt: 'use {{ inputs.missing }}',
                     next: 'outputs.r',
                 },
@@ -221,14 +234,16 @@ describe('validateWorkflow', () => {
             outputs: { r: { from: 'main' } },
         });
         const res = validateWorkflow(decl);
-        expect(res.errors.some(e => e.code === 'workflow_template_unresolved')).toBe(true);
+        expect(res.errors.some((e) => e.code === 'workflow_template_unresolved')).toBe(true);
     });
 
     it('emits workflow_template_unresolved for unknown steps.* refs', () => {
         const decl = baseDecl({
             steps: {
                 main: {
-                    kind: 'agent', model: 'm', systemPrompt: 'sys',
+                    kind: 'agent',
+                    model: 'm',
+                    systemPrompt: 'sys',
                     prompt: 'use {{ steps.bogus.output }}',
                     next: 'outputs.r',
                 },
@@ -236,7 +251,7 @@ describe('validateWorkflow', () => {
             outputs: { r: { from: 'main' } },
         });
         const res = validateWorkflow(decl);
-        expect(res.errors.some(e => e.code === 'workflow_template_unresolved')).toBe(true);
+        expect(res.errors.some((e) => e.code === 'workflow_template_unresolved')).toBe(true);
     });
 
     it('accepts valid template refs to inputs.*, steps.*.output, and context.*', () => {
@@ -245,7 +260,9 @@ describe('validateWorkflow', () => {
             steps: {
                 a: { kind: 'route', uri: 'r://q', params: { x: '${{ inputs.product }}' }, next: 'b' },
                 b: {
-                    kind: 'agent', model: 'm', systemPrompt: 'sys',
+                    kind: 'agent',
+                    model: 'm',
+                    systemPrompt: 'sys',
                     prompt: '{{ steps.a.output }} for {{ context.transport }}',
                     next: 'outputs.r',
                 },
@@ -253,7 +270,7 @@ describe('validateWorkflow', () => {
             outputs: { r: { from: 'b' } },
         });
         const res = validateWorkflow(decl);
-        expect(res.errors.some(e => e.code === 'workflow_template_unresolved')).toBe(false);
+        expect(res.errors.some((e) => e.code === 'workflow_template_unresolved')).toBe(false);
     });
 
     it('emits workflow_input_schema_invalid for unknown JSON Schema type', () => {
@@ -269,7 +286,7 @@ describe('validateWorkflow', () => {
             outputs: { r: { from: 'pick' } },
         });
         const res = validateWorkflow(decl);
-        expect(res.errors.some(e => e.code === 'workflow_input_schema_invalid')).toBe(true);
+        expect(res.errors.some((e) => e.code === 'workflow_input_schema_invalid')).toBe(true);
     });
 
     it('emits workflow_input_schema_invalid for non-object schema', () => {
@@ -285,7 +302,7 @@ describe('validateWorkflow', () => {
             outputs: { r: { from: 'pick' } },
         });
         const res = validateWorkflow(decl);
-        expect(res.errors.some(e => e.code === 'workflow_input_schema_invalid')).toBe(true);
+        expect(res.errors.some((e) => e.code === 'workflow_input_schema_invalid')).toBe(true);
     });
 
     it('collects multiple errors in a single pass (no short-circuit)', () => {
@@ -301,7 +318,7 @@ describe('validateWorkflow', () => {
         };
         const res = validateWorkflow(decl);
         expect(res.ok).toBe(false);
-        const codes = res.errors.map(e => e.code);
+        const codes = res.errors.map((e) => e.code);
         expect(codes).toContain('workflow_unknown_kind');
         expect(codes).toContain('workflow_step_unreachable');
     });
@@ -311,9 +328,6 @@ describe('validateWorkflow', () => {
             outputs: { r: { from: 'ghost' } },
         });
         const res = validateWorkflow(decl);
-        expect(res.errors.some(e =>
-            e.code === 'workflow_template_unresolved' &&
-            e.field === 'outputs.r.from',
-        )).toBe(true);
+        expect(res.errors.some((e) => e.code === 'workflow_template_unresolved' && e.field === 'outputs.r.from')).toBe(true);
     });
 });

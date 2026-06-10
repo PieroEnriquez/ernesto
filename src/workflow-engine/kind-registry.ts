@@ -130,10 +130,7 @@ export class KindRegistry {
      *  no path-guard — never the intent. Callers that explicitly want
      *  `cwd: 'none'` for an agent step have to set it themselves and
      *  accept the risk. */
-    registerWorkflow(
-        declaration: WorkflowDeclaration,
-        policy?: KindPolicy,
-    ): void {
+    registerWorkflow(declaration: WorkflowDeclaration, policy?: KindPolicy): void {
         const merged = mergeWorkflowPolicyDefaults(declaration, policy);
         this.register({
             kind: 'workflow',
@@ -202,10 +199,7 @@ function extractWorkspaceFromUri(uri: string): string | undefined {
  *
  *  Exported so the runner can apply the same defaults to workflows
  *  loaded via the reader path (which bypass `registerWorkflow`). */
-export function mergeWorkflowPolicyDefaults(
-    declaration: WorkflowDeclaration,
-    policy: KindPolicy | undefined,
-): KindPolicy | undefined {
+export function mergeWorkflowPolicyDefaults(declaration: WorkflowDeclaration, policy: KindPolicy | undefined): KindPolicy | undefined {
     const steps = declaration.steps;
     if (!steps) return policy;
     // Agent steps and dynamic-workflow steps both need the workspace

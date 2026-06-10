@@ -93,10 +93,7 @@ describe('handleUi — array of components (bulk emit)', () => {
     it('reports per-component errors and emits nothing on any failure', async () => {
         const { ctx, emitted } = makeCtx();
         const result = await handleUi(
-            [
-                { kind: 'status', props: { text: 'ok' } },
-                { kind: 'bogus', props: {} } as unknown as UiComponent,
-            ],
+            [{ kind: 'status', props: { text: 'ok' } }, { kind: 'bogus', props: {} } as unknown as UiComponent],
             ctx,
         );
         expect(emitted).toHaveLength(0);
@@ -224,10 +221,7 @@ describe('handleUi — hitl pause contract', () => {
             emit: () => undefined,
             hitl: { pauseForHuman: pause } as unknown as UiHitlPauser,
         };
-        await handleUi(
-            { kind: 'status', props: { text: 'ok' } },
-            ctx,
-        );
+        await handleUi({ kind: 'status', props: { text: 'ok' } }, ctx);
         expect(pause).not.toHaveBeenCalled();
     });
 });

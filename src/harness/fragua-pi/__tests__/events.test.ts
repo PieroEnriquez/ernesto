@@ -10,16 +10,10 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type {
-    AgentEvent as PiAgentEvent,
-} from '@mariozechner/pi-agent-core';
+import type { AgentEvent as PiAgentEvent } from '@mariozechner/pi-agent-core';
 import type { AssistantMessage, Usage } from '@mariozechner/pi-ai';
 import type { HarnessEvent } from '../../types';
-import {
-    createTranslatorState,
-    mapPiAgentEvent,
-    mapStopReason,
-} from '../events';
+import { createTranslatorState, mapPiAgentEvent, mapStopReason } from '../events';
 
 const RUN_ID = 'run-test';
 
@@ -51,10 +45,7 @@ function fakeUsage(): Usage {
     };
 }
 
-function fakeAssistantMessage(
-    content: AssistantMessage['content'],
-    extras: Partial<AssistantMessage> = {},
-): AssistantMessage {
+function fakeAssistantMessage(content: AssistantMessage['content'], extras: Partial<AssistantMessage> = {}): AssistantMessage {
     return {
         role: 'assistant',
         content,
@@ -70,10 +61,7 @@ function fakeAssistantMessage(
 
 describe('mapPiAgentEvent', () => {
     it('agent_start emits status:running exactly once', () => {
-        const events = runAll([
-            { type: 'agent_start' } as PiAgentEvent,
-            { type: 'agent_start' } as PiAgentEvent,
-        ]);
+        const events = runAll([{ type: 'agent_start' } as PiAgentEvent, { type: 'agent_start' } as PiAgentEvent]);
         expect(events).toHaveLength(1);
         expect(events[0]).toEqual({
             kind: 'status',
@@ -104,15 +92,11 @@ describe('mapPiAgentEvent', () => {
                 },
             } as PiAgentEvent,
         ]);
-        expect(events).toEqual([
-            { kind: 'assistant_delta', text: 'llo', runId: RUN_ID },
-        ]);
+        expect(events).toEqual([{ kind: 'assistant_delta', text: 'llo', runId: RUN_ID }]);
     });
 
     it('message_update thinking_delta is dropped (no canonical per-token thinking)', () => {
-        const partial = fakeAssistantMessage([
-            { type: 'thinking', thinking: 'half-' },
-        ]);
+        const partial = fakeAssistantMessage([{ type: 'thinking', thinking: 'half-' }]);
         const events = runAll([
             {
                 type: 'message_update',
@@ -129,12 +113,8 @@ describe('mapPiAgentEvent', () => {
     });
 
     it('message_end with assistant text emits assistant_message + usage', () => {
-        const msg = fakeAssistantMessage([
-            { type: 'text', text: 'hello there' },
-        ]);
-        const events = runAll([
-            { type: 'message_end', message: msg } as PiAgentEvent,
-        ]);
+        const msg = fakeAssistantMessage([{ type: 'text', text: 'hello there' }]);
+        const events = runAll([{ type: 'message_end', message: msg } as PiAgentEvent]);
         expect(events).toHaveLength(2);
         expect(events[0]).toEqual({
             kind: 'assistant_message',
@@ -153,9 +133,7 @@ describe('mapPiAgentEvent', () => {
             { type: 'thinking', thinking: 'pondering' },
             { type: 'text', text: 'answer' },
         ]);
-        const events = runAll([
-            { type: 'message_end', message: msg } as PiAgentEvent,
-        ]);
+        const events = runAll([{ type: 'message_end', message: msg } as PiAgentEvent]);
         const kinds = events.map((e) => e.kind);
         expect(kinds).toEqual(['thinking', 'assistant_message', 'usage']);
         const thinking = events[0];
@@ -173,9 +151,7 @@ describe('mapPiAgentEvent', () => {
                 arguments: { path: '.' },
             },
         ]);
-        const events = runAll([
-            { type: 'message_end', message: msg } as PiAgentEvent,
-        ]);
+        const events = runAll([{ type: 'message_end', message: msg } as PiAgentEvent]);
         const assistant = events[0];
         if (assistant.kind !== 'assistant_message') throw new Error();
         expect(assistant.content).toEqual([

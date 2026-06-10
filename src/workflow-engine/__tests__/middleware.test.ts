@@ -5,10 +5,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createRunner } from '../runner';
 import { userPrincipal, servicePrincipal } from '../principal';
-import {
-    scopeCheckMiddleware,
-    ScopeEscalationError,
-} from '../middleware/scope-check';
+import { scopeCheckMiddleware, ScopeEscalationError } from '../middleware/scope-check';
 import type { DispatchMiddleware } from '../middleware';
 import type { WorkflowReader, WorkflowDetail } from '../workflow-reader';
 import type { WorkflowDeclaration, WorkflowStep } from '../../workflows/types';
@@ -146,9 +143,7 @@ describe('runner.use() — middleware chain', () => {
             after: afterSpy,
         });
 
-        await expect(
-            runner.dispatch('wf', {}, userPrincipal('u', []), {}),
-        ).rejects.toThrow(/blocked/);
+        await expect(runner.dispatch('wf', {}, userPrincipal('u', []), {})).rejects.toThrow(/blocked/);
         expect(afterSpy).not.toHaveBeenCalled();
     });
 
@@ -206,12 +201,7 @@ describe('runner.use() — middleware chain', () => {
             },
         });
 
-        await runner.dispatch(
-            'wf-with-scope',
-            {},
-            userPrincipal('u', ['marketing:read']),
-            {},
-        );
+        await runner.dispatch('wf-with-scope', {}, userPrincipal('u', ['marketing:read']), {});
         expect(observedScope).toEqual(['marketing:read']);
     });
 });
@@ -234,14 +224,9 @@ describe('scopeCheckMiddleware', () => {
         runner.kindRegistry.registerWorkflow(decl);
         runner.use(scopeCheckMiddleware());
 
-        await expect(
-            runner.dispatch(
-                'wf-restricted',
-                {},
-                userPrincipal('alice', ['marketing:read']),
-                {},
-            ),
-        ).rejects.toThrow(ScopeEscalationError);
+        await expect(runner.dispatch('wf-restricted', {}, userPrincipal('alice', ['marketing:read']), {})).rejects.toThrow(
+            ScopeEscalationError,
+        );
     });
 
     it('passes when user principal has the declared scope', async () => {
@@ -261,12 +246,7 @@ describe('scopeCheckMiddleware', () => {
         runner.kindRegistry.registerWorkflow(decl);
         runner.use(scopeCheckMiddleware());
 
-        const run = await runner.dispatch(
-            'wf-ok',
-            {},
-            userPrincipal('alice', ['marketing:read', 'marketing:write']),
-            {},
-        );
+        const run = await runner.dispatch('wf-ok', {}, userPrincipal('alice', ['marketing:read', 'marketing:write']), {});
         expect(run.status).toBe('completed');
     });
 
@@ -287,12 +267,7 @@ describe('scopeCheckMiddleware', () => {
         runner.kindRegistry.registerWorkflow(decl);
         runner.use(scopeCheckMiddleware()); // default: serviceAllowlist === 'all'
 
-        const run = await runner.dispatch(
-            'wf-svc',
-            {},
-            servicePrincipal('autofill-worker', 'req-1'),
-            {},
-        );
+        const run = await runner.dispatch('wf-svc', {}, servicePrincipal('autofill-worker', 'req-1'), {});
         expect(run.status).toBe('completed');
     });
 
@@ -318,22 +293,10 @@ describe('scopeCheckMiddleware', () => {
         );
 
         // Untrusted worker rejected
-        await expect(
-            runner.dispatch(
-                'wf-strict',
-                {},
-                servicePrincipal('untrusted', 'req-1'),
-                {},
-            ),
-        ).rejects.toThrow(ScopeEscalationError);
+        await expect(runner.dispatch('wf-strict', {}, servicePrincipal('untrusted', 'req-1'), {})).rejects.toThrow(ScopeEscalationError);
 
         // Trusted worker passes
-        const ok = await runner.dispatch(
-            'wf-strict',
-            {},
-            servicePrincipal('trusted-worker', 'req-1'),
-            {},
-        );
+        const ok = await runner.dispatch('wf-strict', {}, servicePrincipal('trusted-worker', 'req-1'), {});
         expect(ok.status).toBe('completed');
     });
 

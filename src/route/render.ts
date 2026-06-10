@@ -23,10 +23,7 @@
  * components manually.
  */
 
-import type {
-    UiComponent,
-    RenderableComponent,
-} from '../components/types';
+import type { UiComponent, RenderableComponent } from '../components/types';
 
 /**
  * Transitional union — the manifest walker still builds components
@@ -53,55 +50,52 @@ interface RenderEntryBase {
 export type RenderEntry =
     | (RenderEntryBase & { ui: 'markdown' })
     | (RenderEntryBase & {
-        ui: 'metric';
-        label: string;
-        unit?: string;
-    })
+          ui: 'metric';
+          label: string;
+          unit?: string;
+      })
     | (RenderEntryBase & {
-        ui: 'table';
-        caption?: string;
-        columns: {
-            id: string;
-            label: string;
-            align?: 'left' | 'right' | 'center';
-        }[];
-    })
+          ui: 'table';
+          caption?: string;
+          columns: {
+              id: string;
+              label: string;
+              align?: 'left' | 'right' | 'center';
+          }[];
+      })
     | (RenderEntryBase & {
-        ui: 'code';
-        language: string;
-        filename?: string;
-    })
+          ui: 'code';
+          language: string;
+          filename?: string;
+      })
     | (RenderEntryBase & {
-        ui: 'link';
-        label?: string;
-    })
+          ui: 'link';
+          label?: string;
+      })
     | (RenderEntryBase & {
-        ui: 'image';
-        alt?: string;
-    })
+          ui: 'image';
+          alt?: string;
+      })
     | (RenderEntryBase & { ui: 'tree' })
     | (RenderEntryBase & { ui: 'attachment' })
     | (RenderEntryBase & { ui: 'progress' })
     | (RenderEntryBase & {
-        ui: 'status';
-        level?: 'info' | 'progress' | 'success' | 'warn' | 'error';
-    })
+          ui: 'status';
+          level?: 'info' | 'progress' | 'success' | 'warn' | 'error';
+      })
     | (RenderEntryBase & {
-        ui: 'chart';
-        chartType: 'line' | 'bar' | 'pie' | 'scatter' | 'area';
-        xLabel?: string;
-        yLabel?: string;
-        caption?: string;
-    })
+          ui: 'chart';
+          chartType: 'line' | 'bar' | 'pie' | 'scatter' | 'area';
+          xLabel?: string;
+          yLabel?: string;
+          caption?: string;
+      })
     | (RenderEntryBase & { ui: 'thinking' })
     | (RenderEntryBase & { ui: 'actions' });
 
 /** Walk the manifest against a route's output, returning the
  *  components to render. Pure — no side effects. */
-export function applyRenderManifest(
-    output: unknown,
-    entries: ReadonlyArray<RenderEntry>,
-): ManifestComponent[] {
+export function applyRenderManifest(output: unknown, entries: ReadonlyArray<RenderEntry>): ManifestComponent[] {
     const out: ManifestComponent[] = [];
     for (const entry of entries) {
         const value = getPath(output, entry.path);
@@ -143,18 +137,12 @@ function whenPasses(value: unknown, clause?: WhenClause): boolean {
 // flow through untyped at the boundary.
 type LegacyManifestComponent = { kind: string; props: Record<string, unknown> };
 
-function buildManifestComponent(
-    entry: RenderEntry,
-    value: unknown,
-): ManifestComponent | null {
+function buildManifestComponent(entry: RenderEntry, value: unknown): ManifestComponent | null {
     const built = buildLegacyComponent(entry, value);
     return built === null ? null : (built as unknown as ManifestComponent);
 }
 
-function buildLegacyComponent(
-    entry: RenderEntry,
-    value: unknown,
-): LegacyManifestComponent | null {
+function buildLegacyComponent(entry: RenderEntry, value: unknown): LegacyManifestComponent | null {
     switch (entry.ui) {
         case 'markdown':
             if (typeof value !== 'string') return null;
@@ -233,8 +221,7 @@ function buildLegacyComponent(
             };
 
         case 'attachment':
-            if (value && typeof value === 'object' && 'ref' in value)
-                return { kind: 'attachment', props: value as { ref: string } };
+            if (value && typeof value === 'object' && 'ref' in value) return { kind: 'attachment', props: value as { ref: string } };
             return null;
 
         case 'progress':
@@ -269,9 +256,7 @@ function buildLegacyComponent(
 
         case 'chart': {
             if (!value || typeof value !== 'object') return null;
-            const series = Array.isArray(value)
-                ? value
-                : (value as { series?: unknown }).series;
+            const series = Array.isArray(value) ? value : (value as { series?: unknown }).series;
             if (!Array.isArray(series)) return null;
             return {
                 kind: 'chart',
@@ -286,8 +271,7 @@ function buildLegacyComponent(
         }
 
         case 'thinking':
-            if (typeof value === 'string')
-                return { kind: 'thinking', props: { text: value } };
+            if (typeof value === 'string') return { kind: 'thinking', props: { text: value } };
             return null;
 
         case 'actions': {

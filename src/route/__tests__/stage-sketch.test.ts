@@ -4,8 +4,7 @@ import type { ManifestComponent } from '../render';
 
 // Cast helper — the manifest walker hands us a structurally-shaped
 // union; tests construct equivalent literals and cast at the boundary.
-const m = (k: string, props: Record<string, unknown>): ManifestComponent =>
-    ({ kind: k, props }) as unknown as ManifestComponent;
+const m = (k: string, props: Record<string, unknown>): ManifestComponent => ({ kind: k, props }) as unknown as ManifestComponent;
 
 describe('sketchComponents', () => {
     it('summarizes a markdown body by length + preview, never the full body', () => {
@@ -95,9 +94,7 @@ describe('sketchComponents', () => {
 
     it('counts code lines + truncates body', () => {
         const body = Array.from({ length: 80 }, (_, i) => `line ${i}`).join('\n');
-        const [s] = sketchComponents([
-            m('code', { language: 'ts', body, filename: 'foo.ts' }),
-        ]);
+        const [s] = sketchComponents([m('code', { language: 'ts', body, filename: 'foo.ts' })]);
         const c = s as Extract<StagedSketch, { kind: 'code' }>;
         expect(c.language).toBe('ts');
         expect(c.lineCount).toBe(80);
@@ -112,10 +109,7 @@ describe('sketchComponents', () => {
                 nodes: [
                     {
                         label: 'a',
-                        children: [
-                            { label: 'a.1' },
-                            { label: 'a.2', children: [{ label: 'a.2.1' }] },
-                        ],
+                        children: [{ label: 'a.1' }, { label: 'a.2', children: [{ label: 'a.2.1' }] }],
                     },
                     { label: 'b' },
                 ],
@@ -144,10 +138,7 @@ describe('sketchComponents', () => {
     });
 
     it('drops components with unknown kinds rather than crashing', () => {
-        const out = sketchComponents([
-            m('markdown', { body: 'ok' }),
-            m('not-a-real-kind', { whatever: true }),
-        ]);
+        const out = sketchComponents([m('markdown', { body: 'ok' }), m('not-a-real-kind', { whatever: true })]);
         expect(out).toHaveLength(1);
         expect((out[0] as { kind: string }).kind).toBe('markdown');
     });

@@ -20,14 +20,7 @@
 
 import { Cursor } from '@cursor/sdk';
 import type { McpServerConfig } from '@cursor/sdk';
-import type {
-    AgentDefinition,
-    AgentHandle,
-    CreateOptions,
-    Harness,
-    HarnessCapabilities,
-    ModelInfo,
-} from '../types';
+import type { AgentDefinition, AgentHandle, CreateOptions, Harness, HarnessCapabilities, ModelInfo } from '../types';
 import { cursorCreateAgent } from './create';
 
 // Adapter internals (compile/events/send/create/mcp-bridge) are not
@@ -151,10 +144,7 @@ export function createCursorHarness(env: CursorHarnessEnv = {}): Harness {
         ...(env.capabilities ?? {}),
     };
 
-    const createAgent = async (
-        def: AgentDefinition,
-        opts: CreateOptions = {},
-    ): Promise<AgentHandle> => {
+    const createAgent = async (def: AgentDefinition, opts: CreateOptions = {}): Promise<AgentHandle> => {
         return cursorCreateAgent(def, {
             agentId: opts.agentId,
             cwd: opts.cwd ?? env.cwd,

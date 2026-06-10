@@ -26,13 +26,7 @@
  * does the actual wrap; this module only threads them through.
  */
 
-import type {
-    AgentOptions,
-    McpServerConfig,
-    AgentDefinition as CursorAgentDefinition,
-    ModelSelection,
-    SettingSource,
-} from '@cursor/sdk';
+import type { AgentOptions, McpServerConfig, AgentDefinition as CursorAgentDefinition, ModelSelection, SettingSource } from '@cursor/sdk';
 import type { AgentDefinition, ModelRef, SubagentDef, ToolSpec } from '../types';
 import type { SynthMcpServerConfig } from './mcp-bridge';
 
@@ -74,10 +68,7 @@ export interface CursorCompileContext {
  * portable). The lib documents this lossiness rather than synthesizing
  * a fake preset.
  */
-export function compileAgentToCursorOptions(
-    def: AgentDefinition,
-    ctx: CursorCompileContext,
-): AgentOptions {
+export function compileAgentToCursorOptions(def: AgentDefinition, ctx: CursorCompileContext): AgentOptions {
     const model = toModelSelection(def.model);
 
     // Merge native + synth MCP server records. Conflicts: synth wins
@@ -121,9 +112,7 @@ export function compileAgentToCursorOptions(
             // unless the caller asks for them. Mirrors the CAS
             // adapter's `settingSources: []`.
             settingSources: ctx.settingSources ?? [],
-            ...(ctx.sandboxEnabled !== undefined
-                ? { sandboxOptions: { enabled: ctx.sandboxEnabled } }
-                : {}),
+            ...(ctx.sandboxEnabled !== undefined ? { sandboxOptions: { enabled: ctx.sandboxEnabled } } : {}),
         };
     }
 
@@ -150,9 +139,7 @@ function toModelSelection(model: string | ModelRef): ModelSelection {
 }
 
 /** Compile the harness subagent list into Cursor's `agents` record. */
-function compileSubagents(
-    subagents: SubagentDef[] | undefined,
-): Record<string, CursorAgentDefinition> | undefined {
+function compileSubagents(subagents: SubagentDef[] | undefined): Record<string, CursorAgentDefinition> | undefined {
     if (!subagents || subagents.length === 0) return undefined;
     const out: Record<string, CursorAgentDefinition> = {};
     for (const sub of subagents) {

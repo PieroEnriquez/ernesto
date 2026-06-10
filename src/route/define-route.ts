@@ -121,14 +121,9 @@ export interface RouteContext {
  * should keep using the plain `RouteScope | ReadonlyArray<RouteScope>`
  * form for clarity.
  */
-export type DynamicScope<I> = (
-    input: I,
-) => RouteScope | ReadonlyArray<RouteScope>;
+export type DynamicScope<I> = (input: I) => RouteScope | ReadonlyArray<RouteScope>;
 
-export interface RouteConfig<
-    I extends z.ZodTypeAny,
-    O extends z.ZodTypeAny,
-> {
+export interface RouteConfig<I extends z.ZodTypeAny, O extends z.ZodTypeAny> {
     uri: string;
     scope: RouteScope | ReadonlyArray<RouteScope> | DynamicScope<z.infer<I>>;
     input: I;
@@ -145,10 +140,7 @@ export interface RouteConfig<
     render?: ReadonlyArray<RenderEntry>;
 }
 
-export interface Route<
-    I extends z.ZodTypeAny = z.ZodTypeAny,
-    O extends z.ZodTypeAny = z.ZodTypeAny,
-> {
+export interface Route<I extends z.ZodTypeAny = z.ZodTypeAny, O extends z.ZodTypeAny = z.ZodTypeAny> {
     readonly uri: string;
     /**
      * Either a frozen array of scope strings (static — same scope for
@@ -166,16 +158,13 @@ export interface Route<
     readonly render?: ReadonlyArray<RenderEntry>;
 }
 
-export function defineRoute<
-    I extends z.ZodTypeAny,
-    O extends z.ZodTypeAny,
->(config: RouteConfig<I, O>): Route<I, O> {
+export function defineRoute<I extends z.ZodTypeAny, O extends z.ZodTypeAny>(config: RouteConfig<I, O>): Route<I, O> {
     const scope: ReadonlyArray<RouteScope> | DynamicScope<z.infer<I>> =
         typeof config.scope === 'function'
             ? (config.scope as DynamicScope<z.infer<I>>)
             : Array.isArray(config.scope)
-                ? Object.freeze([...config.scope])
-                : Object.freeze([config.scope as RouteScope]);
+              ? Object.freeze([...config.scope])
+              : Object.freeze([config.scope as RouteScope]);
     return Object.freeze({
         uri: config.uri,
         scope,
@@ -183,9 +172,7 @@ export function defineRoute<
         output: config.output,
         description: config.description,
         handler: config.handler,
-        ...(config.render
-            ? { render: Object.freeze([...config.render]) }
-            : {}),
+        ...(config.render ? { render: Object.freeze([...config.render]) } : {}),
     });
 }
 
@@ -216,8 +203,6 @@ export function resolveRouteScope<I extends z.ZodTypeAny, O extends z.ZodTypeAny
  * auto-block) use this to decide whether to print the static scope
  * list or a "depends on input" placeholder.
  */
-export function isDynamicScope<I extends z.ZodTypeAny, O extends z.ZodTypeAny>(
-    route: Route<I, O>,
-): boolean {
+export function isDynamicScope<I extends z.ZodTypeAny, O extends z.ZodTypeAny>(route: Route<I, O>): boolean {
     return typeof route.scope === 'function';
 }

@@ -62,9 +62,7 @@ export interface WorkspaceAllocatorMiddlewareOpts {
     annotationKey?: string;
 }
 
-export function workspaceAllocatorMiddleware(
-    opts: WorkspaceAllocatorMiddlewareOpts,
-): DispatchMiddleware {
+export function workspaceAllocatorMiddleware(opts: WorkspaceAllocatorMiddlewareOpts): DispatchMiddleware {
     const annotationKey = opts.annotationKey ?? '__workspaceAllocation';
 
     return {
@@ -96,9 +94,7 @@ export function workspaceAllocatorMiddleware(
             return ctx;
         },
         async after(ctx: DispatchPreContext, _run: Run): Promise<void> {
-            const allocation = ctx.annotations[annotationKey] as
-                | WorkspaceAllocation
-                | undefined;
+            const allocation = ctx.annotations[annotationKey] as WorkspaceAllocation | undefined;
             if (!allocation) return;
             // Persistent conversations retain the workdir across runs.
             const continuity = ctx.decl?.policy?.continuity;

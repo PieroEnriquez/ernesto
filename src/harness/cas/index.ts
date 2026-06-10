@@ -10,14 +10,7 @@
  */
 
 import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
-import type {
-    AgentDefinition,
-    AgentHandle,
-    CreateOptions,
-    Harness,
-    HarnessCapabilities,
-    ModelInfo,
-} from '../types';
+import type { AgentDefinition, AgentHandle, CreateOptions, Harness, HarnessCapabilities, ModelInfo } from '../types';
 import type { Transport } from '../../managed-agents/types';
 import { casCreateAgent } from './create';
 import type { SdkHooks } from './compile';
@@ -119,10 +112,7 @@ export function createCasHarness(env: CasHarnessEnv = {}): Harness {
         ...(env.capabilities ?? {}),
     };
 
-    const createAgent = async (
-        def: AgentDefinition,
-        opts: CreateOptions = {},
-    ): Promise<AgentHandle> => {
+    const createAgent = async (def: AgentDefinition, opts: CreateOptions = {}): Promise<AgentHandle> => {
         // Single source of truth: route the harness-level create
         // through `casCreateAgent`, SPREADING the per-call `CreateOptions`
         // straight through and folding the construction-time env
@@ -141,9 +131,9 @@ export function createCasHarness(env: CasHarnessEnv = {}): Harness {
         const mergedMcpServers =
             opts.mcpServers !== undefined || env.mcpServers !== undefined
                 ? {
-                    ...(env.mcpServers ?? {}),
-                    ...((opts.mcpServers as Record<string, McpServerConfig> | undefined) ?? {}),
-                }
+                      ...(env.mcpServers ?? {}),
+                      ...((opts.mcpServers as Record<string, McpServerConfig> | undefined) ?? {}),
+                  }
                 : undefined;
         return casCreateAgent(def, {
             ...opts,
@@ -171,9 +161,7 @@ export function createCasHarness(env: CasHarnessEnv = {}): Harness {
     }> => {
         // Probe whether *some* provider creds are wired. The lib has no
         // way to validate them; presence is the best we can do.
-        const authed =
-            Boolean(env.providerEnv && Object.keys(env.providerEnv).length > 0) ||
-            Boolean(process.env.ANTHROPIC_API_KEY);
+        const authed = Boolean(env.providerEnv && Object.keys(env.providerEnv).length > 0) || Boolean(process.env.ANTHROPIC_API_KEY);
         return { authed };
     };
 
@@ -184,4 +172,3 @@ export function createCasHarness(env: CasHarnessEnv = {}): Harness {
         identify,
     };
 }
-

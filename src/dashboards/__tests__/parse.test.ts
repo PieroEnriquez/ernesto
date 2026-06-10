@@ -55,10 +55,7 @@ describe('parseDashboard', () => {
     });
 
     it('throws when a block references an undeclared :bind', () => {
-        const raw = MINIMAL_SPEC.replace(
-            'AND :endDateId',
-            'AND :nonexistent',
-        );
+        const raw = MINIMAL_SPEC.replace('AND :endDateId', 'AND :nonexistent');
         let caught: DashboardSpecError | null = null;
         try {
             parseDashboard(raw);
@@ -96,11 +93,8 @@ describe('parseDashboard', () => {
     it('treats Postgres `::cast` syntax as not a bind reference', () => {
         const raw = MINIMAL_SPEC.replace(
             'SELECT SUM(x) AS gpv FROM t WHERE date_id BETWEEN :startDateId AND :endDateId',
-            "SELECT (date_id::TEXT)::DATE AS d FROM t WHERE date_id BETWEEN :startDateId AND :endDateId",
-        ).replace(
-            'metrics:\n      - { col: gpv, label: GPV, format: eur }',
-            'metrics:\n      - { col: d, label: Date, format: text }',
-        );
+            'SELECT (date_id::TEXT)::DATE AS d FROM t WHERE date_id BETWEEN :startDateId AND :endDateId',
+        ).replace('metrics:\n      - { col: gpv, label: GPV, format: eur }', 'metrics:\n      - { col: d, label: Date, format: text }');
         // Should not throw on `::TEXT` or `::DATE` — those are casts, not binds.
         const parsed = parseDashboard(raw);
         expect(parsed.spec.blocks[0].kind).toBe('metric-row');

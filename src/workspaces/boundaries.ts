@@ -37,18 +37,14 @@ export interface WorkspaceBoundary {
  *  mirrors (`extracted/`, `attached/`), generated output (`_results/`), and
  *  archived content (`archive/`). None host a live sub-workspace, and
  *  `extracted/` can be large. Mirrors the workflow reader's prune set. */
-const PRUNE_DIRS = new Set([
-    'extracted', 'attached', '_results', 'archive', 'node_modules', '.git',
-]);
+const PRUNE_DIRS = new Set(['extracted', 'attached', '_results', 'archive', 'node_modules', '.git']);
 
 /**
  * Recursively collect every workspace boundary under `<workingTreeRoot>/workspaces/`.
  * Reads the working tree (so it reflects the to-be-committed state, including a
  * just-`git mv`-ed relocation). `workspaces/` itself is not a boundary.
  */
-export async function scanWorkspaceBoundaries(
-    workingTreeRoot: string,
-): Promise<WorkspaceBoundary[]> {
+export async function scanWorkspaceBoundaries(workingTreeRoot: string): Promise<WorkspaceBoundary[]> {
     const out: WorkspaceBoundary[] = [];
 
     async function walk(relDir: string): Promise<void> {
@@ -84,10 +80,7 @@ export async function scanWorkspaceBoundaries(
  * globally unique (lint-enforced), so the first match is authoritative; if a
  * duplicate ever slipped through, the shallowest wins (deterministic).
  */
-export function boundaryForName(
-    boundaries: readonly WorkspaceBoundary[],
-    name: string,
-): WorkspaceBoundary | undefined {
+export function boundaryForName(boundaries: readonly WorkspaceBoundary[], name: string): WorkspaceBoundary | undefined {
     let best: WorkspaceBoundary | undefined;
     for (const b of boundaries) {
         if (b.name !== name) continue;
@@ -101,10 +94,7 @@ export function boundaryForName(
  * path→identity direction: which workspace owns this path, honoring nesting
  * (a path under `hr/recruiting/` belongs to `recruiting`, not `hr`).
  */
-export function boundaryForPath(
-    boundaries: readonly WorkspaceBoundary[],
-    p: string,
-): WorkspaceBoundary | undefined {
+export function boundaryForPath(boundaries: readonly WorkspaceBoundary[], p: string): WorkspaceBoundary | undefined {
     let best: WorkspaceBoundary | undefined;
     for (const b of boundaries) {
         if (p === b.dir || p.startsWith(b.dir + '/')) {

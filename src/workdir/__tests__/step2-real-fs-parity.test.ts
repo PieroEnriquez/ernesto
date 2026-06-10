@@ -18,7 +18,7 @@ const FIXTURE: ReadonlyArray<{ path: string; content: string }> = [
     { path: 'workspaces/cs/INDEX.md', content: '# cs\n' },
 ];
 
-const LAYOUT: ReadonlyArray<LayoutEntry> = FIXTURE.map(f => ({
+const LAYOUT: ReadonlyArray<LayoutEntry> = FIXTURE.map((f) => ({
     workspace: f.path.split('/')[1],
     masterFsPath: f.path,
     treePath: f.path,
@@ -52,13 +52,16 @@ describe('bootWorkdir — node adapter ↔ in-memory parity', () => {
         const master = makeVolumeMasterFs(masterFsRoot);
 
         const result = await bootWorkdir({
-            workdirId: 'wd-real', workingTreeRoot,
-            fs, master, lock: makeInMemoryWorkdirLock('wd-real'),
+            workdirId: 'wd-real',
+            workingTreeRoot,
+            fs,
+            master,
+            lock: makeInMemoryWorkdirLock('wd-real'),
             visibleWorkspaces: ['hr', 'cs'],
             layout: LAYOUT,
         });
 
-        expect(result.placed.every(p => p.kind === 'hardlink')).toBe(true);
+        expect(result.placed.every((p) => p.kind === 'hardlink')).toBe(true);
         expect(result.placed).toHaveLength(4);
 
         for (const f of FIXTURE) {
@@ -69,17 +72,20 @@ describe('bootWorkdir — node adapter ↔ in-memory parity', () => {
     it('in-memory adapter pair (bytes mode) yields the same content per path', async () => {
         const fs = makeInMemoryFsAdapter();
         const master = makeInMemoryMasterFs({
-            bytes: new Map(FIXTURE.map(f => [f.path, enc(f.content)])),
+            bytes: new Map(FIXTURE.map((f) => [f.path, enc(f.content)])),
         });
 
         const result = await bootWorkdir({
-            workdirId: 'wd-mem', workingTreeRoot: '/wt',
-            fs, master, lock: makeInMemoryWorkdirLock('wd-mem'),
+            workdirId: 'wd-mem',
+            workingTreeRoot: '/wt',
+            fs,
+            master,
+            lock: makeInMemoryWorkdirLock('wd-mem'),
             visibleWorkspaces: ['hr', 'cs'],
             layout: LAYOUT,
         });
 
-        expect(result.placed.every(p => p.kind === 'bytes')).toBe(true);
+        expect(result.placed.every((p) => p.kind === 'bytes')).toBe(true);
 
         for (const f of FIXTURE) {
             expect(dec(await fs.readFile(f.path))).toBe(f.content);
@@ -89,21 +95,26 @@ describe('bootWorkdir — node adapter ↔ in-memory parity', () => {
     it('parity: same fixtures + same layout → same byte content per path on both adapter pairs', async () => {
         const realFs = makeNodeFsAdapter(workingTreeRoot);
         await bootWorkdir({
-            workdirId: 'a', workingTreeRoot,
-            fs: realFs, master: makeVolumeMasterFs(masterFsRoot),
+            workdirId: 'a',
+            workingTreeRoot,
+            fs: realFs,
+            master: makeVolumeMasterFs(masterFsRoot),
             lock: makeInMemoryWorkdirLock('a'),
-            visibleWorkspaces: ['hr', 'cs'], layout: LAYOUT,
+            visibleWorkspaces: ['hr', 'cs'],
+            layout: LAYOUT,
         });
 
         const memFs = makeInMemoryFsAdapter();
         await bootWorkdir({
-            workdirId: 'b', workingTreeRoot: '/wt',
+            workdirId: 'b',
+            workingTreeRoot: '/wt',
             fs: memFs,
             master: makeInMemoryMasterFs({
-                bytes: new Map(FIXTURE.map(f => [f.path, enc(f.content)])),
+                bytes: new Map(FIXTURE.map((f) => [f.path, enc(f.content)])),
             }),
             lock: makeInMemoryWorkdirLock('b'),
-            visibleWorkspaces: ['hr', 'cs'], layout: LAYOUT,
+            visibleWorkspaces: ['hr', 'cs'],
+            layout: LAYOUT,
         });
 
         for (const f of FIXTURE) {

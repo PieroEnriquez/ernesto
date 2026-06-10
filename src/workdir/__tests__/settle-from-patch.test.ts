@@ -44,10 +44,7 @@ describe('settleFromPatch', () => {
         const parentSha = (await runGit(stagingDir, ['rev-parse', 'HEAD'])).trim();
 
         await mkdir(path.join(stagingDir, 'workspaces', 'tier-c'), { recursive: true });
-        await writeFile(
-            path.join(stagingDir, 'workspaces', 'tier-c', 'WORKSPACE.md'),
-            '---\nname: tier-c\n---\n# tier-c\n',
-        );
+        await writeFile(path.join(stagingDir, 'workspaces', 'tier-c', 'WORKSPACE.md'), '---\nname: tier-c\n---\n# tier-c\n');
         await runGit(stagingDir, ['add', 'workspaces/tier-c/WORKSPACE.md']);
         const patch = await runGit(stagingDir, ['diff', '--cached', '--binary']);
         await rm(stagingDir, { recursive: true, force: true });
@@ -181,10 +178,7 @@ describe('settleFromPatch', () => {
         await runGit(stagingDir, ['add', '-A']);
         await runGit(stagingDir, ['commit', '-q', '-m', 'seed']);
         // Now author the change against B0:
-        await writeFile(
-            path.join(stagingDir, 'workspaces', 'tier-c', 'WORKSPACE.md'),
-            baseContent + '\nappended by laptop\n',
-        );
+        await writeFile(path.join(stagingDir, 'workspaces', 'tier-c', 'WORKSPACE.md'), baseContent + '\nappended by laptop\n');
         await runGit(stagingDir, ['add', 'workspaces/tier-c/WORKSPACE.md']);
         const patch = await runGit(stagingDir, ['diff', '--cached', '--binary']);
         await rm(stagingDir, { recursive: true, force: true });

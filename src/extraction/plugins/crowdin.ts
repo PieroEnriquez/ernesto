@@ -153,9 +153,7 @@ export function crowdinPlugin(opts: CrowdinPluginOptions): ExtractionPlugin {
             // then fetch terms for each survivor.
             const all = await listAll<CrowdinGlossary>('/glossaries', http);
             const scoped = all.filter(
-                (g) =>
-                    (Array.isArray(g.projectIds) && g.projectIds.includes(parsed.projectId)) ||
-                    g.defaultProjectId === parsed.projectId,
+                (g) => (Array.isArray(g.projectIds) && g.projectIds.includes(parsed.projectId)) || g.defaultProjectId === parsed.projectId,
             );
             const entries: ExtractionEntry[] = [];
             for (const glossary of scoped) {
@@ -171,9 +169,7 @@ function parseTarget(target: string): ParsedTarget {
     if (target === 'styleguides') return { kind: 'styleguides' };
     const idx = target.indexOf(':');
     if (idx < 0) {
-        throw new Error(
-            'crowdin: target must be "glossaries:project:{id}", "glossary:{id}", "styleguides", or "styleguide:{id}"',
-        );
+        throw new Error('crowdin: target must be "glossaries:project:{id}", "glossary:{id}", "styleguides", or "styleguide:{id}"');
     }
     const kind = target.slice(0, idx);
     const rest = target.slice(idx + 1).trim();
@@ -216,10 +212,7 @@ function parseTarget(target: string): ParsedTarget {
     throw new Error(`crowdin: unsupported target kind: ${kind}`);
 }
 
-async function fetchGlossaryEntry(
-    glossaryId: number,
-    http: HttpCtx,
-): Promise<ExtractionEntry | null> {
+async function fetchGlossaryEntry(glossaryId: number, http: HttpCtx): Promise<ExtractionEntry | null> {
     // The /glossaries/{id} endpoint exists but doesn't include terms; we
     // still need the listing call to discover the glossary name reliably,
     // and the terms endpoint is separate. Cheaper to walk the listing once
@@ -230,14 +223,8 @@ async function fetchGlossaryEntry(
     return assembleGlossaryEntry(glossary, http);
 }
 
-async function assembleGlossaryEntry(
-    glossary: CrowdinGlossary,
-    http: HttpCtx,
-): Promise<ExtractionEntry> {
-    const terms = await listAll<CrowdinTerm>(
-        `/glossaries/${encodeURIComponent(String(glossary.id))}/terms`,
-        http,
-    );
+async function assembleGlossaryEntry(glossary: CrowdinGlossary, http: HttpCtx): Promise<ExtractionEntry> {
+    const terms = await listAll<CrowdinTerm>(`/glossaries/${encodeURIComponent(String(glossary.id))}/terms`, http);
     return {
         path: `glossaries/${glossary.id}-${slugify(glossary.name) || glossary.id}.json`,
         content: JSON.stringify({ glossary, terms }, null, 2),
@@ -245,10 +232,7 @@ async function assembleGlossaryEntry(
     };
 }
 
-async function fetchStyleguideEntry(
-    styleguideId: number,
-    http: HttpCtx,
-): Promise<ExtractionEntry | null> {
+async function fetchStyleguideEntry(styleguideId: number, http: HttpCtx): Promise<ExtractionEntry | null> {
     const all = await listAll<CrowdinStyleGuide>('/style-guides', http);
     const sg = all.find((g) => g.id === styleguideId);
     if (!sg) return null;
@@ -304,11 +288,7 @@ async function listAll<T>(path: string, http: HttpCtx): Promise<T[]> {
     return collected;
 }
 
-function fetchWithRetry(
-    url: string,
-    http: HttpCtx,
-    meta: { kind: string; id: string },
-): Promise<Response | 'not_found'> {
+function fetchWithRetry(url: string, http: HttpCtx, meta: { kind: string; id: string }): Promise<Response | 'not_found'> {
     return httpFetchWithRetry(url, {
         timeoutMs: http.timeoutMs,
         maxRetries: http.maxRetries,

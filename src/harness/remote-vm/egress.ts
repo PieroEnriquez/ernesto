@@ -67,9 +67,7 @@ export interface EgressInputs {
  */
 export function buildEgressPolicy(inputs: EgressInputs): NetworkPolicy {
     const backendHost = hostOf(inputs.backendBaseUrl);
-    const modelHost = inputs.modelBaseUrl
-        ? hostOf(inputs.modelBaseUrl)
-        : DEFAULT_ANTHROPIC_HOST;
+    const modelHost = inputs.modelBaseUrl ? hostOf(inputs.modelBaseUrl) : DEFAULT_ANTHROPIC_HOST;
 
     const allowDomains: string[] = [backendHost];
     if (modelHost !== backendHost) {

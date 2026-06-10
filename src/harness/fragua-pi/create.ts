@@ -22,23 +22,10 @@
 
 import { randomUUID } from 'crypto';
 import { Agent } from '@mariozechner/pi-agent-core';
-import type {
-    AgentMessage as PiAgentMessage,
-    AgentEvent as PiAgentEvent,
-} from '@mariozechner/pi-agent-core';
+import type { AgentMessage as PiAgentMessage, AgentEvent as PiAgentEvent } from '@mariozechner/pi-agent-core';
 import type { AssistantMessage } from '@mariozechner/pi-ai';
-import type {
-    AgentDefinition,
-    AgentHandle,
-    HarnessMessage,
-    RunHandle,
-    SendOptions,
-    UserMessage,
-} from '../types';
-import {
-    compileAgentToFraguaPiOptions,
-    type FraguaPiProvider,
-} from './compile';
+import type { AgentDefinition, AgentHandle, HarnessMessage, RunHandle, SendOptions, UserMessage } from '../types';
+import { compileAgentToFraguaPiOptions, type FraguaPiProvider } from './compile';
 import { fraguaPiSend, type FraguaPiRunHandle } from './send';
 
 /** Strongly-typed fragua-pi create options. Superset of the canonical
@@ -75,9 +62,7 @@ export interface FraguaPiCreateOptions {
     /** Direct API-key resolver (per-provider). Forwarded to
      *  pi-agent-core's `Agent.getApiKey`. Takes precedence over
      *  `apiKeyOverride`. */
-    getApiKey?: (
-        provider: string,
-    ) => Promise<string | undefined> | string | undefined;
+    getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
 }
 
 /** Per-send fragua-pi extensions on top of the canonical `SendOptions`. */
@@ -89,10 +74,7 @@ export interface FraguaPiAgentSendOptions extends SendOptions {
 
 /** fragua-pi-typed agent handle. Structurally a canonical `AgentHandle`. */
 export interface FraguaPiAgentHandle extends AgentHandle {
-    send(
-        msg: UserMessage,
-        opts?: FraguaPiAgentSendOptions,
-    ): Promise<RunHandle>;
+    send(msg: UserMessage, opts?: FraguaPiAgentSendOptions): Promise<RunHandle>;
     /** fragua-pi-only: abort any active run and tear down listeners. */
     close(): Promise<void>;
     /** Replay the in-memory transcript. pi-agent-core keeps a
@@ -106,16 +88,11 @@ export interface FraguaPiAgentHandle extends AgentHandle {
  * is constructed exactly once; each `agent.send(prompt)` reuses the
  * same instance.
  */
-export async function fraguaPiCreateAgent(
-    def: AgentDefinition,
-    opts: FraguaPiCreateOptions = {},
-): Promise<FraguaPiAgentHandle> {
+export async function fraguaPiCreateAgent(def: AgentDefinition, opts: FraguaPiCreateOptions = {}): Promise<FraguaPiAgentHandle> {
     const agentId = opts.transcriptId ?? `fragua-pi-${randomUUID()}`;
 
     // Compile harness IR → pi-agent-core init bits.
-    const compileCtx: Parameters<
-        typeof compileAgentToFraguaPiOptions
-    >[1] = {};
+    const compileCtx: Parameters<typeof compileAgentToFraguaPiOptions>[1] = {};
     if (opts.providerOverride !== undefined) {
         compileCtx.defaultProvider = opts.providerOverride;
     }
@@ -177,10 +154,7 @@ export async function fraguaPiCreateAgent(
     // attach to the next send's `onRawMessage`.
     const pendingWarnings = compiled.warnings.slice();
 
-    const send = async (
-        msg: UserMessage,
-        sendOpts: FraguaPiAgentSendOptions = {},
-    ): Promise<FraguaPiRunHandle> => {
+    const send = async (msg: UserMessage, sendOpts: FraguaPiAgentSendOptions = {}): Promise<FraguaPiRunHandle> => {
         const prompt = typeof msg === 'string' ? msg : msg.text;
         const runId = sendOpts.runId ?? `run-${randomUUID()}`;
         // Drain pending warnings into the caller's onRawMessage tap if
@@ -208,9 +182,7 @@ export async function fraguaPiCreateAgent(
             agent: piAgent,
             prompt,
             runId,
-            ...(sendOpts.onRawMessage !== undefined
-                ? { onRawMessage: sendOpts.onRawMessage }
-                : {}),
+            ...(sendOpts.onRawMessage !== undefined ? { onRawMessage: sendOpts.onRawMessage } : {}),
         });
     };
 
@@ -247,9 +219,7 @@ export async function fraguaPiCreateAgent(
  *  then falls back to pi-ai's `getEnvApiKey` defaults. */
 function buildApiKeyResolver(
     opts: FraguaPiCreateOptions,
-):
-    | ((provider: string) => Promise<string | undefined> | string | undefined)
-    | undefined {
+): ((provider: string) => Promise<string | undefined> | string | undefined) | undefined {
     if (opts.getApiKey) return opts.getApiKey;
     if (opts.apiKeyOverride) {
         const key = opts.apiKeyOverride;
@@ -273,11 +243,7 @@ function projectMessage(m: PiAgentMessage): HarnessMessage[] {
     const ts = typeof mm.timestamp === 'number' ? mm.timestamp : Date.now();
     if (mm.role === 'user') {
         const text =
-            typeof mm.content === 'string'
-                ? mm.content
-                : Array.isArray(mm.content)
-                  ? extractUserText(mm.content as unknown[])
-                  : '';
+            typeof mm.content === 'string' ? mm.content : Array.isArray(mm.content) ? extractUserText(mm.content as unknown[]) : '';
         return [{ role: 'user', content: text, ts }];
     }
     if (mm.role === 'assistant') {
@@ -309,14 +275,10 @@ function projectMessage(m: PiAgentMessage): HarnessMessage[] {
 function extractAssistantBlocks(
     msg: AssistantMessage,
 ): Array<
-    | { type: 'text'; text: string }
-    | { type: 'tool_use'; id: string; name: string; input: unknown }
-    | { type: 'thinking'; text: string }
+    { type: 'text'; text: string } | { type: 'tool_use'; id: string; name: string; input: unknown } | { type: 'thinking'; text: string }
 > {
     const out: Array<
-        | { type: 'text'; text: string }
-        | { type: 'tool_use'; id: string; name: string; input: unknown }
-        | { type: 'thinking'; text: string }
+        { type: 'text'; text: string } | { type: 'tool_use'; id: string; name: string; input: unknown } | { type: 'thinking'; text: string }
     > = [];
     for (const block of msg.content) {
         if (block.type === 'text') {

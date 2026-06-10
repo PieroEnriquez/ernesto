@@ -48,8 +48,14 @@ import { claudeVmRuntime } from './runtimes/claude';
 const log = debug('ernesto:harness:remote-vm');
 
 export type {
-    SandboxClient, SandboxHandle, NetworkPolicy,
-    SandboxFile, ExecOpts, ExecResult, ExecStreamHandle, CreateOrResumeOpts,
+    SandboxClient,
+    SandboxHandle,
+    NetworkPolicy,
+    SandboxFile,
+    ExecOpts,
+    ExecResult,
+    ExecStreamHandle,
+    CreateOrResumeOpts,
 } from './sandbox-client';
 export type { ProvisionSpec, ProvisionInputs } from './provision';
 export { buildProvisionSpec, WORKDIR_MOUNT, EDEN_LITE_PATH } from './provision';
@@ -118,10 +124,7 @@ export function createRemoteVmHarness(env: RemoteVmHarnessEnv): Harness {
     // The agent-runtime axis (orthogonal to the VM placement). Default = cas.
     const runtime: VmRuntime = env.runtime ?? claudeVmRuntime;
 
-    const createAgent = async (
-        def: AgentDefinition,
-        opts: CreateOptions = {},
-    ): Promise<AgentHandle> => {
+    const createAgent = async (def: AgentDefinition, opts: CreateOptions = {}): Promise<AgentHandle> => {
         const agentKey = opts.agentId ?? `remote-vm-${randomUUID()}`;
 
         // 1. Build the declarative provision plan (pure).
@@ -133,9 +136,7 @@ export function createRemoteVmHarness(env: RemoteVmHarnessEnv): Harness {
             ...(env.baseSnapshot !== undefined ? { baseSnapshot: env.baseSnapshot } : {}),
             // The per-user principal is the brokered identity; it is
             // metadata for the egress broker, never written into the VM.
-            ...(opts.env?.['ERNESTO_PRINCIPAL'] !== undefined
-                ? { principal: opts.env['ERNESTO_PRINCIPAL'] }
-                : {}),
+            ...(opts.env?.['ERNESTO_PRINCIPAL'] !== undefined ? { principal: opts.env['ERNESTO_PRINCIPAL'] } : {}),
             // Only NON-SECRET env reaches the VM. The caller MUST NOT put
             // tokens in `opts.env`; the egress proxy holds the real creds.
             ...(opts.env !== undefined ? { agentEnv: sanitizeEnv(opts.env) } : {}),
@@ -174,10 +175,7 @@ export function createRemoteVmHarness(env: RemoteVmHarnessEnv): Harness {
     const resumeAgent = async (agentId: string): Promise<AgentHandle> => {
         // Re-attach is just createAgent with a fixed key against a
         // resumed sandbox — the snapshot restores the warm FUSE mount.
-        return createAgent(
-            { systemPrompt: { type: 'preset', preset: 'claude_code' }, model: '' },
-            { agentId },
-        );
+        return createAgent({ systemPrompt: { type: 'preset', preset: 'claude_code' }, model: '' }, { agentId });
     };
 
     const listModels = async (): Promise<ModelInfo[]> => {
@@ -218,10 +216,7 @@ interface AgentHandleInputs {
 function makeRemoteVmAgentHandle(inputs: AgentHandleInputs): AgentHandle {
     const { sandbox, handle, spec, def, runtime } = inputs;
 
-    const send = async (
-        msg: UserMessage,
-        sendOpts: SendOptions = {},
-    ): Promise<RunHandle> => {
+    const send = async (msg: UserMessage, sendOpts: SendOptions = {}): Promise<RunHandle> => {
         const prompt = typeof msg === 'string' ? msg : msg.text;
         const runId = sendOpts.runId ?? `run-${randomUUID()}`;
 
@@ -274,9 +269,7 @@ function makeRemoteVmAgentHandle(inputs: AgentHandleInputs): AgentHandle {
  * boundaries) into whole NDJSON lines, carrying a partial trailing line
  * across chunks and flushing it at end-of-stream. Pure + lazy.
  */
-export async function* splitLines(
-    stdout: AsyncIterable<Buffer | string>,
-): AsyncGenerator<string> {
+export async function* splitLines(stdout: AsyncIterable<Buffer | string>): AsyncGenerator<string> {
     let buf = '';
     for await (const chunk of stdout) {
         buf += typeof chunk === 'string' ? chunk : chunk.toString('utf8');

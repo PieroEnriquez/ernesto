@@ -72,17 +72,13 @@ export const TOOL_SURFACE_ANNOTATIONS = {
     SYSTEM_PROMPT_EXTRAS: 'systemPromptExtras' as const,
 } as const;
 
-export function readDisallowedToolsExtra(
-    annotations: Readonly<Record<string, unknown>>,
-): string[] {
+export function readDisallowedToolsExtra(annotations: Readonly<Record<string, unknown>>): string[] {
     const v = annotations[TOOL_SURFACE_ANNOTATIONS.DISALLOWED_TOOLS_EXTRA];
     if (!Array.isArray(v)) return [];
     return v.filter((x): x is string => typeof x === 'string');
 }
 
-export function readSystemPromptExtras(
-    annotations: Readonly<Record<string, unknown>>,
-): string[] {
+export function readSystemPromptExtras(annotations: Readonly<Record<string, unknown>>): string[] {
     const v = annotations[TOOL_SURFACE_ANNOTATIONS.SYSTEM_PROMPT_EXTRAS];
     if (!Array.isArray(v)) return [];
     return v.filter((x): x is string => typeof x === 'string');
@@ -97,9 +93,7 @@ export interface ToolSurfaceComposeMiddlewareOpts {
     conversationIdFor?: (ctx: DispatchPreContext) => string;
 }
 
-export function toolSurfaceComposeMiddleware(
-    opts: ToolSurfaceComposeMiddlewareOpts,
-): DispatchMiddleware {
+export function toolSurfaceComposeMiddleware(opts: ToolSurfaceComposeMiddlewareOpts): DispatchMiddleware {
     const annotationKey = opts.annotationKey ?? 'mcpServers';
 
     return {
@@ -109,10 +103,7 @@ export function toolSurfaceComposeMiddleware(
             // main step (for agent kinds). For route kinds the lib's
             // built-in adapter (route→single-step workflow) doesn't
             // carry an mcpServers list; the middleware skips.
-            const main =
-                ctx.decl?.kind === 'workflow'
-                    ? ctx.decl.declaration.steps.main
-                    : undefined;
+            const main = ctx.decl?.kind === 'workflow' ? ctx.decl.declaration.steps.main : undefined;
             const mcpServers = readMcpServersFromMainStep(main);
             if (!mcpServers || mcpServers.length === 0) return ctx;
 
@@ -136,20 +127,16 @@ export function toolSurfaceComposeMiddleware(
                 ctx.annotations[`${annotationKey}__teardown`] = composition.teardown;
             }
             if (composition.disallowedToolsExtra && composition.disallowedToolsExtra.length > 0) {
-                ctx.annotations[TOOL_SURFACE_ANNOTATIONS.DISALLOWED_TOOLS_EXTRA] =
-                    [...composition.disallowedToolsExtra];
+                ctx.annotations[TOOL_SURFACE_ANNOTATIONS.DISALLOWED_TOOLS_EXTRA] = [...composition.disallowedToolsExtra];
             }
             if (composition.systemPromptExtras && composition.systemPromptExtras.length > 0) {
-                ctx.annotations[TOOL_SURFACE_ANNOTATIONS.SYSTEM_PROMPT_EXTRAS] =
-                    [...composition.systemPromptExtras];
+                ctx.annotations[TOOL_SURFACE_ANNOTATIONS.SYSTEM_PROMPT_EXTRAS] = [...composition.systemPromptExtras];
             }
             ctx.conversationId = conversationId;
             return ctx;
         },
         async after(ctx: DispatchPreContext, _run: Run): Promise<void> {
-            const teardown = ctx.annotations[`${annotationKey}__teardown`] as
-                | (() => Promise<void> | void)
-                | undefined;
+            const teardown = ctx.annotations[`${annotationKey}__teardown`] as (() => Promise<void> | void) | undefined;
             if (!teardown) return;
             // Persistent conversations retain the MCP surfaces across runs.
             if (ctx.decl?.policy?.continuity === 'persistent') return;
@@ -160,9 +147,7 @@ export function toolSurfaceComposeMiddleware(
 
 /** Best-effort read of `mcpServers` from a step. Lib's WorkflowStep
  *  union has it on `AgentStep`; other step kinds don't define it. */
-function readMcpServersFromMainStep(
-    step: unknown,
-): ReadonlyArray<string> | undefined {
+function readMcpServersFromMainStep(step: unknown): ReadonlyArray<string> | undefined {
     if (!step || typeof step !== 'object') return undefined;
     const m = (step as { mcpServers?: unknown }).mcpServers;
     if (!Array.isArray(m)) return undefined;

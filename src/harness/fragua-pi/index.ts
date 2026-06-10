@@ -52,57 +52,22 @@
  *   store is fragua's `messages` table, one level up).
  */
 
-import {
-    findEnvKeys,
-    getEnvApiKey,
-    getProviders,
-    getModels,
-} from '@mariozechner/pi-ai';
-import type {
-    AgentDefinition,
-    AgentHandle,
-    CreateOptions,
-    Harness,
-    HarnessCapabilities,
-    ModelInfo,
-} from '../types';
+import { findEnvKeys, getEnvApiKey, getProviders, getModels } from '@mariozechner/pi-ai';
+import type { AgentDefinition, AgentHandle, CreateOptions, Harness, HarnessCapabilities, ModelInfo } from '../types';
 import { fraguaPiCreateAgent } from './create';
 
 export { compileAgentToFraguaPiOptions, fnToolSpecToAgentTool } from './compile';
-export type {
-    FraguaPiCompileContext,
-    FraguaPiProvider,
-    CompiledFraguaPiOptions,
-} from './compile';
-export {
-    mapPiAgentStream,
-    mapPiAgentEvent,
-    mapStopReason,
-    createTranslatorState,
-} from './events';
+export type { FraguaPiCompileContext, FraguaPiProvider, CompiledFraguaPiOptions } from './compile';
+export { mapPiAgentStream, mapPiAgentEvent, mapStopReason, createTranslatorState } from './events';
 export type { TranslatorState } from './events';
-export {
-    fraguaPiSend,
-    fraguaPiAgentToRunHandle,
-} from './send';
-export type {
-    FraguaPiSendInput,
-    FraguaPiSendOptionsExt,
-    FraguaPiAgentToHandleOptions,
-    FraguaPiRunHandle,
-} from './send';
+export { fraguaPiSend, fraguaPiAgentToRunHandle } from './send';
+export type { FraguaPiSendInput, FraguaPiSendOptionsExt, FraguaPiAgentToHandleOptions, FraguaPiRunHandle } from './send';
 export { fraguaPiCreateAgent } from './create';
-export type {
-    FraguaPiCreateOptions,
-    FraguaPiAgentSendOptions,
-    FraguaPiAgentHandle,
-} from './create';
+export type { FraguaPiCreateOptions, FraguaPiAgentSendOptions, FraguaPiAgentHandle } from './create';
 
 /** SDK re-exports — let pi-aware backend code import these without
  *  naming `@mariozechner/*` directly. */
-export {
-    Agent,
-} from '@mariozechner/pi-agent-core';
+export { Agent } from '@mariozechner/pi-agent-core';
 export type {
     AgentOptions as PiAgentOptions,
     AgentEvent as PiAgentEvent,
@@ -124,20 +89,10 @@ export interface FraguaPiHarnessEnv {
     /** Per-provider API keys. Falls back to pi-ai's
      *  `getEnvApiKey(provider)` (which reads `ANTHROPIC_API_KEY`,
      *  `OPENAI_API_KEY`, …) when a provider's key is not in this map. */
-    apiKeys?: Partial<
-        Record<
-            'anthropic' | 'openai' | 'google' | 'ollama' | 'openrouter',
-            string
-        >
-    >;
+    apiKeys?: Partial<Record<'anthropic' | 'openai' | 'google' | 'ollama' | 'openrouter', string>>;
     /** Default provider when a `ModelRef.id` lacks a `provider/` prefix.
      *  Defaults to `anthropic`. */
-    defaultProvider?:
-        | 'anthropic'
-        | 'openai'
-        | 'google'
-        | 'ollama'
-        | 'openrouter';
+    defaultProvider?: 'anthropic' | 'openai' | 'google' | 'ollama' | 'openrouter';
     /** Default tool restrictions applied across all created agents. */
     defaults?: { disallowedTools?: string[] };
     /** Override capabilities (test seam). */
@@ -249,20 +204,14 @@ const FRAGUA_PI_CAPABILITIES: HarnessCapabilities = {
  * Build a `Harness` backed by `@mariozechner/pi-agent-core` +
  * `@mariozechner/pi-ai`.
  */
-export function createFraguaPiHarness(
-    env: FraguaPiHarnessEnv = {},
-): Harness {
+export function createFraguaPiHarness(env: FraguaPiHarnessEnv = {}): Harness {
     const capabilities: HarnessCapabilities = {
         ...FRAGUA_PI_CAPABILITIES,
         ...(env.capabilities ?? {}),
     };
 
-    const resolveApiKey = (
-        provider: string,
-    ): string | undefined => {
-        const fromEnv = env.apiKeys?.[
-            provider as keyof NonNullable<FraguaPiHarnessEnv['apiKeys']>
-        ];
+    const resolveApiKey = (provider: string): string | undefined => {
+        const fromEnv = env.apiKeys?.[provider as keyof NonNullable<FraguaPiHarnessEnv['apiKeys']>];
         if (fromEnv) return fromEnv;
         try {
             return getEnvApiKey(provider) ?? undefined;
@@ -271,10 +220,7 @@ export function createFraguaPiHarness(
         }
     };
 
-    const createAgent = async (
-        def: AgentDefinition,
-        opts: CreateOptions = {},
-    ): Promise<AgentHandle> => {
+    const createAgent = async (def: AgentDefinition, opts: CreateOptions = {}): Promise<AgentHandle> => {
         const createOpts: Parameters<typeof fraguaPiCreateAgent>[1] = {};
         if (opts.agentId !== undefined) createOpts.transcriptId = opts.agentId;
         if (opts.cwd !== undefined) createOpts.cwd = opts.cwd;
@@ -333,9 +279,13 @@ export function createFraguaPiHarness(
         // No user-account probe in pi-ai (it's a multi-provider client,
         // not a single-vendor SDK like Cursor / Anthropic) — so
         // `principal` falls back to the provider with a key, prefixed.
-        const candidates: Array<
-            'anthropic' | 'openai' | 'google' | 'ollama' | 'openrouter'
-        > = ['anthropic', 'openai', 'google', 'ollama', 'openrouter'];
+        const candidates: Array<'anthropic' | 'openai' | 'google' | 'ollama' | 'openrouter'> = [
+            'anthropic',
+            'openai',
+            'google',
+            'ollama',
+            'openrouter',
+        ];
         for (const p of candidates) {
             const key = resolveApiKey(p);
             if (key) {

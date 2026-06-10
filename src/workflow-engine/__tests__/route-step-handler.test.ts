@@ -45,10 +45,7 @@ describe('makeRouteStepHandler', () => {
             kindRegistry,
             log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
         });
-        const result = await handler(
-            { kind: 'route', uri: 'redshift://query', params: { sql: 'select 1' } } as RouteStep,
-            makeCtx(),
-        );
+        const result = await handler({ kind: 'route', uri: 'redshift://query', params: { sql: 'select 1' } } as RouteStep, makeCtx());
         expect(result).toEqual({ kind: 'completed', output: { rows: ['select 1'] } });
     });
 
@@ -58,10 +55,7 @@ describe('makeRouteStepHandler', () => {
             kindRegistry,
             log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
         });
-        const result = await handler(
-            { kind: 'route', uri: 'nope://nothing', params: {} } as RouteStep,
-            makeCtx(),
-        );
+        const result = await handler({ kind: 'route', uri: 'nope://nothing', params: {} } as RouteStep, makeCtx());
         expect(result.kind).toBe('error');
         if (result.kind === 'error') {
             expect(result.code).toBe('uri_not_found');
@@ -84,16 +78,11 @@ describe('makeRouteStepHandler', () => {
             log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
         });
         const emit = vi.fn();
-        await handler(
-            { kind: 'route', uri: 'reports://daily', params: {} } as RouteStep,
-            makeCtx({ emit }),
-        );
+        await handler({ kind: 'route', uri: 'reports://daily', params: {} } as RouteStep, makeCtx({ emit }));
         // The route's render manifest matched its output; emitComponent
         // was wired to ctx.emit → bus and at least one fact.component
         // event landed.
-        const componentEmits = emit.mock.calls.filter(
-            ([ev]) => ev?.type === 'fact.component',
-        );
+        const componentEmits = emit.mock.calls.filter(([ev]) => ev?.type === 'fact.component');
         expect(componentEmits.length).toBeGreaterThanOrEqual(1);
     });
 
@@ -167,13 +156,10 @@ describe('makeRouteStepHandler', () => {
             kindRegistry,
             log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
         });
-        const result = await handler(
-            { kind: 'route', uri: 'redshift://query', params: { sql: 'select 1' } } as RouteStep,
-            {
-                ...makeCtx(),
-                principal: { kind: 'service', workerId: 'w-1', requestId: 'r-1' },
-            },
-        );
+        const result = await handler({ kind: 'route', uri: 'redshift://query', params: { sql: 'select 1' } } as RouteStep, {
+            ...makeCtx(),
+            principal: { kind: 'service', workerId: 'w-1', requestId: 'r-1' },
+        });
         expect(result.kind).toBe('error');
         if (result.kind === 'error') {
             expect(result.code).toBe('missing_principal');
@@ -201,10 +187,7 @@ describe('makeRouteStepHandler', () => {
             kindRegistry,
             log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
         });
-        const result = await handler(
-            { kind: 'route', uri: 'child-wf', params: { x: 1 } } as RouteStep,
-            makeCtx({ dispatch: dispatchSpy }),
-        );
+        const result = await handler({ kind: 'route', uri: 'child-wf', params: { x: 1 } } as RouteStep, makeCtx({ dispatch: dispatchSpy }));
         expect(dispatchSpy).toHaveBeenCalledWith('child-wf', { x: 1 });
         expect(result).toEqual({
             kind: 'completed',
@@ -251,10 +234,7 @@ describe('makeRouteStepHandler', () => {
             kindRegistry,
             log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
         });
-        const result = await handler(
-            { kind: 'route', uri: 'child-wf', params: {} } as RouteStep,
-            makeCtx({ dispatch: dispatchSpy }),
-        );
+        const result = await handler({ kind: 'route', uri: 'child-wf', params: {} } as RouteStep, makeCtx({ dispatch: dispatchSpy }));
         expect(result.kind).toBe('error');
         if (result.kind === 'error') {
             expect(result.code).toBe('child_blew_up');

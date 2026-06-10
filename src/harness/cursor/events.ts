@@ -24,21 +24,9 @@
  * are interleaved with the stream output in roughly the right order.
  */
 
-import type {
-    SDKMessage as CursorSDKMessage,
-    InteractionUpdate,
-    RunStatus as CursorRunStatus,
-} from '@cursor/sdk';
-import type {
-    AssistantBlock,
-    HarnessEvent,
-    RunStatus,
-} from '../types';
-import {
-    createBaseTranslatorState,
-    mapStream,
-    type BaseTranslatorState,
-} from '../translator-base';
+import type { SDKMessage as CursorSDKMessage, InteractionUpdate, RunStatus as CursorRunStatus } from '@cursor/sdk';
+import type { AssistantBlock, HarnessEvent, RunStatus } from '../types';
+import { createBaseTranslatorState, mapStream, type BaseTranslatorState } from '../translator-base';
 
 /** Per-stream state needed across rows. Cursor's `tool_call` events
  *  carry the args/result inline; we track in-flight ids (`openToolCalls`)
@@ -84,27 +72,15 @@ export function mapCursorRunStatus(s: CursorRunStatus | string): RunStatus {
  * — pulls from the source iterator and yields per-row, so consumers
  * keep backpressure end-to-end.
  */
-export function mapCursorStream(
-    cursorMessages: AsyncIterable<CursorSDKMessage>,
-    runId: string,
-): AsyncGenerator<HarnessEvent> {
-    return mapStream(
-        cursorMessages,
-        runId,
-        createTranslatorState,
-        mapCursorMessage,
-    );
+export function mapCursorStream(cursorMessages: AsyncIterable<CursorSDKMessage>, runId: string): AsyncGenerator<HarnessEvent> {
+    return mapStream(cursorMessages, runId, createTranslatorState, mapCursorMessage);
 }
 
 /**
  * Pure row translator — `events.test.ts` builds inline Cursor message
  * fixtures and asserts the emitted `HarnessEvent[]` per row.
  */
-export function mapCursorMessage(
-    msg: CursorSDKMessage,
-    runId: string,
-    state: TranslatorState,
-): HarnessEvent[] {
+export function mapCursorMessage(msg: CursorSDKMessage, runId: string, state: TranslatorState): HarnessEvent[] {
     switch (msg.type) {
         case 'system':
             return mapSystem(msg, runId, state);
@@ -127,11 +103,7 @@ export function mapCursorMessage(
     }
 }
 
-function mapSystem(
-    msg: Extract<CursorSDKMessage, { type: 'system' }>,
-    runId: string,
-    state: TranslatorState,
-): HarnessEvent[] {
+function mapSystem(msg: Extract<CursorSDKMessage, { type: 'system' }>, runId: string, state: TranslatorState): HarnessEvent[] {
     if (msg.subtype === 'init' && !state.sawInit) {
         state.sawInit = true;
         return [{ kind: 'status', status: 'running', runId }];
@@ -139,10 +111,7 @@ function mapSystem(
     return [];
 }
 
-function mapAssistant(
-    msg: Extract<CursorSDKMessage, { type: 'assistant' }>,
-    runId: string,
-): HarnessEvent[] {
+function mapAssistant(msg: Extract<CursorSDKMessage, { type: 'assistant' }>, runId: string): HarnessEvent[] {
     const content: AssistantBlock[] = [];
     for (const block of msg.message.content) {
         if (block.type === 'text') {
@@ -159,10 +128,7 @@ function mapAssistant(
     return [{ kind: 'assistant_message', content, runId }];
 }
 
-function mapUser(
-    msg: Extract<CursorSDKMessage, { type: 'user' }>,
-    _runId: string,
-): HarnessEvent[] {
+function mapUser(msg: Extract<CursorSDKMessage, { type: 'user' }>, _runId: string): HarnessEvent[] {
     // Cursor's `user` events carry only text from the user, not tool
     // results (those flow through `tool_call` with a `result` field).
     // No canonical event for replayed user text inside `stream()` —
@@ -171,11 +137,7 @@ function mapUser(
     return [];
 }
 
-function mapToolCall(
-    msg: Extract<CursorSDKMessage, { type: 'tool_call' }>,
-    runId: string,
-    state: TranslatorState,
-): HarnessEvent[] {
+function mapToolCall(msg: Extract<CursorSDKMessage, { type: 'tool_call' }>, runId: string, state: TranslatorState): HarnessEvent[] {
     const out: HarnessEvent[] = [];
     const callId = msg.call_id;
 
@@ -194,8 +156,7 @@ function mapToolCall(
     // Late-arriving open (some Cursor flows skip a separate `running`
     // event and go straight to `completed`). Emit the call event
     // first so consumers see the canonical pair.
-    if (!state.openToolCalls.has(callId) &&
-        (msg.status === 'completed' || msg.status === 'error')) {
+    if (!state.openToolCalls.has(callId) && (msg.status === 'completed' || msg.status === 'error')) {
         state.openToolCalls.set(callId, msg.name);
         out.push({
             kind: 'tool_call',
@@ -219,17 +180,11 @@ function mapToolCall(
     return out;
 }
 
-function mapThinking(
-    msg: Extract<CursorSDKMessage, { type: 'thinking' }>,
-    runId: string,
-): HarnessEvent[] {
+function mapThinking(msg: Extract<CursorSDKMessage, { type: 'thinking' }>, runId: string): HarnessEvent[] {
     return [{ kind: 'thinking', text: msg.text, runId }];
 }
 
-function mapStatus(
-    msg: Extract<CursorSDKMessage, { type: 'status' }>,
-    runId: string,
-): HarnessEvent[] {
+function mapStatus(msg: Extract<CursorSDKMessage, { type: 'status' }>, runId: string): HarnessEvent[] {
     const status = mapCursorRunStatus(msg.status);
     const out: HarnessEvent[] = [];
     if (status === 'errored' && typeof msg.message === 'string') {
@@ -249,41 +204,39 @@ function mapStatus(
     return out;
 }
 
-function mapTask(
-    msg: Extract<CursorSDKMessage, { type: 'task' }>,
-    runId: string,
-    state: TranslatorState,
-): HarnessEvent[] {
+function mapTask(msg: Extract<CursorSDKMessage, { type: 'task' }>, runId: string, state: TranslatorState): HarnessEvent[] {
     // `SDKTaskMessage` is Cursor's subagent (Task tool) lifecycle
     // marker. `status: 'starting'/'completed'` etc carry a slug-ish
     // text. We collapse to `subagent_started`/`subagent_completed`
     // keyed off the (agent_id, run_id) pair — Cursor doesn't expose a
     // separate sub-run id at this layer.
     const taskId = `${msg.agent_id}:${msg.run_id}`;
-    const slug = typeof msg.text === 'string' && msg.text.length > 0
-        ? msg.text
-        : 'subagent';
+    const slug = typeof msg.text === 'string' && msg.text.length > 0 ? msg.text : 'subagent';
     if (msg.status === 'completed' || msg.status === 'finished') {
         if (state.openSubagents.has(taskId)) {
             state.openSubagents.delete(taskId);
-            return [{
-                kind: 'subagent_completed',
-                slug,
-                subRunId: taskId,
-                parentRunId: runId,
-                result: msg.text ?? null,
-            }];
+            return [
+                {
+                    kind: 'subagent_completed',
+                    slug,
+                    subRunId: taskId,
+                    parentRunId: runId,
+                    result: msg.text ?? null,
+                },
+            ];
         }
         return [];
     }
     if (!state.openSubagents.has(taskId)) {
         state.openSubagents.set(taskId, slug);
-        return [{
-            kind: 'subagent_started',
-            slug,
-            subRunId: taskId,
-            parentRunId: runId,
-        }];
+        return [
+            {
+                kind: 'subagent_started',
+                slug,
+                subRunId: taskId,
+                parentRunId: runId,
+            },
+        ];
     }
     return [];
 }
@@ -295,10 +248,7 @@ function mapTask(
  * through the same callback). Exported so `send.ts` can wire the
  * callback without duplicating the discriminator switch.
  */
-export function mapCursorDelta(
-    update: InteractionUpdate,
-    runId: string,
-): HarnessEvent | null {
+export function mapCursorDelta(update: InteractionUpdate, runId: string): HarnessEvent | null {
     // `InteractionUpdate` is a discriminated union; the text-delta
     // shape is `{ type: 'textDelta', text: string }` (per
     // `delta-types.d.ts`'s `TextDeltaUpdate`). We treat any update

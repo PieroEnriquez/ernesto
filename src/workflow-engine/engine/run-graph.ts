@@ -16,19 +16,9 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import type {
-    WorkflowStep,
-    WorkflowOutput,
-    GroupStep,
-} from '../../workflows/types';
+import type { WorkflowStep, WorkflowOutput, GroupStep } from '../../workflows/types';
 import type { HandlerDispatcher } from '../dispatch';
-import type {
-    EngineLogger,
-    EmitFactEvent,
-    HandlerContext,
-    HandlerResult,
-    HandlerRouting,
-} from '../types/handler';
+import type { EngineLogger, EmitFactEvent, HandlerContext, HandlerResult, HandlerRouting } from '../types/handler';
 import type { FactEvent } from '../types/event';
 import type { Principal } from '../principal';
 import type { ParkedPause } from '../store/port';
@@ -119,11 +109,7 @@ export type GraphResult =
           paused: ParkedPause[];
       };
 
-export async function runGraph(
-    graph: GraphSpec,
-    deps: RunGraphDeps,
-    pathPrefix = '',
-): Promise<GraphResult> {
+export async function runGraph(graph: GraphSpec, deps: RunGraphDeps, pathPrefix = ''): Promise<GraphResult> {
     const entries = Object.entries(graph.steps);
     if (entries.length === 0) {
         return { status: 'completed', outputs: {} };
@@ -154,8 +140,7 @@ export async function runGraph(
     const skipped = new Set<string>();
     const errored = new Set<string>();
     const remaining = new Map<string, WorkflowStep>(entries);
-    const concurrency =
-        graph.concurrency && graph.concurrency > 0 ? graph.concurrency : Infinity;
+    const concurrency = graph.concurrency && graph.concurrency > 0 ? graph.concurrency : Infinity;
     let inflight = 0;
     let firstError: { stepId: string; code: string; message: string } | null = null;
 
@@ -240,12 +225,8 @@ export async function runGraph(
                 const sub = await runGraph(
                     {
                         steps: group.steps,
-                        ...(group.concurrency !== undefined
-                            ? { concurrency: group.concurrency }
-                            : {}),
-                        ...(group.outputs !== undefined
-                            ? { outputs: group.outputs }
-                            : {}),
+                        ...(group.concurrency !== undefined ? { concurrency: group.concurrency } : {}),
+                        ...(group.outputs !== undefined ? { outputs: group.outputs } : {}),
                     },
                     deps,
                     `${nodeId}/`,
@@ -265,11 +246,14 @@ export async function runGraph(
                         ? { kind: 'completed', output: sub.outputs }
                         : {
                               kind: 'error',
-                              code: sub.status === 'canceled' ? 'group_canceled' : (sub as { error: { code?: string } }).error.code ?? 'group_failed',
+                              code:
+                                  sub.status === 'canceled'
+                                      ? 'group_canceled'
+                                      : ((sub as { error: { code?: string } }).error.code ?? 'group_failed'),
                               message:
                                   sub.status === 'canceled'
                                       ? 'group canceled'
-                                      : (sub as { error: { message?: string } }).error.message ?? 'group failed',
+                                      : ((sub as { error: { message?: string } }).error.message ?? 'group failed'),
                           };
             } else {
                 // Leaf step: interpolate `${{ inputs }}` + `${{ steps }}`
@@ -286,12 +270,8 @@ export async function runGraph(
                     signal: deps.signal,
                     log: deps.log,
                     emit: stepEmit,
-                    ...(deps.workdirRoot !== undefined
-                        ? { workdirRoot: deps.workdirRoot }
-                        : {}),
-                    ...(deps.dispatch !== undefined
-                        ? { dispatch: deps.dispatch }
-                        : {}),
+                    ...(deps.workdirRoot !== undefined ? { workdirRoot: deps.workdirRoot } : {}),
+                    ...(deps.dispatch !== undefined ? { dispatch: deps.dispatch } : {}),
                 };
                 result = await handler(resolved, ctx);
             }
@@ -400,10 +380,7 @@ export async function runGraph(
             if (skipped.has(id)) continue;
             partialOutputs[`${pathPrefix}${id}`] = val;
         }
-        const skippedNodeIds = [
-            ...nestedSkipped,
-            ...Array.from(skipped).map((id) => `${pathPrefix}${id}`),
-        ];
+        const skippedNodeIds = [...nestedSkipped, ...Array.from(skipped).map((id) => `${pathPrefix}${id}`)];
         return {
             status: 'paused',
             outputs,
@@ -463,9 +440,7 @@ function parkStep(
             schema,
             prompt: result.prompt,
             routes: result.routes,
-            ...(result.resumePrompt !== undefined
-                ? { resumePrompt: result.resumePrompt }
-                : {}),
+            ...(result.resumePrompt !== undefined ? { resumePrompt: result.resumePrompt } : {}),
         });
         deps.emitFact({
             runId: deps.runId,
@@ -486,9 +461,7 @@ function parkStep(
         kind: 'signal',
         signalKey: result.signalKey,
         ...(schema !== undefined ? { schema } : {}),
-        ...(result.resumePrompt !== undefined
-            ? { resumePrompt: result.resumePrompt }
-            : {}),
+        ...(result.resumePrompt !== undefined ? { resumePrompt: result.resumePrompt } : {}),
     });
     deps.emitFact({
         runId: deps.runId,
@@ -513,10 +486,7 @@ function emitNodeCompleted(deps: RunGraphDeps, nodeId: string, output: unknown):
 
 // ─── DAG validation ───────────────────────────────────────────────────────
 
-function validateDag(
-    steps: Record<string, WorkflowStep>,
-    dependsOf: Map<string, string[]>,
-): string | null {
+function validateDag(steps: Record<string, WorkflowStep>, dependsOf: Map<string, string[]>): string | null {
     const ids = new Set(Object.keys(steps));
     for (const [id, deps] of dependsOf) {
         for (const dep of deps) {
@@ -551,19 +521,11 @@ function validateDag(
 
 const TOKEN_RE = /\$\{\{\s*([^}]+?)\s*\}\}/g;
 
-function resolveStepTemplates(
-    step: WorkflowStep,
-    inputs: Record<string, unknown>,
-    stepOutputs: Record<string, unknown>,
-): WorkflowStep {
+function resolveStepTemplates(step: WorkflowStep, inputs: Record<string, unknown>, stepOutputs: Record<string, unknown>): WorkflowStep {
     return walkValue(step, inputs, stepOutputs) as WorkflowStep;
 }
 
-function walkValue(
-    value: unknown,
-    inputs: Record<string, unknown>,
-    stepOutputs: Record<string, unknown>,
-): unknown {
+function walkValue(value: unknown, inputs: Record<string, unknown>, stepOutputs: Record<string, unknown>): unknown {
     if (typeof value === 'string') return substituteString(value, inputs, stepOutputs);
     if (Array.isArray(value)) return value.map((v) => walkValue(v, inputs, stepOutputs));
     if (value && typeof value === 'object') {
@@ -576,11 +538,7 @@ function walkValue(
     return value;
 }
 
-function substituteString(
-    s: string,
-    inputs: Record<string, unknown>,
-    stepOutputs: Record<string, unknown>,
-): unknown {
+function substituteString(s: string, inputs: Record<string, unknown>, stepOutputs: Record<string, unknown>): unknown {
     const trimmed = s.trim();
     const full = /^\$\{\{\s*([^}]+?)\s*\}\}$/.exec(trimmed);
     if (full) {
@@ -609,12 +567,11 @@ function substituteString(
  *   - `steps.<id>`            → stepOutputs[id]  (whole output)
  *   - `steps.<id>.X`          → stepOutputs[id][X]  (shorthand)
  */
-export function resolveExpression(
-    expr: string,
-    inputs: Record<string, unknown>,
-    stepOutputs: Record<string, unknown>,
-): unknown {
-    const parts = expr.split('.').map((p) => p.trim()).filter(Boolean);
+export function resolveExpression(expr: string, inputs: Record<string, unknown>, stepOutputs: Record<string, unknown>): unknown {
+    const parts = expr
+        .split('.')
+        .map((p) => p.trim())
+        .filter(Boolean);
     if (parts.length === 0) return undefined;
     if (parts[0] === 'inputs') return resolvePath(inputs, parts.slice(1));
     if (parts[0] === 'steps') {

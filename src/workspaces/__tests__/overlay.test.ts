@@ -1,11 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-    makeOverlayView,
-    emptyPatch,
-    type FsReader,
-    type FsReaderDirent,
-    type WorkspacePatch,
-} from '../overlay';
+import { makeOverlayView, emptyPatch, type FsReader, type FsReaderDirent, type WorkspacePatch } from '../overlay';
 
 const scopes = (...xs: string[]): ReadonlySet<string> => new Set(xs);
 
@@ -181,9 +175,9 @@ describe('OverlayView — merged-view visibility (scope gate over the overlay)',
         const view = makeOverlayView(lower, patch);
 
         const noScopes = await view.computeVisibility(scopes(), { isAdmin: false });
-        expect(noScopes.readableNames.has('product')).toBe(true);  // public
-        expect(noScopes.readableNames.has('hr')).toBe(false);      // restricted lower
-        expect(noScopes.readableNames.has('secret')).toBe(false);  // restricted patch-added
+        expect(noScopes.readableNames.has('product')).toBe(true); // public
+        expect(noScopes.readableNames.has('hr')).toBe(false); // restricted lower
+        expect(noScopes.readableNames.has('secret')).toBe(false); // restricted patch-added
 
         const withScope = await view.computeVisibility(scopes('secret:read'), { isAdmin: false });
         expect(withScope.readableNames.has('secret')).toBe(true);

@@ -18,10 +18,7 @@ export interface ScopeDenialDetails<S extends string = string> {
  * the caller holds the agent-ops bypass scope, or because no required
  * scope is missing. Otherwise returns the denial details.
  */
-export function checkScope<S extends string>(
-    required: ReadonlyArray<S>,
-    scopes: ReadonlySet<S>,
-): ScopeDenialDetails<S> | null {
+export function checkScope<S extends string>(required: ReadonlyArray<S>, scopes: ReadonlySet<S>): ScopeDenialDetails<S> | null {
     if ((scopes as ReadonlySet<string>).has(AGENT_OPS_SCOPE)) return null;
     const missing = required.filter((s) => !scopes.has(s));
     if (missing.length === 0) return null;

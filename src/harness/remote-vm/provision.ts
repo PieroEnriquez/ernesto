@@ -81,9 +81,7 @@ export function buildProvisionSpec(inputs: ProvisionInputs): ProvisionSpec {
         inputs.networkPolicy ??
         buildEgressPolicy({
             backendBaseUrl: inputs.backendBaseUrl,
-            ...(inputs.modelBaseUrl !== undefined
-                ? { modelBaseUrl: inputs.modelBaseUrl }
-                : {}),
+            ...(inputs.modelBaseUrl !== undefined ? { modelBaseUrl: inputs.modelBaseUrl } : {}),
         });
 
     // Non-secret env only. The backend base URL is NOT a secret — the
@@ -111,24 +109,13 @@ export function buildProvisionSpec(inputs: ProvisionInputs): ProvisionSpec {
         '',
     ].join('\n');
 
-    const files: SandboxFile[] = [
-        { path: '/etc/eden-lite/egress.env', contentBase64: b64(shim), mode: 0o644 },
-    ];
+    const files: SandboxFile[] = [{ path: '/etc/eden-lite/egress.env', contentBase64: b64(shim), mode: 0o644 }];
 
-    const mountArgv = [
-        'node',
-        EDEN_LITE_PATH,
-        '--backend-url',
-        inputs.backendBaseUrl,
-        '--mount',
-        WORKDIR_MOUNT,
-    ];
+    const mountArgv = ['node', EDEN_LITE_PATH, '--backend-url', inputs.backendBaseUrl, '--mount', WORKDIR_MOUNT];
 
     return {
         key: inputs.agentKey,
-        ...(inputs.baseSnapshot !== undefined
-            ? { baseSnapshot: inputs.baseSnapshot }
-            : {}),
+        ...(inputs.baseSnapshot !== undefined ? { baseSnapshot: inputs.baseSnapshot } : {}),
         networkPolicy,
         ...(inputs.principal !== undefined ? { principal: inputs.principal } : {}),
         files,

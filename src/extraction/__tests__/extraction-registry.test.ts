@@ -28,7 +28,10 @@ describe('ExtractionRegistry', () => {
         const r = new ExtractionRegistry();
         r.register(makePlugin('clickup'));
         r.register(makePlugin('drive'));
-        const sources = r.list().map((x) => x.source).sort();
+        const sources = r
+            .list()
+            .map((x) => x.source)
+            .sort();
         expect(sources).toEqual(['clickup', 'drive']);
     });
 

@@ -62,10 +62,7 @@ export type EmitFactEventInput =
           cacheRead?: number;
           cacheWrite?: number;
           costUsd?: number;
-          modelUsage?: Record<
-              string,
-              { inputTokens: number; outputTokens: number; costUsd?: number }
-          >;
+          modelUsage?: Record<string, { inputTokens: number; outputTokens: number; costUsd?: number }>;
           ts?: number;
       }
     | {
@@ -158,10 +155,7 @@ export interface HandlerContext {
      *  Optional because legacy step handlers and unit-test contexts
      *  don't need to recurse; only the route step handler currently
      *  threads it. */
-    dispatch?: (
-        uri: string,
-        inputs: Record<string, unknown>,
-    ) => Promise<RecursiveDispatchResult>;
+    dispatch?: (uri: string, inputs: Record<string, unknown>) => Promise<RecursiveDispatchResult>;
 }
 
 /** Minimal recursive-dispatch return shape exposed to step handlers.
@@ -239,10 +233,7 @@ export type HandlerResult =
       }
     | { kind: 'error'; code: string; message: string; details?: unknown };
 
-export type StepKindHandler<S extends WorkflowStep = WorkflowStep> = (
-    step: S,
-    ctx: HandlerContext,
-) => Promise<HandlerResult>;
+export type StepKindHandler<S extends WorkflowStep = WorkflowStep> = (step: S, ctx: HandlerContext) => Promise<HandlerResult>;
 
 // Type aliases for back-references in the lib's own implementation;
 // they share the same definitions.

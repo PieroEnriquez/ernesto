@@ -1,11 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import {
-    createUiMcpServer,
-    UI_TOOL_COUNT,
-    UI_TOOL_NAMES,
-} from '../server';
+import { createUiMcpServer, UI_TOOL_COUNT, UI_TOOL_NAMES } from '../server';
 import { HitlController } from '../../workflow-engine/hitl';
 import type { UiHitlPauser } from '../types';
 import { EventBus } from '../../workflow-engine/event-bus';
@@ -53,9 +49,7 @@ describe('createUiMcpServer', () => {
         active = await createUiMcpServer({ context: ctx });
 
         const client = new Client({ name: 'test', version: '0.0.0' });
-        const transport = new StreamableHTTPClientTransport(
-            new URL(active.url),
-        );
+        const transport = new StreamableHTTPClientTransport(new URL(active.url));
         await client.connect(transport);
 
         const tools = await client.listTools();
@@ -95,9 +89,7 @@ describe('createUiMcpServer', () => {
         active = await createUiMcpServer({ context: ctx });
 
         const client = new Client({ name: 'test', version: '0.0.0' });
-        const transport = new StreamableHTTPClientTransport(
-            new URL(active.url),
-        );
+        const transport = new StreamableHTTPClientTransport(new URL(active.url));
         await client.connect(transport);
 
         await client.callTool({
@@ -147,9 +139,7 @@ describe('createUiMcpServer', () => {
         active = await createUiMcpServer({ context: ctx });
 
         const client = new Client({ name: 'test', version: '0.0.0' });
-        const transport = new StreamableHTTPClientTransport(
-            new URL(active.url),
-        );
+        const transport = new StreamableHTTPClientTransport(new URL(active.url));
         await client.connect(transport);
 
         const callPromise = client.callTool({
@@ -173,16 +163,13 @@ describe('createUiMcpServer', () => {
             if (busEvents.some((e) => e.type === 'fact.run_paused_human')) break;
             await new Promise((r) => setTimeout(r, 10));
         }
-        const paused = busEvents.find(
-            (e) => e.type === 'fact.run_paused_human',
-        );
+        const paused = busEvents.find((e) => e.type === 'fact.run_paused_human');
         expect(paused).toBeDefined();
         const promptId = (paused!.payload as { promptId: string }).promptId;
         await hitl.resume('r-1', { promptId, value: 'b' });
 
         const result = await callPromise;
-        const text = (result.content as Array<{ type: string; text?: string }>)
-            .find((c) => c.type === 'text')?.text;
+        const text = (result.content as Array<{ type: string; text?: string }>).find((c) => c.type === 'text')?.text;
         expect(text).toBe('b');
 
         await client.close();
@@ -200,9 +187,7 @@ describe('createUiMcpServer', () => {
         active = await createUiMcpServer({ context: ctx });
 
         const client = new Client({ name: 'test', version: '0.0.0' });
-        const transport = new StreamableHTTPClientTransport(
-            new URL(active.url),
-        );
+        const transport = new StreamableHTTPClientTransport(new URL(active.url));
         await client.connect(transport);
 
         // The Zod schema rejects unknown kind enum members at the wire;

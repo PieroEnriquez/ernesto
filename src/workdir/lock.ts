@@ -11,10 +11,13 @@ const chains = new Map<string, Promise<unknown>>();
  * Errors in one call do not block subsequent calls; the chain continues.
  */
 export function makeInMemoryWorkdirLock(workdirId: string): WorkdirLock {
-    return <T,>(fn: () => Promise<T>): Promise<T> => {
+    return <T>(fn: () => Promise<T>): Promise<T> => {
         const prev = chains.get(workdirId) ?? Promise.resolve();
         const next = prev.then(fn, fn);
-        chains.set(workdirId, next.catch(() => undefined));
+        chains.set(
+            workdirId,
+            next.catch(() => undefined),
+        );
         return next as Promise<T>;
     };
 }
@@ -81,7 +84,7 @@ export function makeRedisWorkdirLock(
     const autoRenewIntervalMs = opts?.autoRenewIntervalMs ?? Math.max(1, Math.floor(ttlMs / 3));
     const key = `${keyPrefix}${workdirId}`;
 
-    return async <T,>(fn: () => Promise<T>): Promise<T> => {
+    return async <T>(fn: () => Promise<T>): Promise<T> => {
         const token = randomUUID();
         const deadline = Date.now() + acquireTimeoutMs;
 
@@ -97,19 +100,20 @@ export function makeRedisWorkdirLock(
             }
             const wait = Math.min(pollIntervalMs, remaining);
             // eslint-disable-next-line no-await-in-loop
-            await new Promise<void>(resolve => setTimeout(resolve, wait));
+            await new Promise<void>((resolve) => setTimeout(resolve, wait));
         }
 
         // 2. Auto-renew while fn() runs.
         const renewer = setInterval(() => {
-            redis.pexpire(key, ttlMs).catch(err => {
+            redis.pexpire(key, ttlMs).catch((err) => {
                 // Don't blow up the host process; the lock will simply lapse
                 // and the next caller will pick it up.
                 // eslint-disable-next-line no-console
-                console.warn(
-                    '[ernesto] workdir lock pexpire failed',
-                    { workdirId, key, err: err instanceof Error ? err.message : String(err) },
-                );
+                console.warn('[ernesto] workdir lock pexpire failed', {
+                    workdirId,
+                    key,
+                    err: err instanceof Error ? err.message : String(err),
+                });
             });
         }, autoRenewIntervalMs);
         // Don't keep the event loop alive just because of the renewer.
@@ -123,10 +127,11 @@ export function makeRedisWorkdirLock(
                 await redis.releaseIfOwned(key, token);
             } catch (err) {
                 // eslint-disable-next-line no-console
-                console.warn(
-                    '[ernesto] workdir lock release failed',
-                    { workdirId, key, err: err instanceof Error ? err.message : String(err) },
-                );
+                console.warn('[ernesto] workdir lock release failed', {
+                    workdirId,
+                    key,
+                    err: err instanceof Error ? err.message : String(err),
+                });
             }
         }
     };

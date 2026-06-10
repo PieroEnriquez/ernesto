@@ -9,20 +9,10 @@
  */
 
 import type { ExtractionRegistry } from './extraction-registry';
-import type {
-    ExtractionContext,
-    ExtractionPlugin,
-    ExtractionRequest,
-    ExtractionResult,
-    ExtractionScope,
-} from './define-extraction';
+import type { ExtractionContext, ExtractionPlugin, ExtractionRequest, ExtractionResult, ExtractionScope } from './define-extraction';
 import { checkScope } from '../shared/scope';
 
-export type DispatchExtractionErrorCode =
-    | 'source_not_found'
-    | 'scope_denied'
-    | 'invalid_request'
-    | 'fetch_failed';
+export type DispatchExtractionErrorCode = 'source_not_found' | 'scope_denied' | 'invalid_request' | 'fetch_failed';
 
 export type DispatchExtractionResult =
     | { ok: true; data: ExtractionResult }

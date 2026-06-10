@@ -23,12 +23,7 @@ import type { UiComponent } from '../../components/types';
 import { applyRenderManifest, type RenderEntry } from '../../route/render';
 import type { EmitFactEvent, EngineLogger } from '../types/handler';
 
-export function projectStepOutput(
-    output: unknown,
-    stepEmit: EmitFactEvent,
-    log: EngineLogger,
-    stepId: string,
-): unknown {
+export function projectStepOutput(output: unknown, stepEmit: EmitFactEvent, log: EngineLogger, stepId: string): unknown {
     if (!output || typeof output !== 'object' || Array.isArray(output)) {
         return output;
     }

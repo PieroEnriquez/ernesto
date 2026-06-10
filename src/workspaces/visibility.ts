@@ -28,11 +28,7 @@
 
 import { readFile } from 'fs/promises';
 import { join } from 'path';
-import {
-    scanWorkspaceBoundaries,
-    boundaryForPath,
-    type WorkspaceBoundary,
-} from './boundaries';
+import { scanWorkspaceBoundaries, boundaryForPath, type WorkspaceBoundary } from './boundaries';
 import { RESERVED_SYSTEM_WORKSPACES } from '../lint/lint-workspace';
 import { parseWorkspaceFrontmatter, canRead } from './access';
 

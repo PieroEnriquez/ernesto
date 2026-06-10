@@ -5,11 +5,7 @@ import * as path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { defineRoute, RouteRegistry, dispatchRoute } from '../../route';
 import type { Workdir } from '../../workdir';
-import {
-    handleExecute,
-    EXECUTE_ACCEPTS_BUNDLED_UI,
-    executeInputSchema,
-} from '../execute';
+import { handleExecute, EXECUTE_ACCEPTS_BUNDLED_UI, executeInputSchema } from '../execute';
 import type { ExecuteVerbContext } from '../execute';
 import type { DispatchResult } from '../../route';
 import { extractAndEmitBundledUi } from '../../ui-tools/bundled-ui';
@@ -45,9 +41,7 @@ function makeRegistryDispatch(
 let SHARED_TMP_ROOT = '';
 
 beforeAll(async () => {
-    SHARED_TMP_ROOT = await fs.mkdtemp(
-        path.join(os.tmpdir(), 'ernesto-execute-test-'),
-    );
+    SHARED_TMP_ROOT = await fs.mkdtemp(path.join(os.tmpdir(), 'ernesto-execute-test-'));
 });
 afterAll(async () => {
     if (SHARED_TMP_ROOT) {
@@ -83,14 +77,7 @@ function makeCtx(
         log,
     };
     if (opts.reg && opts.workdir) {
-        ctx.dispatchByUri = makeRegistryDispatch(
-            opts.reg,
-            opts.workdir,
-            scopeSet,
-            user,
-            log,
-            opts.emitComponent,
-        );
+        ctx.dispatchByUri = makeRegistryDispatch(opts.reg, opts.workdir, scopeSet, user, log, opts.emitComponent);
     }
     if (opts.emitComponent) ctx.emitComponent = opts.emitComponent;
     return ctx;
@@ -115,12 +102,7 @@ describe('handleExecute', () => {
         const workdir = makeFakeWorkdir();
         const ctx = makeCtx(['test:read'], { reg, workdir });
 
-        const result = await handleExecute(
-            workdir,
-            reg,
-            { uri: 'test://echo', params: { msg: 'hi' }, ui: [] },
-            ctx,
-        );
+        const result = await handleExecute(workdir, reg, { uri: 'test://echo', params: { msg: 'hi' }, ui: [] }, ctx);
 
         expect(result).toMatchObject({ ok: true, data: { msg: 'hi' } });
         expect(ctx.log.info).toHaveBeenCalledWith('execute verb', {
@@ -129,7 +111,7 @@ describe('handleExecute', () => {
         });
     });
 
-    it('does NOT mistake a route\'s own top-level `file` for the archive pointer', async () => {
+    it("does NOT mistake a route's own top-level `file` for the archive pointer", async () => {
         // A route whose output happens to carry a top-level `file: string` that
         // is NOT archive-shaped must still get its own archiveRouteResult, and
         // the returned `file` must point at the real archive
@@ -193,12 +175,7 @@ describe('handleExecute', () => {
 
     it('returns invalid_input when uri is empty', async () => {
         const reg = new RouteRegistry();
-        const result = await handleExecute(
-            makeFakeWorkdir(),
-            reg,
-            { uri: '', params: {}, ui: [] } as any,
-            makeCtx(['test:read']),
-        );
+        const result = await handleExecute(makeFakeWorkdir(), reg, { uri: '', params: {}, ui: [] } as any, makeCtx(['test:read']));
         expect(result.ok).toBe(false);
         if (result.ok) return;
         expect(result.error).toBe('invalid_input');
@@ -206,12 +183,7 @@ describe('handleExecute', () => {
 
     it('returns invalid_input when uri is missing entirely', async () => {
         const reg = new RouteRegistry();
-        const result = await handleExecute(
-            makeFakeWorkdir(),
-            reg,
-            { params: {}, ui: [] } as any,
-            makeCtx(['test:read']),
-        );
+        const result = await handleExecute(makeFakeWorkdir(), reg, { params: {}, ui: [] } as any, makeCtx(['test:read']));
         expect(result.ok).toBe(false);
         if (result.ok) return;
         expect(result.error).toBe('invalid_input');
@@ -291,12 +263,7 @@ describe('handleExecute', () => {
         const workdir = makeFakeWorkdir();
         const ctx = makeCtx(['test:read'], { reg, workdir });
 
-        await handleExecute(
-            workdir,
-            reg,
-            { uri: 'test://echo', params: { msg: 'hi' }, ui: [] },
-            ctx,
-        );
+        await handleExecute(workdir, reg, { uri: 'test://echo', params: { msg: 'hi' }, ui: [] }, ctx);
 
         const call = (ctx.log.info as any).mock.calls[0];
         expect(call[0]).toBe('execute verb');
@@ -314,21 +281,18 @@ describe('handleExecute', () => {
         const workdir = makeFakeWorkdir();
         const ctx = makeCtx(['test:read'], { reg, workdir });
 
-        const result = await handleExecute(
-            workdir,
-            reg,
-            { uri: 'test://echo', params: '{"msg":"hi from a string"}', ui: [] },
-            ctx,
-        );
+        const result = await handleExecute(workdir, reg, { uri: 'test://echo', params: '{"msg":"hi from a string"}', ui: [] }, ctx);
 
         expect(result).toMatchObject({ ok: true, data: { msg: 'hi from a string' } });
     });
 
     it('opts into bundled-ui via EXECUTE_ACCEPTS_BUNDLED_UI', () => {
         expect(EXECUTE_ACCEPTS_BUNDLED_UI).toBe(true);
-        const shape = (executeInputSchema as unknown as {
-            shape: Record<string, unknown>;
-        }).shape;
+        const shape = (
+            executeInputSchema as unknown as {
+                shape: Record<string, unknown>;
+            }
+        ).shape;
         expect(shape).toHaveProperty('ui');
     });
 
@@ -377,8 +341,7 @@ describe('handleExecute', () => {
         const workdir = makeFakeWorkdir();
         const verbCtx = makeCtx(['test:read'], { reg, workdir });
 
-        const emitted: { type: 'fact.component'; component: UiComponent }[] =
-            [];
+        const emitted: { type: 'fact.component'; component: UiComponent }[] = [];
         const ui: UiComponent[] = [
             { kind: 'thinking', props: { text: 'querying revenue' } },
             { kind: 'status', props: { text: 'Querying…', slotId: 's1' } },
@@ -389,23 +352,15 @@ describe('handleExecute', () => {
             ui,
         };
 
-        const { cleanedArgs, emittedCount } = await extractAndEmitBundledUi(
-            args,
-            {
-                emit: (ev) => emitted.push(ev),
-                log: { warn: vi.fn() },
-            },
-        );
+        const { cleanedArgs, emittedCount } = await extractAndEmitBundledUi(args, {
+            emit: (ev) => emitted.push(ev),
+            log: { warn: vi.fn() },
+        });
         expect(emittedCount).toBe(2);
         expect(cleanedArgs).not.toHaveProperty('ui');
 
         // Handler runs on cleanedArgs — the `ui` field never reaches it.
-        const result = await handleExecute(
-            workdir,
-            reg,
-            cleanedArgs as Parameters<typeof handleExecute>[2],
-            verbCtx,
-        );
+        const result = await handleExecute(workdir, reg, cleanedArgs as Parameters<typeof handleExecute>[2], verbCtx);
         expect(result).toMatchObject({
             ok: true,
             data: { msg: 'bundled' },
@@ -418,10 +373,7 @@ describe('handleExecute', () => {
         // Both components were emitted in order, on the same emit
         // channel a standalone `ui([…])` call would use.
         expect(emitted).toHaveLength(2);
-        expect(emitted.map((e) => e.component.kind)).toEqual([
-            'thinking',
-            'status',
-        ]);
+        expect(emitted.map((e) => e.component.kind)).toEqual(['thinking', 'status']);
     });
 
     it('leaves non-JSON string params alone (route schema decides)', async () => {
@@ -433,12 +385,7 @@ describe('handleExecute', () => {
         const workdir = makeFakeWorkdir();
         const ctx = makeCtx(['test:read'], { reg, workdir });
 
-        const result = await handleExecute(
-            workdir,
-            reg,
-            { uri: 'test://echo', params: 'not json — just words', ui: [] },
-            ctx,
-        );
+        const result = await handleExecute(workdir, reg, { uri: 'test://echo', params: 'not json — just words', ui: [] }, ctx);
 
         // echoRoute expects {msg: string}; raw string is rejected by route schema.
         expect(result.ok).toBe(false);

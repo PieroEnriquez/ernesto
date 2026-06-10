@@ -105,9 +105,7 @@ const handleCache = new WeakMap<FnToolSpec, SynthMcpServerHandle>();
  * Caller-controlled `host` / `port` overrides aren't supported by
  * design — the bridge is meant to be invisible to the consumer.
  */
-export async function wrapFnAsMcpServer(
-    toolSpec: FnToolSpec,
-): Promise<SynthMcpServerHandle> {
+export async function wrapFnAsMcpServer(toolSpec: FnToolSpec): Promise<SynthMcpServerHandle> {
     // Idempotency: same spec → same handle, no double-spawn.
     const cached = handleCache.get(toolSpec);
     if (cached) return cached;
@@ -143,10 +141,7 @@ export async function wrapFnAsMcpServer(
                 content: [
                     {
                         type: 'text',
-                        text:
-                            typeof output === 'string'
-                                ? output
-                                : JSON.stringify(output),
+                        text: typeof output === 'string' ? output : JSON.stringify(output),
                     },
                 ],
             };
@@ -162,11 +157,7 @@ export async function wrapFnAsMcpServer(
     // shape of `inputSchema`. Cast through `unknown` keeps the
     // boundary explicit — runtime contract is "callback receives the
     // parsed args object".
-    (mcp.registerTool as unknown as (
-        name: string,
-        config: Record<string, unknown>,
-        cb: typeof handlerCallback,
-    ) => void)(
+    (mcp.registerTool as unknown as (name: string, config: Record<string, unknown>, cb: typeof handlerCallback) => void)(
         toolSpec.name,
         {
             description: toolSpec.description,
@@ -204,8 +195,7 @@ export async function wrapFnAsMcpServer(
                     res.end(
                         JSON.stringify({
                             error: 'parse_error',
-                            message:
-                                err instanceof Error ? err.message : String(err),
+                            message: err instanceof Error ? err.message : String(err),
                         }),
                     );
                 }
@@ -267,9 +257,7 @@ export async function wrapFnAsMcpServer(
  * compile step can route them via Cursor's native MCP / builtin
  * registration paths.
  */
-export async function wrapFnToolsAsMcpServers(
-    tools: ToolSpec[] | undefined,
-): Promise<{
+export async function wrapFnToolsAsMcpServers(tools: ToolSpec[] | undefined): Promise<{
     mcpServers: Record<string, SynthMcpServerConfig>;
     handles: SynthMcpServerHandle[];
     passThrough: ToolSpec[];
@@ -299,5 +287,8 @@ export async function wrapFnToolsAsMcpServers(
 /** Lowercase + non-alphanum collapsed to `_`. Used as the
  *  `mcpServers` record key. */
 function slugify(name: string): string {
-    return name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    return name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
 }

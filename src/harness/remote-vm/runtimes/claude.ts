@@ -112,7 +112,9 @@ export const claudeVmRuntime: VmRuntime = {
             try {
                 const o = JSON.parse(t) as { [k: string]: unknown };
                 if (o && o[UI_MARKER]) return [{ kind: 'component', component: o.component, runId }];
-            } catch { /* fall through to SDK mapping */ }
+            } catch {
+                /* fall through to SDK mapping */
+            }
         }
         return mapVmLine(line, runId, state as ReturnType<typeof createTranslatorState>);
     },

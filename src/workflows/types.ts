@@ -10,10 +10,7 @@
  * module is just the contract.
  */
 
-import type {
-    SystemPromptConfig,
-    JsonSchemaOutputFormat,
-} from '../managed-agents/types';
+import type { SystemPromptConfig, JsonSchemaOutputFormat } from '../managed-agents/types';
 import type { RenderEntry } from '../route/render';
 
 // ─── Top-level declaration ────────────────────────────────────────────────
@@ -75,21 +72,9 @@ export interface WorkflowTrigger {
 
 // ─── Step kinds ────────────────────────────────────────────────────────────
 
-export type WorkflowStep =
-    | RouteStep
-    | InputStep
-    | AgentStep
-    | GroupStep
-    | DynamicWorkflowStep
-    | MonitorStep;
+export type WorkflowStep = RouteStep | InputStep | AgentStep | GroupStep | DynamicWorkflowStep | MonitorStep;
 
-export type StepKind =
-    | 'route'
-    | 'input'
-    | 'agent'
-    | 'group'
-    | 'dynamic-workflow'
-    | 'monitor';
+export type StepKind = 'route' | 'input' | 'agent' | 'group' | 'dynamic-workflow' | 'monitor';
 
 /**
  * DAG metadata every step may declare. The workflow engine reads
@@ -136,9 +121,7 @@ export interface RouteStep extends BaseStep {
      * preserved for back-compat. Subscribers MAY honor it via their
      * own heuristics; the walker treats it as a no-op.
      */
-    render?:
-        | 'chart' | 'table' | 'value' | 'markdown' | 'json' | 'none' | 'narrative'
-        | ReadonlyArray<RenderEntry>;
+    render?: 'chart' | 'table' | 'value' | 'markdown' | 'json' | 'none' | 'narrative' | ReadonlyArray<RenderEntry>;
     timeoutMs?: number;
     retries?: number;
 }

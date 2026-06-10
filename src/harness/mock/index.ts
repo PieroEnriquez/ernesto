@@ -33,9 +33,7 @@ export interface MockScriptInput {
 }
 
 /** Script signature — sync or async event source. */
-export type MockScript = (
-    input: MockScriptInput,
-) => HarnessEvent[] | AsyncIterable<HarnessEvent>;
+export type MockScript = (input: MockScriptInput) => HarnessEvent[] | AsyncIterable<HarnessEvent>;
 
 export interface MockHarnessOptions {
     capabilities?: Partial<HarnessCapabilities>;
@@ -88,17 +86,11 @@ export function createMockHarness(opts: MockHarnessOptions = {}): Harness {
     };
     const script: MockScript = opts.script ?? DEFAULT_SCRIPT;
 
-    const createAgent = async (
-        def: AgentDefinition,
-        createOpts: CreateOptions = {},
-    ): Promise<AgentHandle> => {
+    const createAgent = async (def: AgentDefinition, createOpts: CreateOptions = {}): Promise<AgentHandle> => {
         const agentId = createOpts.agentId ?? `mock-${randomUUID()}`;
         let turnIndex = 0;
 
-        const send = async (
-            msg: UserMessage,
-            sendOpts: SendOptions = {},
-        ): Promise<RunHandle> => {
+        const send = async (msg: UserMessage, sendOpts: SendOptions = {}): Promise<RunHandle> => {
             const prompt = typeof msg === 'string' ? msg : msg.text;
             const runId = sendOpts.runId ?? `mock-run-${randomUUID()}`;
             const currentTurn = turnIndex++;
@@ -131,10 +123,7 @@ export function createMockHarness(opts: MockHarnessOptions = {}): Harness {
     };
 }
 
-function makeMockRunHandle(
-    runId: string,
-    events: HarnessEvent[] | AsyncIterable<HarnessEvent>,
-): RunHandle {
+function makeMockRunHandle(runId: string, events: HarnessEvent[] | AsyncIterable<HarnessEvent>): RunHandle {
     // The mock's "messages" are already canonical `HarnessEvent`s, so
     // `mapMessage` is identity. Arrays are adapted to an async iterable
     // so the single base drain path handles both script shapes.
@@ -158,10 +147,7 @@ function makeMockRunHandle(
         // If the script never emitted a terminal status, infer
         // `completed` after a clean drain (skipped when canceled, since
         // the base already appended `status: canceled`).
-        finalizeStream: (_state, lastStatus) =>
-            lastStatus === 'running'
-                ? [{ kind: 'status', status: 'completed', runId }]
-                : [],
+        finalizeStream: (_state, lastStatus) => (lastStatus === 'running' ? [{ kind: 'status', status: 'completed', runId }] : []),
         // Mock surfaces no SDK-specific extras — the common fold is the
         // whole result.
         mapResult: (fold): RunResult => {

@@ -37,12 +37,7 @@ import {
     type ExtractionRequest,
     type ExtractionResult,
 } from '../define-extraction';
-import {
-    DEFAULT_BACKOFF_BASE_MS,
-    DEFAULT_MAX_RETRIES,
-    DEFAULT_TIMEOUT_MS,
-    sleep,
-} from './_http';
+import { DEFAULT_BACKOFF_BASE_MS, DEFAULT_MAX_RETRIES, DEFAULT_TIMEOUT_MS, sleep } from './_http';
 
 const DRIVE_FILES_API = 'https://www.googleapis.com/drive/v3/files';
 const OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -148,11 +143,7 @@ function withSharedDriveParams(url: string, driveId: string | undefined): string
     return u.toString();
 }
 
-async function fetchDrive(
-    req: ExtractionRequest,
-    ctx: ExtractionContext,
-    opts: DrivePluginOptions,
-): Promise<ExtractionResult> {
+async function fetchDrive(req: ExtractionRequest, ctx: ExtractionContext, opts: DrivePluginOptions): Promise<ExtractionResult> {
     const target = parseTarget(req.target);
     const tokens: TokenState = {
         accessToken: opts.accessToken,
@@ -195,9 +186,7 @@ interface ParsedTarget {
 function parseTarget(target: string): ParsedTarget {
     const colon = target.indexOf(':');
     if (colon <= 0 || colon === target.length - 1) {
-        throw new Error(
-            `drive: invalid target "${target}" (expected doc:<id>, sheet:<id>, folder:<id>, pdf:<id>, or docx:<id>)`,
-        );
+        throw new Error(`drive: invalid target "${target}" (expected doc:<id>, sheet:<id>, folder:<id>, pdf:<id>, or docx:<id>)`);
     }
     const kind = target.slice(0, colon);
     const id = target.slice(colon + 1);
@@ -207,11 +196,7 @@ function parseTarget(target: string): ParsedTarget {
     return { kind, id };
 }
 
-async function fetchDocEntry(
-    fileId: string,
-    tokens: TokenState,
-    ctx: ExtractionContext,
-): Promise<ExtractionEntry | null> {
+async function fetchDocEntry(fileId: string, tokens: TokenState, ctx: ExtractionContext): Promise<ExtractionEntry | null> {
     const meta = await fetchMeta(fileId, tokens, ctx);
     if (!meta) return null;
 
@@ -226,11 +211,7 @@ async function fetchDocEntry(
     };
 }
 
-async function fetchSheetEntry(
-    fileId: string,
-    tokens: TokenState,
-    ctx: ExtractionContext,
-): Promise<ExtractionEntry | null> {
+async function fetchSheetEntry(fileId: string, tokens: TokenState, ctx: ExtractionContext): Promise<ExtractionEntry | null> {
     const meta = await fetchMeta(fileId, tokens, ctx);
     if (!meta) return null;
 
@@ -245,11 +226,7 @@ async function fetchSheetEntry(
     };
 }
 
-async function fetchPdfEntry(
-    fileId: string,
-    tokens: TokenState,
-    ctx: ExtractionContext,
-): Promise<ExtractionEntry | null> {
+async function fetchPdfEntry(fileId: string, tokens: TokenState, ctx: ExtractionContext): Promise<ExtractionEntry | null> {
     const meta = await fetchMeta(fileId, tokens, ctx);
     if (!meta) return null;
 
@@ -270,11 +247,7 @@ async function fetchPdfEntry(
     };
 }
 
-async function fetchDocxEntry(
-    fileId: string,
-    tokens: TokenState,
-    ctx: ExtractionContext,
-): Promise<ExtractionEntry | null> {
+async function fetchDocxEntry(fileId: string, tokens: TokenState, ctx: ExtractionContext): Promise<ExtractionEntry | null> {
     const meta = await fetchMeta(fileId, tokens, ctx);
     if (!meta) return null;
 
@@ -321,11 +294,7 @@ async function walkFolder(
     }
 }
 
-async function listFolderChildren(
-    folderId: string,
-    tokens: TokenState,
-    ctx: ExtractionContext,
-): Promise<DriveFileMeta[] | null> {
+async function listFolderChildren(folderId: string, tokens: TokenState, ctx: ExtractionContext): Promise<DriveFileMeta[] | null> {
     const collected: DriveFileMeta[] = [];
     let pageToken: string | undefined;
 
@@ -338,11 +307,7 @@ async function listFolderChildren(
         if (pageToken) params.set('pageToken', pageToken);
         const url = `${DRIVE_FILES_API}?${params.toString()}`;
 
-        const res = await driveRequest<{ files?: DriveFileMeta[]; nextPageToken?: string }>(
-            url,
-            tokens,
-            ctx,
-        );
+        const res = await driveRequest<{ files?: DriveFileMeta[]; nextPageToken?: string }>(url, tokens, ctx);
         if (!res.ok) return null;
         for (const f of res.data.files ?? []) {
             collected.push(f);
@@ -353,11 +318,7 @@ async function listFolderChildren(
     return collected;
 }
 
-async function fetchMeta(
-    fileId: string,
-    tokens: TokenState,
-    ctx: ExtractionContext,
-): Promise<DriveFileMeta | null> {
+async function fetchMeta(fileId: string, tokens: TokenState, ctx: ExtractionContext): Promise<DriveFileMeta | null> {
     const url = `${DRIVE_FILES_API}/${encodeURIComponent(fileId)}?fields=id,name,mimeType`;
     const res = await driveRequest<DriveFileMeta>(url, tokens, ctx);
     if (!res.ok) return null;
@@ -407,12 +368,7 @@ async function driveRequest<T>(
     }
 }
 
-async function doFetchWithRateLimit(
-    url: string,
-    accessToken: string,
-    ctx: ExtractionContext,
-    options: FetchOptions,
-): Promise<Response> {
+async function doFetchWithRateLimit(url: string, accessToken: string, ctx: ExtractionContext, options: FetchOptions): Promise<Response> {
     let attempt = 0;
     // attempt 0..RATE_LIMIT_RETRIES inclusive — i.e. up to 4 calls total
     // when retries=3. The task says "3 retries"; we treat that as 3 retries
@@ -430,11 +386,7 @@ async function doFetchWithRateLimit(
     }
 }
 
-async function doFetch(
-    url: string,
-    accessToken: string,
-    options: FetchOptions,
-): Promise<Response> {
+async function doFetch(url: string, accessToken: string, options: FetchOptions): Promise<Response> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {

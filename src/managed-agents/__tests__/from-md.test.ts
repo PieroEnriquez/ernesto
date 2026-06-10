@@ -67,9 +67,7 @@ body
     });
 
     it('rejects a file with no frontmatter delimiter', () => {
-        expect(() =>
-            parseManagedAgentMd('no frontmatter here', { slug: 'x', workspace: 'w' }),
-        ).toThrow(/missing YAML frontmatter/);
+        expect(() => parseManagedAgentMd('no frontmatter here', { slug: 'x', workspace: 'w' })).toThrow(/missing YAML frontmatter/);
     });
 
     it('rejects array-shaped frontmatter', () => {
@@ -80,18 +78,16 @@ body
 
 body
 `;
-        expect(() => parseManagedAgentMd(raw, { slug: 'x', workspace: 'w' })).toThrow(
-            /frontmatter must be a YAML object/,
-        );
+        expect(() => parseManagedAgentMd(raw, { slug: 'x', workspace: 'w' })).toThrow(/frontmatter must be a YAML object/);
     });
 });
 
 describe('toAgentDeclaration — field projection', () => {
     it('projects all 1:1 fields', () => {
-        const md = parseManagedAgentMd(
-            minimalRaw('\nprovider: ANTHROPIC\nmcpServers: [ernesto]\ndisallowedTools: [Bash]'),
-            { slug: 'test-agent', workspace: 'qa' },
-        );
+        const md = parseManagedAgentMd(minimalRaw('\nprovider: ANTHROPIC\nmcpServers: [ernesto]\ndisallowedTools: [Bash]'), {
+            slug: 'test-agent',
+            workspace: 'qa',
+        });
         const decl = toAgentDeclaration(md);
         expect(decl.id).toBe('test-agent');
         expect(decl.name).toBe('Test Agent');
@@ -205,9 +201,7 @@ maxTurns: 1
 
 
 `;
-        expect(() => toAgentDeclaration(parseManagedAgentMd(raw, { slug: 'a', workspace: 'w' }))).toThrow(
-            /body cannot be empty/,
-        );
+        expect(() => toAgentDeclaration(parseManagedAgentMd(raw, { slug: 'a', workspace: 'w' }))).toThrow(/body cannot be empty/);
     });
 
     it('rejects unknown systemPrompt shapes', () => {
@@ -222,9 +216,7 @@ systemPrompt:
 ---
 body
 `;
-        expect(() => toAgentDeclaration(parseManagedAgentMd(raw, { slug: 'a', workspace: 'w' }))).toThrow(
-            /systemPrompt frontmatter/,
-        );
+        expect(() => toAgentDeclaration(parseManagedAgentMd(raw, { slug: 'a', workspace: 'w' }))).toThrow(/systemPrompt frontmatter/);
     });
 });
 
@@ -238,16 +230,12 @@ describe('toAgentDeclaration — validation', () => {
 
     it('rejects bad slug regex', () => {
         const raw = minimalRaw().replace('slug: test-agent', 'slug: BadSlugWithCaps');
-        expect(() => toAgentDeclaration(parseManagedAgentMd(raw, { slug: 'BadSlugWithCaps', workspace: 'w' }))).toThrow(
-            /must match/,
-        );
+        expect(() => toAgentDeclaration(parseManagedAgentMd(raw, { slug: 'BadSlugWithCaps', workspace: 'w' }))).toThrow(/must match/);
     });
 
     it('rejects unknown provider', () => {
         const raw = minimalRaw('\nprovider: GOOGLE');
-        expect(() => toAgentDeclaration(parseManagedAgentMd(raw, { slug: 'test-agent', workspace: 'w' }))).toThrow(
-            /provider must be/,
-        );
+        expect(() => toAgentDeclaration(parseManagedAgentMd(raw, { slug: 'test-agent', workspace: 'w' }))).toThrow(/provider must be/);
     });
 
     it('rejects non-positive maxTurns', () => {
@@ -266,9 +254,7 @@ describe('toAgentDeclaration — validation', () => {
 
     it('rejects outputFormat without type: json_schema', () => {
         const raw = minimalRaw('\noutputFormat:\n  schema: {type: object}');
-        expect(() => toAgentDeclaration(parseManagedAgentMd(raw, { slug: 'test-agent', workspace: 'w' }))).toThrow(
-            /outputFormat must be/,
-        );
+        expect(() => toAgentDeclaration(parseManagedAgentMd(raw, { slug: 'test-agent', workspace: 'w' }))).toThrow(/outputFormat must be/);
     });
 
     it('rejects unknown frontmatter keys (catches typos like `scopes`)', () => {
@@ -315,8 +301,10 @@ describe('toAgentDeclaration — validation', () => {
 
 describe('composeExtends (§7.13.5)', () => {
     // Helper to make a resolver from a list of base files.
-    const resolverFrom = (bases: ManagedAgentMd[]): ExtendsResolver =>
-        (ws, slug) => bases.find((b) => b.workspace === ws && b.slug === slug);
+    const resolverFrom =
+        (bases: ManagedAgentMd[]): ExtendsResolver =>
+        (ws, slug) =>
+            bases.find((b) => b.workspace === ws && b.slug === slug);
 
     const baseRaw = (slug: string, body = 'Base body line.'): string => `---
 slug: ${slug}
@@ -349,9 +337,7 @@ ${body}
             slug: 'test-agent',
             workspace: 'w',
         });
-        expect(() => composeExtends(md, { resolveBase: () => undefined })).toThrow(
-            /"extends" must be a non-empty string slug/,
-        );
+        expect(() => composeExtends(md, { resolveBase: () => undefined })).toThrow(/"extends" must be a non-empty string slug/);
     });
 
     it('throws extends_target_not_found when the resolver returns undefined', () => {
@@ -359,9 +345,7 @@ ${body}
             slug: 'test-agent',
             workspace: 'w',
         });
-        expect(() => composeExtends(md, { resolveBase: () => undefined })).toThrow(
-            /extends_target_not_found: w\/missing-base/,
-        );
+        expect(() => composeExtends(md, { resolveBase: () => undefined })).toThrow(/extends_target_not_found: w\/missing-base/);
     });
 
     it('rejects a buggy resolver that returns a base in a different workspace from what was asked for', () => {
@@ -373,9 +357,7 @@ ${body}
             slug: 'test-agent',
             workspace: 'w',
         });
-        expect(() =>
-            composeExtends(md, { resolveBase: () => base }),
-        ).toThrow(/resolver returned wrong base/);
+        expect(() => composeExtends(md, { resolveBase: () => base })).toThrow(/resolver returned wrong base/);
     });
 
     it('allows extends from _ernesto via the qualified form', () => {
@@ -411,9 +393,9 @@ LOCAL PROSE.
             slug: 'test-agent',
             workspace: 'legal',
         });
-        expect(() =>
-            composeExtends(md, { resolveBase: resolverFrom([base]) }),
-        ).toThrow(/cross-workspace extends only allowed from "_ernesto"/);
+        expect(() => composeExtends(md, { resolveBase: resolverFrom([base]) })).toThrow(
+            /cross-workspace extends only allowed from "_ernesto"/,
+        );
     });
 
     it('emits extends_target_not_found with the qualified workspace when the platform base is missing', () => {
@@ -421,9 +403,7 @@ LOCAL PROSE.
             slug: 'test-agent',
             workspace: 'marketing',
         });
-        expect(() =>
-            composeExtends(md, { resolveBase: () => undefined }),
-        ).toThrow(/extends_target_not_found: _ernesto\/missing-base/);
+        expect(() => composeExtends(md, { resolveBase: () => undefined })).toThrow(/extends_target_not_found: _ernesto\/missing-base/);
     });
 
     it('rejects malformed qualified extends (too many slashes)', () => {
@@ -431,9 +411,7 @@ LOCAL PROSE.
             slug: 'test-agent',
             workspace: 'w',
         });
-        expect(() =>
-            composeExtends(md, { resolveBase: () => undefined }),
-        ).toThrow(/"extends" must be "<slug>" or "<workspace>\/<slug>"/);
+        expect(() => composeExtends(md, { resolveBase: () => undefined })).toThrow(/"extends" must be "<slug>" or "<workspace>\/<slug>"/);
     });
 
     it('rejects malformed qualified extends (empty workspace or slug part)', () => {
@@ -441,9 +419,7 @@ LOCAL PROSE.
             slug: 'test-agent',
             workspace: 'w',
         });
-        expect(() =>
-            composeExtends(md, { resolveBase: () => undefined }),
-        ).toThrow(/"extends" must be "<slug>" or "<workspace>\/<slug>"/);
+        expect(() => composeExtends(md, { resolveBase: () => undefined })).toThrow(/"extends" must be "<slug>" or "<workspace>\/<slug>"/);
     });
 
     it('concatenates base body and local body with a blank line', () => {
@@ -639,9 +615,7 @@ extends: shared-base
 local
 `;
         const md = parseManagedAgentMd(raw, { slug: 'ext', workspace: 'w' });
-        expect(() =>
-            composeExtends(md, { resolveBase: resolverFrom([base]) }),
-        ).toThrow(/"slug" must be set on the extending file/);
+        expect(() => composeExtends(md, { resolveBase: resolverFrom([base]) })).toThrow(/"slug" must be set on the extending file/);
     });
 
     it('requires the extender to set its own name', () => {
@@ -658,9 +632,7 @@ extends: shared-base
 local
 `;
         const md = parseManagedAgentMd(raw, { slug: 'ext', workspace: 'w' });
-        expect(() =>
-            composeExtends(md, { resolveBase: resolverFrom([base]) }),
-        ).toThrow(/"name" must be set on the extending file/);
+        expect(() => composeExtends(md, { resolveBase: resolverFrom([base]) })).toThrow(/"name" must be set on the extending file/);
     });
 
     it('requires the extender to set its own description', () => {
@@ -677,9 +649,7 @@ extends: shared-base
 local
 `;
         const md = parseManagedAgentMd(raw, { slug: 'ext', workspace: 'w' });
-        expect(() =>
-            composeExtends(md, { resolveBase: resolverFrom([base]) }),
-        ).toThrow(/"description" must be set on the extending file/);
+        expect(() => composeExtends(md, { resolveBase: resolverFrom([base]) })).toThrow(/"description" must be set on the extending file/);
     });
 
     it('detects A → B → A cycles and prints the full path', () => {
@@ -705,9 +675,7 @@ b body
 `;
         const a = parseManagedAgentMd(aSrc, { slug: 'a', workspace: 'w' });
         const b = parseManagedAgentMd(bSrc, { slug: 'b', workspace: 'w' });
-        expect(() =>
-            composeExtends(a, { resolveBase: resolverFrom([a, b]) }),
-        ).toThrow(/extends cycle detected \(w\/a → w\/b → w\/a\)/);
+        expect(() => composeExtends(a, { resolveBase: resolverFrom([a, b]) })).toThrow(/extends cycle detected \(w\/a → w\/b → w\/a\)/);
     });
 
     it('detects self-cycles (A extends A)', () => {
@@ -723,9 +691,7 @@ extends: a
 body
 `;
         const a = parseManagedAgentMd(aSrc, { slug: 'a', workspace: 'w' });
-        expect(() =>
-            composeExtends(a, { resolveBase: resolverFrom([a]) }),
-        ).toThrow(/extends cycle detected \(w\/a → w\/a\)/);
+        expect(() => composeExtends(a, { resolveBase: resolverFrom([a]) })).toThrow(/extends cycle detected \(w\/a → w\/a\)/);
     });
 
     it(`enforces the MAX_EXTENDS_DEPTH (${MAX_EXTENDS_DEPTH}) cap`, () => {
@@ -753,9 +719,9 @@ ${slug} body
         const c = mkChain('c', 'd');
         const b = mkChain('b', 'c');
         const a = mkChain('a', 'b');
-        expect(() =>
-            composeExtends(a, { resolveBase: resolverFrom([a, b, c, d, e]) }),
-        ).toThrow(/extends chain exceeds max_extends_depth=3/);
+        expect(() => composeExtends(a, { resolveBase: resolverFrom([a, b, c, d, e]) })).toThrow(
+            /extends chain exceeds max_extends_depth=3/,
+        );
     });
 
     it('allows a chain at the cap (3 hops)', () => {
@@ -843,8 +809,6 @@ extends: some-base
 body
 `;
         const md = parseManagedAgentMd(raw, { slug: 'ext', workspace: 'w' });
-        expect(() => toAgentDeclaration(md)).toThrow(
-            /"extends" must be resolved by composeExtends/,
-        );
+        expect(() => toAgentDeclaration(md)).toThrow(/"extends" must be resolved by composeExtends/);
     });
 });

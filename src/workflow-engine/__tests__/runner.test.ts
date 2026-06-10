@@ -2,13 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { createRunner } from '../runner';
 import { InMemoryStore } from '../store/in-memory-store';
 import { createMockHarness } from '../../harness/mock';
-import {
-    userPrincipal,
-    servicePrincipal,
-    isUserPrincipal,
-    isServicePrincipal,
-    narrowPrincipalScopes,
-} from '../principal';
+import { userPrincipal, servicePrincipal, isUserPrincipal, isServicePrincipal, narrowPrincipalScopes } from '../principal';
 import type { FactEvent } from '../types/event';
 import type { WorkflowDetail, WorkflowReader } from '../workflow-reader';
 import type { WorkflowDeclaration } from '../../workflows/types';
@@ -50,22 +44,13 @@ describe('createRunner.dispatch', () => {
                 steps: { s1: { kind: 'route', uri: 'x://y' } },
             }),
         );
-        const run: Run<{ s1: { ok: boolean } }> = await runner.dispatch(
-            'wf1',
-            {},
-            userPrincipal('u', ['x']),
-            { transport: 'in-process' },
-        );
+        const run: Run<{ s1: { ok: boolean } }> = await runner.dispatch('wf1', {}, userPrincipal('u', ['x']), { transport: 'in-process' });
         expect(run.status).toBe('completed');
         expect(run.output).toEqual({ s1: { ok: true } });
         expect(run.runId).toBeDefined();
         expect(run.surfaceRunId).toBe(run.runId);
         expect(run.error).toBeUndefined();
-        expect(events.map((e) => e.type)).toEqual([
-            'fact.run_started',
-            'fact.node_completed',
-            'fact.run_terminated',
-        ]);
+        expect(events.map((e) => e.type)).toEqual(['fact.run_started', 'fact.node_completed', 'fact.run_terminated']);
     });
 
     it('dispatches with a service principal — empty scopes, principal kind threaded through', async () => {
@@ -85,12 +70,7 @@ describe('createRunner.dispatch', () => {
                 steps: { s1: { kind: 'route', uri: 'x://y' } },
             }),
         );
-        const run = await runner.dispatch(
-            'wf-service',
-            {},
-            servicePrincipal('autofill-worker', 'req-42'),
-            {},
-        );
+        const run = await runner.dispatch('wf-service', {}, servicePrincipal('autofill-worker', 'req-42'), {});
         expect(run.status).toBe('completed');
         expect(observedPrincipalKind).toBe('service');
         const started = events.find((e) => e.type === 'fact.run_started');
@@ -120,16 +100,11 @@ describe('createRunner.dispatch', () => {
                 steps: { s1: { kind: 'route', uri: 'x://y' } },
             }),
         );
-        const run = await runner.dispatch(
-            'wf-routing',
-            {},
-            userPrincipal('u', []),
-            {
-                transport: 'in-process',
-                surfaceRunId: 'surface-123',
-                parentRunId: 'parent-456',
-            },
-        );
+        const run = await runner.dispatch('wf-routing', {}, userPrincipal('u', []), {
+            transport: 'in-process',
+            surfaceRunId: 'surface-123',
+            parentRunId: 'parent-456',
+        });
         expect(run.surfaceRunId).toBe('surface-123');
         expect(observed).toEqual({
             transport: 'in-process',
@@ -140,9 +115,7 @@ describe('createRunner.dispatch', () => {
 
     it('rejects when no workflow reader registered', async () => {
         const runner = createRunner();
-        await expect(
-            runner.dispatch('wf1', {}, userPrincipal('u', []), {}),
-        ).rejects.toThrow(/no workflow reader/);
+        await expect(runner.dispatch('wf1', {}, userPrincipal('u', []), {})).rejects.toThrow(/no workflow reader/);
     });
 
     it('rejects when workflow not found', async () => {
@@ -155,9 +128,7 @@ describe('createRunner.dispatch', () => {
                 return undefined;
             },
         });
-        await expect(
-            runner.dispatch('nope', {}, userPrincipal('u', []), {}),
-        ).rejects.toThrow(/not found/);
+        await expect(runner.dispatch('nope', {}, userPrincipal('u', []), {})).rejects.toThrow(/not found/);
     });
 
     it('parks paused_human durably and resumeRun re-walks to terminal', async () => {
@@ -187,12 +158,7 @@ describe('createRunner.dispatch', () => {
         );
         // dispatch returns as soon as the run parks — it does NOT block
         // on the resume (the durable, restart-surviving contract).
-        const run = await runner.dispatch(
-            'wf-hitl',
-            {},
-            userPrincipal('u', []),
-            {},
-        );
+        const run = await runner.dispatch('wf-hitl', {}, userPrincipal('u', []), {});
         expect(run.status).toBe('awaiting_input');
         const paused = events.find((e) => e.type === 'fact.run_paused_human');
         expect(paused).toBeDefined();
@@ -208,9 +174,7 @@ describe('createRunner.dispatch', () => {
         expect(events.find((e) => e.type === 'fact.run_resumed')).toBeDefined();
         const terminal = events.find((e) => e.type === 'fact.run_terminated');
         expect(terminal?.payload).toMatchObject({ status: 'completed' });
-        const completedNode = events.find(
-            (e) => e.type === 'fact.node_completed' && (e.payload as any).nodeId === 's1',
-        );
+        const completedNode = events.find((e) => e.type === 'fact.node_completed' && (e.payload as any).nodeId === 's1');
         expect((completedNode!.payload as any).output).toEqual({ choice: 'a' });
         const finalState = await store.getRunState(run.runId);
         expect(finalState?.status).toBe('completed');
@@ -218,9 +182,7 @@ describe('createRunner.dispatch', () => {
 
     it('resumeRun on an unknown/terminal run rejects (no pending HITL)', async () => {
         const runner = createRunner();
-        await expect(
-            runner.resumeRun({ runId: 'ghost', promptId: 'p', value: 1 }),
-        ).rejects.toThrow(/no pending HITL/);
+        await expect(runner.resumeRun({ runId: 'ghost', promptId: 'p', value: 1 })).rejects.toThrow(/no pending HITL/);
     });
 
     it('resumes a parked run on a FRESH runner sharing only the store (restart survival)', async () => {
@@ -276,13 +238,9 @@ describe('createRunner.dispatch', () => {
 
         const terminal = events.find((e) => e.type === 'fact.run_terminated');
         expect(terminal?.payload).toMatchObject({ status: 'completed' });
-        const monNode = events.find(
-            (e) => e.type === 'fact.node_completed' && (e.payload as any).nodeId === 'mon',
-        );
+        const monNode = events.find((e) => e.type === 'fact.node_completed' && (e.payload as any).nodeId === 'mon');
         expect((monNode!.payload as any).output).toEqual({ summary: 'PR ready' });
-        const afterNode = events.find(
-            (e) => e.type === 'fact.node_completed' && (e.payload as any).nodeId === 'after',
-        );
+        const afterNode = events.find((e) => e.type === 'fact.node_completed' && (e.payload as any).nodeId === 'after');
         expect((afterNode!.payload as any).output).toEqual({ done: true });
         expect((await store.getRunState(run.runId))?.status).toBe('completed');
     });
@@ -330,12 +288,7 @@ describe('createRunner.dispatch', () => {
                 },
             }),
         );
-        const res = await runner.dispatch(
-            'wf-agent',
-            {},
-            userPrincipal('u', []),
-            {},
-        );
+        const res = await runner.dispatch('wf-agent', {}, userPrincipal('u', []), {});
         expect(res.status).toBe('completed');
         expect((res.output as any)?.s1).toBeDefined();
     });
@@ -363,12 +316,7 @@ describe('createRunner.dispatch', () => {
                 steps: { s1: { kind: 'route', uri: 'x://y' } },
             }),
         );
-        const runPromise = runner.dispatch(
-            'wf-abort',
-            {},
-            userPrincipal('u', []),
-            {},
-        );
+        const runPromise = runner.dispatch('wf-abort', {}, userPrincipal('u', []), {});
         // Wait until run_started lands so we know the run id.
         await new Promise((r) => setTimeout(r, 5));
         const started = events.find((e) => e.type === 'fact.run_started');

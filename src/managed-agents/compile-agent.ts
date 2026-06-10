@@ -7,13 +7,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { readFrontmatter } from '../frontmatter';
-import type {
-    AgentDeclaration,
-    AgentContext,
-    CompiledAgent,
-    SystemPromptConfig,
-    Transport,
-} from './types';
+import type { AgentDeclaration, AgentContext, CompiledAgent, SystemPromptConfig, Transport } from './types';
 
 /**
  * Pure composer (§7.1). Turns an `AgentDeclaration` + threading
@@ -44,15 +38,9 @@ import type {
  * - §7.12 subagent context (`subagentDepth`, `parent.scope ∩
  *   decl.scope`).
  */
-export function compileAgent(
-    decl: AgentDeclaration,
-    ctx: AgentContext,
-    defaults: { disallowedTools?: string[] } = {},
-): CompiledAgent {
+export function compileAgent(decl: AgentDeclaration, ctx: AgentContext, defaults: { disallowedTools?: string[] } = {}): CompiledAgent {
     const platformBody = composeErnestoBody(ctx.cwd, ctx.transport);
-    const systemPrompt = platformBody
-        ? appendErnestoBody(decl.systemPrompt, platformBody)
-        : decl.systemPrompt;
+    const systemPrompt = platformBody ? appendErnestoBody(decl.systemPrompt, platformBody) : decl.systemPrompt;
 
     return {
         model: decl.model,
@@ -86,10 +74,7 @@ export function compileAgent(
  * Frontmatter is stripped from each file. Empty/absent files are
  * skipped silently (callers don't need to branch).
  */
-export function composeErnestoBody(
-    cwd: string | undefined,
-    transport?: Transport,
-): string | null {
+export function composeErnestoBody(cwd: string | undefined, transport?: Transport): string | null {
     const universal = readErnestoBody(cwd);
     const overlayBody = transport ? readTransportOverlay(cwd, transport) : null;
     if (universal && overlayBody) return universal + '\n\n' + overlayBody;
@@ -124,8 +109,8 @@ function readErnestoBody(cwd: string | undefined): string | null {
  */
 const OVERLAY_BY_TRANSPORT: Record<string, string> = {
     'in-process': 'in-process',
-    'vm': 'in-process',
-    'mcp': 'mcp',
+    vm: 'in-process',
+    mcp: 'mcp',
 };
 function readTransportOverlay(cwd: string | undefined, transport: Transport): string | null {
     if (!cwd) return null;
@@ -150,10 +135,7 @@ function readMarkdownBody(path: string): string | null {
     return body.trim().length > 0 ? body : null;
 }
 
-function appendErnestoBody(
-    base: SystemPromptConfig,
-    ernestoBody: string,
-): SystemPromptConfig {
+function appendErnestoBody(base: SystemPromptConfig, ernestoBody: string): SystemPromptConfig {
     if (typeof base === 'string') {
         return base + '\n\n' + ernestoBody;
     }

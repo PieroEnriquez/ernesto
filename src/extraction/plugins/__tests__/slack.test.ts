@@ -56,10 +56,7 @@ describe('slackPlugin – channel target happy path', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         const plugin = slackPlugin({ token: TOKEN });
-        const result = await plugin.fetch(
-            { target: 'channel:C12345' },
-            makeCtx(),
-        );
+        const result = await plugin.fetch({ target: 'channel:C12345' }, makeCtx());
 
         expect(fetchMock).toHaveBeenCalledTimes(1);
         const [url, init] = fetchMock.mock.calls[0];
@@ -97,10 +94,7 @@ describe('slackPlugin – thread target happy path', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         const plugin = slackPlugin({ token: TOKEN });
-        const result = await plugin.fetch(
-            { target: 'thread:C12345:1700000100.000100' },
-            makeCtx(),
-        );
+        const result = await plugin.fetch({ target: 'thread:C12345:1700000100.000100' }, makeCtx());
 
         const [url] = fetchMock.mock.calls[0];
         expect(url).toMatch(/^https:\/\/slack\.com\/api\/conversations\.replies\?/);
@@ -133,9 +127,7 @@ describe('slackPlugin – invalid_auth (HTTP 200 + ok:false)', () => {
         const ctx = makeCtx();
         const plugin = slackPlugin({ token: TOKEN });
 
-        await expect(
-            plugin.fetch({ target: 'channel:C404' }, ctx),
-        ).rejects.toThrow(/invalid_auth/);
+        await expect(plugin.fetch({ target: 'channel:C404' }, ctx)).rejects.toThrow(/invalid_auth/);
 
         // Token must not appear in any log call.
         const logs = [
@@ -154,9 +146,7 @@ describe('slackPlugin – invalid_auth (HTTP 200 + ok:false)', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         const plugin = slackPlugin({ token: TOKEN });
-        await expect(
-            plugin.fetch({ target: 'channel:Cgone' }, makeCtx()),
-        ).rejects.toThrow(/channel_not_found/);
+        await expect(plugin.fetch({ target: 'channel:Cgone' }, makeCtx())).rejects.toThrow(/channel_not_found/);
     });
 });
 
@@ -167,10 +157,7 @@ describe('slackPlugin – 429 with Retry-After', () => {
 
     it('waits Retry-After seconds and retries on 429', async () => {
         const messages = [{ ts: '1700000100.000100', user: 'U1', text: 'hi' }];
-        const fetchMock = vi
-            .fn()
-            .mockResolvedValueOnce(rateLimited('2'))
-            .mockResolvedValueOnce(slackOk({ messages }));
+        const fetchMock = vi.fn().mockResolvedValueOnce(rateLimited('2')).mockResolvedValueOnce(slackOk({ messages }));
         vi.stubGlobal('fetch', fetchMock);
 
         const ctx = makeCtx();
@@ -197,10 +184,7 @@ describe('slackPlugin – 429 with Retry-After', () => {
 
     it('falls back to exponential backoff when Retry-After is missing', async () => {
         const messages = [{ ts: '1700000100.000100', user: 'U1', text: 'hi' }];
-        const fetchMock = vi
-            .fn()
-            .mockResolvedValueOnce(rateLimited(undefined))
-            .mockResolvedValueOnce(slackOk({ messages }));
+        const fetchMock = vi.fn().mockResolvedValueOnce(rateLimited(undefined)).mockResolvedValueOnce(slackOk({ messages }));
         vi.stubGlobal('fetch', fetchMock);
 
         const ctx = makeCtx();
@@ -226,29 +210,19 @@ describe('slackPlugin – 429 with Retry-After', () => {
 describe('slackPlugin – target parsing', () => {
     it('rejects unsupported target prefixes', async () => {
         const plugin = slackPlugin({ token: TOKEN });
-        await expect(
-            plugin.fetch({ target: 'message:C1:1700000100.0001' }, makeCtx()),
-        ).rejects.toThrow(/unsupported target kind/);
+        await expect(plugin.fetch({ target: 'message:C1:1700000100.0001' }, makeCtx())).rejects.toThrow(/unsupported target kind/);
     });
 
     it('rejects malformed thread targets', async () => {
         const plugin = slackPlugin({ token: TOKEN });
-        await expect(
-            plugin.fetch({ target: 'thread:C1' }, makeCtx()),
-        ).rejects.toThrow(/invalid thread target/);
+        await expect(plugin.fetch({ target: 'thread:C1' }, makeCtx())).rejects.toThrow(/invalid thread target/);
     });
 
     it('rejects non-positive-integer days on channel-threads', async () => {
         const plugin = slackPlugin({ token: TOKEN });
-        await expect(
-            plugin.fetch({ target: 'channel-threads:C1:0' }, makeCtx()),
-        ).rejects.toThrow(/positive integer/);
-        await expect(
-            plugin.fetch({ target: 'channel-threads:C1:-7' }, makeCtx()),
-        ).rejects.toThrow(/positive integer/);
-        await expect(
-            plugin.fetch({ target: 'channel-threads:C1:thirty' }, makeCtx()),
-        ).rejects.toThrow(/positive integer/);
+        await expect(plugin.fetch({ target: 'channel-threads:C1:0' }, makeCtx())).rejects.toThrow(/positive integer/);
+        await expect(plugin.fetch({ target: 'channel-threads:C1:-7' }, makeCtx())).rejects.toThrow(/positive integer/);
+        await expect(plugin.fetch({ target: 'channel-threads:C1:thirty' }, makeCtx())).rejects.toThrow(/positive integer/);
     });
 });
 
@@ -268,7 +242,13 @@ describe('slackPlugin – channel-threads target', () => {
         const historyPage = [
             // newest first per Slack convention
             { ts: dayAgoSec(1) + '.000200', user: 'U1', text: 'unreplied chatter' },
-            { ts: dayAgoSec(2) + '.000100', user: 'U2', text: 'Incident: checkout flow regressed', reply_count: 2, thread_ts: dayAgoSec(2) + '.000100' },
+            {
+                ts: dayAgoSec(2) + '.000100',
+                user: 'U2',
+                text: 'Incident: checkout flow regressed',
+                reply_count: 2,
+                thread_ts: dayAgoSec(2) + '.000100',
+            },
             { ts: dayAgoSec(5) + '.000100', user: 'U3', text: 'Q4 planning kick-off', reply_count: 1, thread_ts: dayAgoSec(5) + '.000100' },
         ];
         const repliesParent1 = [
@@ -297,10 +277,7 @@ describe('slackPlugin – channel-threads target', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         const plugin = slackPlugin({ token: TOKEN });
-        const result = await plugin.fetch(
-            { target: 'channel-threads:C12345:30' },
-            makeCtx(),
-        );
+        const result = await plugin.fetch({ target: 'channel-threads:C12345:30' }, makeCtx());
 
         // Two threads → two entries; the unreplied message is skipped.
         expect(result.entries).toHaveLength(2);
@@ -368,15 +345,17 @@ describe('slackPlugin – channel-threads target', () => {
             // Any thread replies call: return a minimal valid thread.
             const m = url.match(/ts=(\d+\.\d+)/);
             const ts = m ? m[1] : '0';
-            return slackOk({ messages: [{ ts, user: 'U1', text: 'parent' }, { ts: ts + '1', user: 'U2', text: 'reply' }] });
+            return slackOk({
+                messages: [
+                    { ts, user: 'U1', text: 'parent' },
+                    { ts: ts + '1', user: 'U2', text: 'reply' },
+                ],
+            });
         });
         vi.stubGlobal('fetch', fetchMock);
 
         const plugin = slackPlugin({ token: TOKEN });
-        const result = await plugin.fetch(
-            { target: 'channel-threads:C1:30' },
-            makeCtx(),
-        );
+        const result = await plugin.fetch({ target: 'channel-threads:C1:30' }, makeCtx());
 
         expect(nHistory).toBe(2);
         expect(result.entries).toHaveLength(2);

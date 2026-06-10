@@ -35,11 +35,7 @@ export interface RunGitOptions {
  * (e.g. `GIT_INDEX_FILE`) without losing the safety env. `opts.stdin`, when
  * given, is piped to the child's stdin.
  */
-export async function runGit(
-    cwd: string,
-    args: ReadonlyArray<string>,
-    opts?: RunGitOptions,
-): Promise<string> {
+export async function runGit(cwd: string, args: ReadonlyArray<string>, opts?: RunGitOptions): Promise<string> {
     const child = pExecFile('git', [...args], {
         cwd,
         maxBuffer: 100 * 1024 * 1024,
@@ -68,10 +64,7 @@ export async function tryRunGit(
     cwd: string,
     args: ReadonlyArray<string>,
     opts?: RunGitOptions,
-): Promise<
-    | { ok: true; stdout: string }
-    | { ok: false; error: string; stdout: string }
-> {
+): Promise<{ ok: true; stdout: string } | { ok: false; error: string; stdout: string }> {
     try {
         const stdout = await runGit(cwd, args, opts);
         return { ok: true, stdout };

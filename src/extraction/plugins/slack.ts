@@ -45,12 +45,7 @@ import {
     type ExtractionRequest,
     type ExtractionResult,
 } from '../define-extraction';
-import {
-    DEFAULT_BACKOFF_BASE_MS,
-    DEFAULT_MAX_RETRIES,
-    DEFAULT_TIMEOUT_MS,
-    sleep,
-} from './_http';
+import { DEFAULT_BACKOFF_BASE_MS, DEFAULT_MAX_RETRIES, DEFAULT_TIMEOUT_MS, sleep } from './_http';
 
 export interface SlackPluginOptions {
     token: string;
@@ -117,20 +112,29 @@ export function slackPlugin(opts: SlackPluginOptions): ExtractionPlugin {
             const fetchedAt = new Date().toISOString();
 
             if (parsed.kind === 'channel') {
-                const messages = await fetchChannelHistory(
-                    parsed.channelId,
-                    { token, baseUrl, timeoutMs, maxRetries, backoffBaseMs, historyLimit, ctx },
-                );
+                const messages = await fetchChannelHistory(parsed.channelId, {
+                    token,
+                    baseUrl,
+                    timeoutMs,
+                    maxRetries,
+                    backoffBaseMs,
+                    historyLimit,
+                    ctx,
+                });
                 const entry = buildChannelEntry(parsed.channelId, messages);
                 return { entries: [entry], fetchedAt };
             }
 
             if (parsed.kind === 'thread') {
-                const replies = await fetchThreadReplies(
-                    parsed.channelId,
-                    parsed.threadTs,
-                    { token, baseUrl, timeoutMs, maxRetries, backoffBaseMs, repliesLimit, ctx },
-                );
+                const replies = await fetchThreadReplies(parsed.channelId, parsed.threadTs, {
+                    token,
+                    baseUrl,
+                    timeoutMs,
+                    maxRetries,
+                    backoffBaseMs,
+                    repliesLimit,
+                    ctx,
+                });
                 const entry = buildThreadEntry(parsed.channelId, parsed.threadTs, replies);
                 return { entries: [entry], fetchedAt };
             }
@@ -142,15 +146,25 @@ export function slackPlugin(opts: SlackPluginOptions): ExtractionPlugin {
             // `channel:` target.
             const oldestUnix = nowUnixSeconds() - parsed.daysBack * SECONDS_PER_DAY;
             const parents = await fetchChannelThreadParents(parsed.channelId, oldestUnix, {
-                token, baseUrl, timeoutMs, maxRetries, backoffBaseMs, historyLimit, ctx,
+                token,
+                baseUrl,
+                timeoutMs,
+                maxRetries,
+                backoffBaseMs,
+                historyLimit,
+                ctx,
             });
             const entries: ExtractionEntry[] = [];
             for (const parent of parents) {
-                const replies = await fetchThreadReplies(
-                    parsed.channelId,
-                    parent.ts,
-                    { token, baseUrl, timeoutMs, maxRetries, backoffBaseMs, repliesLimit, ctx },
-                );
+                const replies = await fetchThreadReplies(parsed.channelId, parent.ts, {
+                    token,
+                    baseUrl,
+                    timeoutMs,
+                    maxRetries,
+                    backoffBaseMs,
+                    repliesLimit,
+                    ctx,
+                });
                 if (replies.length === 0) continue;
                 entries.push(buildChannelThreadEntry(parsed.channelId, replies, fetchedAt));
             }
@@ -191,9 +205,7 @@ function parseTarget(target: string): ParsedTarget {
     if (kind === 'thread') {
         const sep = rest.indexOf(':');
         if (sep <= 0 || sep === rest.length - 1) {
-            throw new Error(
-                `slack: invalid thread target "${target}" (expected thread:{channel_id}:{thread_ts})`,
-            );
+            throw new Error(`slack: invalid thread target "${target}" (expected thread:{channel_id}:{thread_ts})`);
         }
         const channelId = rest.slice(0, sep);
         const threadTs = rest.slice(sep + 1);
@@ -216,15 +228,11 @@ function parseTarget(target: string): ParsedTarget {
         const channelId = rest.slice(0, sep);
         const daysStr = rest.slice(sep + 1);
         if (!channelId || !daysStr) {
-            throw new Error(
-                `slack: invalid channel-threads target "${target}" (expected channel-threads:{channel_id}[:{days}])`,
-            );
+            throw new Error(`slack: invalid channel-threads target "${target}" (expected channel-threads:{channel_id}[:{days}])`);
         }
         const daysBack = Number(daysStr);
         if (!Number.isFinite(daysBack) || !Number.isInteger(daysBack) || daysBack <= 0) {
-            throw new Error(
-                `slack: invalid channel-threads target "${target}" — days must be a positive integer`,
-            );
+            throw new Error(`slack: invalid channel-threads target "${target}" — days must be a positive integer`);
         }
         return { kind: 'channel-threads', channelId, daysBack };
     }
@@ -249,10 +257,7 @@ interface RepliesFetchOpts extends BaseFetchOpts {
     repliesLimit: number;
 }
 
-async function fetchChannelHistory(
-    channelId: string,
-    opts: HistoryFetchOpts,
-): Promise<SlackMessage[]> {
+async function fetchChannelHistory(channelId: string, opts: HistoryFetchOpts): Promise<SlackMessage[]> {
     const params = new URLSearchParams({
         channel: channelId,
         limit: String(opts.historyLimit),
@@ -275,11 +280,7 @@ async function fetchChannelHistory(
  * trimming is needed — but we still guard against runaway loops via a
  * page cap proportional to how much data could fit in the window.
  */
-async function fetchChannelThreadParents(
-    channelId: string,
-    oldestUnix: number,
-    opts: HistoryFetchOpts,
-): Promise<SlackMessage[]> {
+async function fetchChannelThreadParents(channelId: string, oldestUnix: number, opts: HistoryFetchOpts): Promise<SlackMessage[]> {
     const parents: SlackMessage[] = [];
     let cursor: string | undefined;
     let pages = 0;
@@ -290,10 +291,7 @@ async function fetchChannelThreadParents(
 
     while (true) {
         if (pages >= MAX_PAGES) {
-            opts.ctx.log.warn(
-                'Slack channel-threads: pagination cap hit, stopping early',
-                { channelId, pages, oldestUnix },
-            );
+            opts.ctx.log.warn('Slack channel-threads: pagination cap hit, stopping early', { channelId, pages, oldestUnix });
             break;
         }
         const params = new URLSearchParams({
@@ -336,11 +334,7 @@ function isThreadParent(msg: SlackMessage): boolean {
     return false;
 }
 
-async function fetchThreadReplies(
-    channelId: string,
-    threadTs: string,
-    opts: RepliesFetchOpts,
-): Promise<SlackMessage[]> {
+async function fetchThreadReplies(channelId: string, threadTs: string, opts: RepliesFetchOpts): Promise<SlackMessage[]> {
     const params = new URLSearchParams({
         channel: channelId,
         ts: threadTs,
@@ -362,10 +356,7 @@ async function slackGet<T>(url: string, opts: BaseFetchOpts): Promise<T> {
     return outcome.data;
 }
 
-async function fetchWithRetry<T>(
-    url: string,
-    opts: BaseFetchOpts,
-): Promise<SlackApiOutcome<T>> {
+async function fetchWithRetry<T>(url: string, opts: BaseFetchOpts): Promise<SlackApiOutcome<T>> {
     let attempt = 0;
     // attempts: 1 initial + maxRetries retries (only on 429).
     while (true) {
@@ -393,9 +384,8 @@ async function fetchWithRetry<T>(
         if (res.status === 429 && attempt < opts.maxRetries) {
             const retryAfterHeader = res.headers.get('retry-after');
             const retryAfterSec = retryAfterHeader ? parseInt(retryAfterHeader, 10) : NaN;
-            const delay = Number.isFinite(retryAfterSec) && retryAfterSec > 0
-                ? retryAfterSec * 1000
-                : opts.backoffBaseMs * Math.pow(2, attempt);
+            const delay =
+                Number.isFinite(retryAfterSec) && retryAfterSec > 0 ? retryAfterSec * 1000 : opts.backoffBaseMs * Math.pow(2, attempt);
             opts.ctx.log.warn('Slack rate limited, backing off', {
                 attempt: attempt + 1,
                 delayMs: delay,
@@ -418,20 +408,13 @@ async function fetchWithRetry<T>(
         if (body.ok === true) {
             return { ok: true, data: body as unknown as T };
         }
-        const error = typeof body.error === 'string' && body.error.length > 0
-            ? body.error
-            : 'unknown_error';
+        const error = typeof body.error === 'string' && body.error.length > 0 ? body.error : 'unknown_error';
         return { ok: false, error };
     }
 }
 
 function buildChannelEntry(channelId: string, messages: SlackMessage[]): ExtractionEntry {
-    const lines: string[] = [
-        `# Channel ${channelId}`,
-        '',
-        `${messages.length} message${messages.length === 1 ? '' : 's'}`,
-        '',
-    ];
+    const lines: string[] = [`# Channel ${channelId}`, '', `${messages.length} message${messages.length === 1 ? '' : 's'}`, ''];
     // Slack returns messages newest-first; render oldest-first for readability.
     const ordered = [...messages].sort((a, b) => parseFloat(a.ts) - parseFloat(b.ts));
     for (const msg of ordered) {
@@ -451,11 +434,7 @@ function buildChannelEntry(channelId: string, messages: SlackMessage[]): Extract
  * chronological sort by ls, slug for Grep navigation, ts as the stable
  * anchor that survives slug churn. See §5 of `domains/workspaces/README.md`.
  */
-function buildChannelThreadEntry(
-    channelId: string,
-    messages: SlackMessage[],
-    fetchedAt: string,
-): ExtractionEntry {
+function buildChannelThreadEntry(channelId: string, messages: SlackMessage[], fetchedAt: string): ExtractionEntry {
     // `conversations.replies` returns the parent first, then replies in
     // posting order. The first element is the canonical thread anchor.
     const parent = messages[0];
@@ -464,11 +443,9 @@ function buildChannelThreadEntry(
     const startedAt = formatTimestamp(parent.ts);
     const lastReplyAt = formatTimestamp(last.ts);
 
-    const participants = Array.from(new Set(
-        messages
-            .map((m) => m.user || m.bot_id || m.username)
-            .filter((u): u is string => typeof u === 'string' && u.length > 0),
-    ));
+    const participants = Array.from(
+        new Set(messages.map((m) => m.user || m.bot_id || m.username).filter((u): u is string => typeof u === 'string' && u.length > 0)),
+    );
 
     const headline = oneLine(parent.text ?? '', 80);
     const slug = slugify(parent.text ?? '', 40);
@@ -501,9 +478,8 @@ function buildChannelThreadEntry(
         // Render `<@Uxxx>` mentions raw — resolving to display names
         // needs a `users.list` cache that the plugin doesn't carry
         // today. Agents grep on `<@` directly.
-        const heading = i === 0
-            ? `**<@${user}>** · ${ts}`
-            : `**<@${user}>** · ${ts}` + (msg.thread_ts && msg.thread_ts !== msg.ts ? ' · reply' : '');
+        const heading =
+            i === 0 ? `**<@${user}>** · ${ts}` : `**<@${user}>** · ${ts}` + (msg.thread_ts && msg.thread_ts !== msg.ts ? ' · reply' : '');
         body.push(heading);
         body.push('');
         if (text) {
@@ -514,9 +490,8 @@ function buildChannelThreadEntry(
 
     // Group threads UNDER their channel so the extracted tree bands by channel
     // (e.g. extracted/slack/threads/C12345/2026-06-07-…-…md) instead of one flat heap.
-    const path = slug.length > 0
-        ? `threads/${channelId}/${dateYmd}-${slug}-${threadTs}.md`
-        : `threads/${channelId}/${dateYmd}-${threadTs}.md`;
+    const path =
+        slug.length > 0 ? `threads/${channelId}/${dateYmd}-${slug}-${threadTs}.md` : `threads/${channelId}/${dateYmd}-${threadTs}.md`;
 
     return {
         path,
@@ -565,10 +540,7 @@ function formatDateYmd(ts: string): string {
 }
 
 function buildThreadEntry(channelId: string, threadTs: string, messages: SlackMessage[]): ExtractionEntry {
-    const lines: string[] = [
-        `# Thread ${threadTs}`,
-        '',
-    ];
+    const lines: string[] = [`# Thread ${threadTs}`, ''];
     // `conversations.replies` returns the parent first then replies in order.
     // Render the parent at indent 0 and replies indented to convey threading.
     messages.forEach((msg, i) => {

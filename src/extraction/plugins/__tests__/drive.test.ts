@@ -23,8 +23,7 @@ const jsonResponse = (init: MockResponseInit): Response => {
     });
 };
 
-const textResponse = (text: string, status = 200): Response =>
-    new Response(text, { status, headers: { 'Content-Type': 'text/plain' } });
+const textResponse = (text: string, status = 200): Response => new Response(text, { status, headers: { 'Content-Type': 'text/plain' } });
 
 const driveUrl = (path: string) => `https://www.googleapis.com/drive/v3/files${path}`;
 
@@ -95,9 +94,7 @@ describe('drivePlugin', () => {
 
         const result = await plugin.fetch({ target: 'sheet:sheet-1' }, makeCtx());
 
-        expect(result.entries).toEqual([
-            { path: 'sheets/my-sheet.csv', content: 'a,b\n1,2\n', contentType: 'text/csv' },
-        ]);
+        expect(result.entries).toEqual([{ path: 'sheets/my-sheet.csv', content: 'a,b\n1,2\n', contentType: 'text/csv' }]);
     });
 
     it('walks a folder recursively, including nested folders', async () => {
@@ -107,7 +104,7 @@ describe('drivePlugin', () => {
             const url = String(input);
 
             // list folder root
-            if (url.includes(driveUrl('?')) && url.includes("'root-folder'+in+parents") || url.includes("%27root-folder%27+in+parents")) {
+            if ((url.includes(driveUrl('?')) && url.includes("'root-folder'+in+parents")) || url.includes('%27root-folder%27+in+parents')) {
                 return jsonResponse({
                     body: {
                         files: [
@@ -118,12 +115,10 @@ describe('drivePlugin', () => {
                     },
                 });
             }
-            if (url.includes("%27nested%27+in+parents")) {
+            if (url.includes('%27nested%27+in+parents')) {
                 return jsonResponse({
                     body: {
-                        files: [
-                            { id: 'sheet-b', name: 'Sheet B', mimeType: 'application/vnd.google-apps.spreadsheet' },
-                        ],
+                        files: [{ id: 'sheet-b', name: 'Sheet B', mimeType: 'application/vnd.google-apps.spreadsheet' }],
                     },
                 });
             }
@@ -191,9 +186,7 @@ describe('drivePlugin', () => {
 
         const result = await plugin.fetch({ target: 'doc:doc-1' }, makeCtx());
 
-        expect(result.entries).toEqual([
-            { path: 'docs/after-refresh.md', content: '# refreshed', contentType: 'text/markdown' },
-        ]);
+        expect(result.entries).toEqual([{ path: 'docs/after-refresh.md', content: '# refreshed', contentType: 'text/markdown' }]);
         expect(metaCalls).toBe(2);
     });
 
@@ -202,9 +195,7 @@ describe('drivePlugin', () => {
         const fetchMock = vi.fn(async () => jsonResponse({ status: 401, body: { error: 'unauthorized' } }));
         vi.stubGlobal('fetch', fetchMock);
 
-        await expect(
-            plugin.fetch({ target: 'doc:doc-1' }, makeCtx()),
-        ).rejects.toThrow(/unauthorized/i);
+        await expect(plugin.fetch({ target: 'doc:doc-1' }, makeCtx())).rejects.toThrow(/unauthorized/i);
     });
 
     it('retries with exponential backoff on 429', async () => {

@@ -43,10 +43,7 @@ describe('clickupPlugin – happy path per target kind', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         const plugin = clickupPlugin({ token: TOKEN });
-        const result = await plugin.fetch(
-            { target: 'task:abc123' },
-            makeCtx(),
-        );
+        const result = await plugin.fetch({ target: 'task:abc123' }, makeCtx());
 
         expect(fetchMock).toHaveBeenCalledTimes(1);
         const [url, init] = fetchMock.mock.calls[0];
@@ -71,10 +68,7 @@ describe('clickupPlugin – happy path per target kind', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         const plugin = clickupPlugin({ token: TOKEN });
-        const result = await plugin.fetch(
-            { target: 'list:list_42' },
-            makeCtx(),
-        );
+        const result = await plugin.fetch({ target: 'list:list_42' }, makeCtx());
 
         const [url] = fetchMock.mock.calls[0];
         expect(url).toBe('https://api.clickup.com/api/v2/list/list_42');
@@ -91,10 +85,7 @@ describe('clickupPlugin – happy path per target kind', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         const plugin = clickupPlugin({ token: TOKEN });
-        const result = await plugin.fetch(
-            { target: 'list:list_42' },
-            makeCtx(),
-        );
+        const result = await plugin.fetch({ target: 'list:list_42' }, makeCtx());
         expect(result.entries[0].path).toBe('lists/list_42.json');
     });
 
@@ -114,20 +105,13 @@ describe('clickupPlugin – happy path per target kind', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         const plugin = clickupPlugin({ token: TOKEN, workspaceId: '42' });
-        const result = await plugin.fetch(
-            { target: 'doc:doc9' },
-            makeCtx(),
-        );
+        const result = await plugin.fetch({ target: 'doc:doc9' }, makeCtx());
 
         expect(fetchMock).toHaveBeenCalledTimes(3);
         const [listingUrl] = fetchMock.mock.calls[0];
-        expect(listingUrl).toBe(
-            'https://api.clickup.com/api/v3/workspaces/42/docs/doc9/page_listing',
-        );
+        expect(listingUrl).toBe('https://api.clickup.com/api/v3/workspaces/42/docs/doc9/page_listing');
         const [pageUrl1] = fetchMock.mock.calls[1];
-        expect(pageUrl1).toBe(
-            'https://api.clickup.com/api/v3/workspaces/42/docs/doc9/pages/p1?content_format=text%2Fmd',
-        );
+        expect(pageUrl1).toBe('https://api.clickup.com/api/v3/workspaces/42/docs/doc9/pages/p1?content_format=text%2Fmd');
 
         expect(result.entries).toHaveLength(2);
         expect(result.entries[0]).toEqual({
@@ -149,9 +133,7 @@ describe('clickupPlugin – happy path per target kind', () => {
                 doc_id: 'docX',
                 workspace_id: 7,
                 name: 'Root',
-                pages: [
-                    { id: 'child', doc_id: 'docX', workspace_id: 7, name: 'Child' },
-                ],
+                pages: [{ id: 'child', doc_id: 'docX', workspace_id: 7, name: 'Child' }],
             },
         ];
         const fetchMock = vi
@@ -164,10 +146,7 @@ describe('clickupPlugin – happy path per target kind', () => {
         const plugin = clickupPlugin({ token: TOKEN, workspaceId: '7' });
         const result = await plugin.fetch({ target: 'doc:docX' }, makeCtx());
 
-        expect(result.entries.map((e) => e.path)).toEqual([
-            'docs/docX/root.md',
-            'docs/docX/root/child.md',
-        ]);
+        expect(result.entries.map((e) => e.path)).toEqual(['docs/docX/root.md', 'docs/docX/root/child.md']);
     });
 
     it('disambiguates slug collisions across pages with -{pageId}', async () => {
@@ -185,17 +164,12 @@ describe('clickupPlugin – happy path per target kind', () => {
         const plugin = clickupPlugin({ token: TOKEN, workspaceId: '1' });
         const result = await plugin.fetch({ target: 'doc:d' }, makeCtx());
 
-        expect(result.entries.map((e) => e.path)).toEqual([
-            'docs/d/same-name-a.md',
-            'docs/d/same-name-b.md',
-        ]);
+        expect(result.entries.map((e) => e.path)).toEqual(['docs/d/same-name-a.md', 'docs/d/same-name-b.md']);
     });
 
     it('throws a clear error when doc target is requested without workspaceId', async () => {
         const plugin = clickupPlugin({ token: TOKEN });
-        await expect(
-            plugin.fetch({ target: 'doc:doc9' }, makeCtx()),
-        ).rejects.toThrow(/workspaceId option required for doc:/);
+        await expect(plugin.fetch({ target: 'doc:doc9' }, makeCtx())).rejects.toThrow(/workspaceId option required for doc:/);
     });
 
     it('returns empty entries when the doc page_listing 404s', async () => {
@@ -208,10 +182,7 @@ describe('clickupPlugin – happy path per target kind', () => {
 
         expect(result.entries).toEqual([]);
         expect(fetchMock).toHaveBeenCalledTimes(1);
-        expect(ctx.log.info).toHaveBeenCalledWith(
-            'ClickUp target not found',
-            expect.objectContaining({ kind: 'doc' }),
-        );
+        expect(ctx.log.info).toHaveBeenCalledWith('ClickUp target not found', expect.objectContaining({ kind: 'doc' }));
     });
 
     it('skips a single page that 404s but keeps the rest', async () => {
@@ -245,9 +216,7 @@ describe('clickupPlugin – error paths', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         const plugin = clickupPlugin({ token: TOKEN });
-        await expect(
-            plugin.fetch({ target: 'task:abc' }, makeCtx()),
-        ).rejects.toThrow(/auth rejected.*401/);
+        await expect(plugin.fetch({ target: 'task:abc' }, makeCtx())).rejects.toThrow(/auth rejected.*401/);
     });
 
     it('returns empty entries on 404 (target absent is not fatal)', async () => {
@@ -256,24 +225,16 @@ describe('clickupPlugin – error paths', () => {
 
         const ctx = makeCtx();
         const plugin = clickupPlugin({ token: TOKEN });
-        const result = await plugin.fetch(
-            { target: 'task:gone' },
-            ctx,
-        );
+        const result = await plugin.fetch({ target: 'task:gone' }, ctx);
 
         expect(result.entries).toEqual([]);
         expect(typeof result.fetchedAt).toBe('string');
-        expect(ctx.log.info).toHaveBeenCalledWith(
-            'ClickUp target not found',
-            expect.objectContaining({ kind: 'task' }),
-        );
+        expect(ctx.log.info).toHaveBeenCalledWith('ClickUp target not found', expect.objectContaining({ kind: 'task' }));
     });
 
     it('rejects unsupported target prefixes', async () => {
         const plugin = clickupPlugin({ token: TOKEN });
-        await expect(
-            plugin.fetch({ target: 'video:xyz' }, makeCtx()),
-        ).rejects.toThrow(/unsupported target kind/);
+        await expect(plugin.fetch({ target: 'video:xyz' }, makeCtx())).rejects.toThrow(/unsupported target kind/);
     });
 });
 
@@ -337,18 +298,13 @@ describe('clickupPlugin – list-table target', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         const plugin = clickupPlugin({ token: TOKEN });
-        const result = await plugin.fetch(
-            { target: 'list-table:list_99' },
-            makeCtx(),
-        );
+        const result = await plugin.fetch({ target: 'list-table:list_99' }, makeCtx());
 
         expect(fetchMock).toHaveBeenCalledTimes(2);
         const [listUrl] = fetchMock.mock.calls[0];
         const [tasksUrl] = fetchMock.mock.calls[1];
         expect(listUrl).toBe('https://api.clickup.com/api/v2/list/list_99');
-        expect(tasksUrl).toBe(
-            'https://api.clickup.com/api/v2/list/list_99/task?subtasks=true&include_closed=true&page=0',
-        );
+        expect(tasksUrl).toBe('https://api.clickup.com/api/v2/list/list_99/task?subtasks=true&include_closed=true&page=0');
 
         expect(result.entries).toHaveLength(1);
         const entry = result.entries[0];
@@ -357,9 +313,7 @@ describe('clickupPlugin – list-table target', () => {
         // Header carries the list name.
         expect(entry.content).toContain('# Sprint 2026-Q2');
         // Column header row.
-        expect(entry.content).toContain(
-            '| ID | Name | Status | Assignees | Priority | Tags | Updated | URL |',
-        );
+        expect(entry.content).toContain('| ID | Name | Status | Assignees | Priority | Tags | Updated | URL |');
         // Recent open + recent closed tasks rendered; old closed task excluded.
         expect(entry.content).toContain('CUS-1');
         expect(entry.content).toContain('Open work');
@@ -375,10 +329,7 @@ describe('clickupPlugin – list-table target', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         const plugin = clickupPlugin({ token: TOKEN });
-        const result = await plugin.fetch(
-            { target: 'list-table:list_99' },
-            makeCtx(),
-        );
+        const result = await plugin.fetch({ target: 'list-table:list_99' }, makeCtx());
 
         expect(result.entries).toHaveLength(1);
         const entry = result.entries[0];
@@ -395,18 +346,12 @@ describe('clickupPlugin – list-table target', () => {
 
         const ctx = makeCtx();
         const plugin = clickupPlugin({ token: TOKEN });
-        const result = await plugin.fetch(
-            { target: 'list-table:gone' },
-            ctx,
-        );
+        const result = await plugin.fetch({ target: 'list-table:gone' }, ctx);
 
         expect(result.entries).toEqual([]);
         // We bail after the list-meta call — no follow-up for tasks.
         expect(fetchMock).toHaveBeenCalledTimes(1);
-        expect(ctx.log.info).toHaveBeenCalledWith(
-            'ClickUp target not found',
-            expect.objectContaining({ kind: 'list-table' }),
-        );
+        expect(ctx.log.info).toHaveBeenCalledWith('ClickUp target not found', expect.objectContaining({ kind: 'list-table' }));
     });
 });
 
@@ -417,10 +362,7 @@ describe('clickupPlugin – 429 retry behaviour', () => {
 
     it('retries once on 429 with exponential backoff then resolves', async () => {
         const taskPayload = { id: 'abc', name: 'rate-limited then ok' };
-        const fetchMock = vi
-            .fn()
-            .mockResolvedValueOnce(emptyResponse(429))
-            .mockResolvedValueOnce(jsonResponse(200, taskPayload));
+        const fetchMock = vi.fn().mockResolvedValueOnce(emptyResponse(429)).mockResolvedValueOnce(jsonResponse(200, taskPayload));
         vi.stubGlobal('fetch', fetchMock);
 
         const ctx = makeCtx();
@@ -478,9 +420,7 @@ describe('clickupPlugin – 429 retry behaviour', () => {
         await promise;
 
         expect(fetchMock).toHaveBeenCalledTimes(3);
-        const delays = (ctx.log.warn as ReturnType<typeof vi.fn>).mock.calls.map(
-            (c) => (c[1] as { delayMs: number }).delayMs,
-        );
+        const delays = (ctx.log.warn as ReturnType<typeof vi.fn>).mock.calls.map((c) => (c[1] as { delayMs: number }).delayMs);
         expect(delays).toEqual([500, 1000]);
     });
 });
@@ -496,12 +436,8 @@ describe('clickupPlugin – doc subtree filter', () => {
                 //   root-B (dropped — sibling of root-A, target is root-A)
                 //     child-B1 (dropped)
                 return jsonResponse(200, [
-                    { id: 'root-A', name: 'Root A', pages: [
-                        { id: 'child-A1', name: 'A1', parent_page_id: 'root-A' },
-                    ] },
-                    { id: 'root-B', name: 'Root B', pages: [
-                        { id: 'child-B1', name: 'B1', parent_page_id: 'root-B' },
-                    ] },
+                    { id: 'root-A', name: 'Root A', pages: [{ id: 'child-A1', name: 'A1', parent_page_id: 'root-A' }] },
+                    { id: 'root-B', name: 'Root B', pages: [{ id: 'child-B1', name: 'B1', parent_page_id: 'root-B' }] },
                 ]);
             }
             // Per-page fetch
@@ -514,10 +450,7 @@ describe('clickupPlugin – doc subtree filter', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         const plugin = clickupPlugin({ token: TOKEN, workspaceId: 'ws-1' });
-        const result = await plugin.fetch(
-            { target: 'doc:doc-1:root-A' },
-            makeCtx(),
-        );
+        const result = await plugin.fetch({ target: 'doc:doc-1:root-A' }, makeCtx());
 
         const paths = result.entries.map((e) => e.path).sort();
         // Only root-A and child-A1 should produce entries; root-B subtree is filtered out.
@@ -532,19 +465,14 @@ describe('clickupPlugin – doc subtree filter', () => {
         const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
             const url = String(input);
             if (url.endsWith('/page_listing')) {
-                return jsonResponse(200, [
-                    { id: 'root-A', name: 'Root A', pages: [] },
-                ]);
+                return jsonResponse(200, [{ id: 'root-A', name: 'Root A', pages: [] }]);
             }
             throw new Error(`unexpected url: ${url}`);
         });
         vi.stubGlobal('fetch', fetchMock);
 
         const plugin = clickupPlugin({ token: TOKEN, workspaceId: 'ws-1' });
-        const result = await plugin.fetch(
-            { target: 'doc:doc-1:missing-root' },
-            makeCtx(),
-        );
+        const result = await plugin.fetch({ target: 'doc:doc-1:missing-root' }, makeCtx());
 
         expect(result.entries).toEqual([]);
     });
@@ -585,10 +513,7 @@ describe('clickupPlugin – folder walk', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         const plugin = clickupPlugin({ token: TOKEN, workspaceId: 'ws-1' });
-        const result = await plugin.fetch(
-            { target: 'folder:folder-1', excludePaths: ['/list/agent-ops'] },
-            makeCtx(),
-        );
+        const result = await plugin.fetch({ target: 'folder:folder-1', excludePaths: ['/list/agent-ops'] }, makeCtx());
 
         const paths = result.entries.map((e) => e.path).sort();
         expect(paths).toEqual(['docs/D1/page-1.md', 'lists/general-L1.json']);
@@ -621,10 +546,7 @@ describe('clickupPlugin – folder walk', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         const plugin = clickupPlugin({ token: TOKEN, workspaceId: 'ws-1' });
-        const result = await plugin.fetch(
-            { target: 'folder:folder-1', includePaths: ['draft'] },
-            makeCtx(),
-        );
+        const result = await plugin.fetch({ target: 'folder:folder-1', includePaths: ['draft'] }, makeCtx());
 
         const paths = result.entries.map((e) => e.path);
         expect(paths).toEqual(['lists/draft-L1.json']);
@@ -633,9 +555,7 @@ describe('clickupPlugin – folder walk', () => {
     it('requires workspaceId for folder: targets', async () => {
         const plugin = clickupPlugin({ token: TOKEN });
         vi.stubGlobal('fetch', vi.fn());
-        await expect(
-            plugin.fetch({ target: 'folder:folder-1' }, makeCtx()),
-        ).rejects.toThrow(/workspaceId/);
+        await expect(plugin.fetch({ target: 'folder:folder-1' }, makeCtx())).rejects.toThrow(/workspaceId/);
     });
 });
 
@@ -684,10 +604,6 @@ describe('clickupPlugin – space walk', () => {
         const result = await plugin.fetch({ target: 'space:space-1' }, makeCtx());
 
         const paths = result.entries.map((e) => e.path).sort();
-        expect(paths).toEqual([
-            'docs/D1/home.md',
-            'lists/inbox-FL1.json',
-            'lists/tasks-L1.json',
-        ]);
+        expect(paths).toEqual(['docs/D1/home.md', 'lists/inbox-FL1.json', 'lists/tasks-L1.json']);
     });
 });

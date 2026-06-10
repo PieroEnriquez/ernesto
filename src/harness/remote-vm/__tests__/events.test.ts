@@ -25,16 +25,10 @@ describe('parseSdkLine', () => {
 describe('mapVmLine', () => {
     it('maps init → status:running once', () => {
         const state = createTranslatorState();
-        const ev = mapVmLine(
-            '{"type":"system","subtype":"init"}',
-            'r1',
-            state,
-        );
+        const ev = mapVmLine('{"type":"system","subtype":"init"}', 'r1', state);
         expect(ev).toEqual([{ kind: 'status', status: 'running', runId: 'r1' }]);
         // second init does not re-emit
-        expect(
-            mapVmLine('{"type":"system","subtype":"init"}', 'r1', state),
-        ).toEqual([]);
+        expect(mapVmLine('{"type":"system","subtype":"init"}', 'r1', state)).toEqual([]);
     });
     it('drops blank/noise lines without throwing', () => {
         const state = createTranslatorState();
@@ -64,13 +58,9 @@ describe('splitLines', () => {
     });
 
     it('reassembles a line split mid-token across chunk boundaries', async () => {
-        const full =
-            '{"type":"system","subtype":"init"}\n' +
-            '{"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}\n';
+        const full = '{"type":"system","subtype":"init"}\n' + '{"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}\n';
         const mid = Math.floor(full.length / 2);
-        const lines = await collect(
-            splitLines(chunksOf(full.slice(0, mid), full.slice(mid))),
-        );
+        const lines = await collect(splitLines(chunksOf(full.slice(0, mid), full.slice(mid))));
         expect(lines).toEqual([
             '{"type":"system","subtype":"init"}',
             '{"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}',

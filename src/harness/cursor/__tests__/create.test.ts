@@ -105,9 +105,7 @@ describe('cursorCreateAgent', () => {
         const def: AgentDefinition = { ...baseDef, tools: [fnTool] };
         const handle = await cursorCreateAgent(def, { agentId: 'a3' });
         const opts = createSpy.mock.calls[0][0];
-        const synthEntries = Object.entries(opts.mcpServers ?? {}).filter(
-            ([name]) => name.startsWith('synth_'),
-        );
+        const synthEntries = Object.entries(opts.mcpServers ?? {}).filter(([name]) => name.startsWith('synth_'));
         expect(synthEntries).toHaveLength(1);
         const [, cfg] = synthEntries[0]!;
         expect((cfg as { type: string }).type).toBe('http');
@@ -116,18 +114,22 @@ describe('cursorCreateAgent', () => {
     });
 
     it('compiles SDKAgent exactly once across multiple sends', async () => {
-        sdkAgentSpy.send.mockReturnValue(Promise.resolve({
-            id: 'run',
-            agentId: 'a',
-            supports: () => true,
-            unsupportedReason: () => undefined,
-            stream: async function* () { /* empty */ },
-            conversation: async () => [],
-            wait: async () => ({ id: 'run', status: 'finished' as const }),
-            cancel: async () => {},
-            status: 'finished' as const,
-            onDidChangeStatus: () => () => {},
-        }));
+        sdkAgentSpy.send.mockReturnValue(
+            Promise.resolve({
+                id: 'run',
+                agentId: 'a',
+                supports: () => true,
+                unsupportedReason: () => undefined,
+                stream: async function* () {
+                    /* empty */
+                },
+                conversation: async () => [],
+                wait: async () => ({ id: 'run', status: 'finished' as const }),
+                cancel: async () => {},
+                status: 'finished' as const,
+                onDidChangeStatus: () => () => {},
+            }),
+        );
         const handle = await cursorCreateAgent(baseDef, { agentId: 'a4' });
         await (await handle.send('t1')).wait();
         await (await handle.send('t2')).wait();

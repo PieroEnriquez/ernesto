@@ -47,9 +47,7 @@ export interface SubagentDef {
 
 /** System prompt configuration — mirrors managed-agents'
  *  `SystemPromptConfig` for structural compatibility. */
-export type SystemPromptConfig =
-    | string
-    | { type: 'preset'; preset: 'claude_code'; append?: string };
+export type SystemPromptConfig = string | { type: 'preset'; preset: 'claude_code'; append?: string };
 
 /** Self-contained JSON schema output enforcement. */
 export interface JsonSchemaOutputFormat {
@@ -102,9 +100,7 @@ export interface HarnessCapabilities {
 
 /** User-side message: plain string or attachment-bearing object.
  *  Attachments require `capabilities.attachments`. */
-export type UserMessage =
-    | string
-    | { text: string; attachments?: AttachmentRef[] };
+export type UserMessage = string | { text: string; attachments?: AttachmentRef[] };
 
 /** Opaque attachment reference — concrete shape is harness-defined. */
 export interface AttachmentRef {
@@ -133,12 +129,7 @@ export type UserBlock =
 
 /** Run lifecycle status. Transitions: `running` → terminal
  *  (`completed` | `errored` | `canceled`) or `paused` ↔ `running`. */
-export type RunStatus =
-    | 'running'
-    | 'completed'
-    | 'errored'
-    | 'canceled'
-    | 'paused';
+export type RunStatus = 'running' | 'completed' | 'errored' | 'canceled' | 'paused';
 
 /** Canonical run-time event. Consumers handle unknown variants by
  *  ignoring rather than throwing — variants are added forwards. */
@@ -224,10 +215,7 @@ export interface RunResult {
     apiDurationMs?: number;
     /** Per-model usage breakdown for multi-model runs. CAS:
      *  `SDKResultMessage.modelUsage`. */
-    modelUsage?: Record<
-        string,
-        { inputTokens: number; outputTokens: number; costUsd?: number }
-    >;
+    modelUsage?: Record<string, { inputTokens: number; outputTokens: number; costUsd?: number }>;
     /** Backend-native subtype tag — CAS: `success`/`error_*`/`cancelled`;
      *  fragua: terminal reason. Opaque per harness. */
     subtype?: string;
@@ -369,10 +357,7 @@ export interface Harness {
     readonly capabilities: HarnessCapabilities;
     /** Compile a declaration into a live agent. Idempotent across
      *  calls with the same input; returns a fresh handle each time. */
-    createAgent(
-        def: AgentDefinition,
-        opts?: CreateOptions,
-    ): Promise<AgentHandle>;
+    createAgent(def: AgentDefinition, opts?: CreateOptions): Promise<AgentHandle>;
     /** Re-attach to a previously created agent by id.
      *  Gated by `capabilities.resume`. */
     resumeAgent?(agentId: string): Promise<AgentHandle>;

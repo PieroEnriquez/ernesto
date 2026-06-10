@@ -25,12 +25,7 @@ import { applyRenderManifest } from './render';
 import { archiveRouteResult } from '../route-results/archive';
 import { checkScope } from '../shared/scope';
 
-export type DispatchErrorCode =
-    | 'route_not_found'
-    | 'scope_denied'
-    | 'invalid_input'
-    | 'invalid_output'
-    | 'handler_failed';
+export type DispatchErrorCode = 'route_not_found' | 'scope_denied' | 'invalid_input' | 'invalid_output' | 'handler_failed';
 
 export type DispatchResult =
     | {
@@ -47,12 +42,7 @@ export type DispatchResult =
       }
     | { ok: false; error: DispatchErrorCode; details?: unknown };
 
-export async function dispatchRoute(
-    registry: RouteRegistry,
-    uri: string,
-    params: unknown,
-    ctx: RouteContext,
-): Promise<DispatchResult> {
+export async function dispatchRoute(registry: RouteRegistry, uri: string, params: unknown, ctx: RouteContext): Promise<DispatchResult> {
     const route = registry.get(uri);
     if (!route) {
         return { ok: false, error: 'route_not_found', details: { uri } };
@@ -71,11 +61,7 @@ export async function dispatchRoute(
  * fields) lives in the `execute` verb's `handleExecute`, not here — this
  * primitive stays focused on routing.
  */
-export async function dispatchResolvedRoute(
-    route: Route,
-    params: unknown,
-    ctx: RouteContext,
-): Promise<DispatchResult> {
+export async function dispatchResolvedRoute(route: Route, params: unknown, ctx: RouteContext): Promise<DispatchResult> {
     // Validate input BEFORE resolving scope. Dynamic-scope routes
     // (e.g. `_ernesto://list-dashboards`, scope =
     // `${input.workspace}:read`) need typed input to compute their
@@ -159,7 +145,7 @@ export async function dispatchResolvedRoute(
                     'scanning the components: cross-tabs the data implies, ' +
                     'anomalies, concentration risks, comparisons across ' +
                     'dimensions the tables show separately, follow-up ' +
-                    "questions the data triggers. NOT for restating " +
+                    'questions the data triggers. NOT for restating ' +
                     'numbers.\n' +
                     '  ❌ "US led at €X; UK €Y; Germany €Z" (reading the ' +
                     'region table aloud).\n' +
@@ -172,7 +158,7 @@ export async function dispatchResolvedRoute(
                     'category mix — higher-margin growth levers vs the ' +
                     '4.61% blended."\n' +
                     'Aim for 2-3 insights, ≤4 sentences. If you find ' +
-                    "yourself listing values, STOP and write the " +
+                    'yourself listing values, STOP and write the ' +
                     'implication instead. ' +
                     'Do NOT add `data-ref` or `attachment` for this same ' +
                     '`file` — the renderer handles attachments. Call the ' +
@@ -224,5 +210,3 @@ export async function dispatchResolvedRoute(
     }
     return { ok: true, data: parsedOutput.data };
 }
-
-

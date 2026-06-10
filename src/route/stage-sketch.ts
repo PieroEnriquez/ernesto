@@ -74,9 +74,7 @@ export type StagedSketch =
       }
     | { kind: 'thinking'; text: string };
 
-export function sketchComponents(
-    components: ReadonlyArray<ManifestComponent>,
-): StagedSketch[] {
+export function sketchComponents(components: ReadonlyArray<ManifestComponent>): StagedSketch[] {
     const out: StagedSketch[] = [];
     for (const c of components) {
         const s = sketchOne(c);
@@ -121,9 +119,7 @@ function sketchOne(c: ManifestComponent): StagedSketch | null {
                 kind: 'table',
                 columns: columnLabels,
                 rowCount: rows.length,
-                ...(first && typeof first === 'object'
-                    ? { firstRow: first as Record<string, unknown> }
-                    : {}),
+                ...(first && typeof first === 'object' ? { firstRow: first as Record<string, unknown> } : {}),
                 ...(typeof p.caption === 'string' ? { caption: p.caption } : {}),
             };
         }
@@ -134,9 +130,7 @@ function sketchOne(c: ManifestComponent): StagedSketch | null {
                 language: asString(p.language),
                 lineCount: body ? body.split('\n').length : 0,
                 bodyPreview: truncate(body, CODE_PREVIEW_CHARS),
-                ...(typeof p.filename === 'string'
-                    ? { filename: p.filename }
-                    : {}),
+                ...(typeof p.filename === 'string' ? { filename: p.filename } : {}),
             };
         }
         case 'link': {
@@ -183,9 +177,7 @@ function sketchOne(c: ManifestComponent): StagedSketch | null {
                 if (s && typeof s === 'object') {
                     const obj = s as { name?: unknown; data?: unknown };
                     seriesNames.push(asString(obj.name));
-                    pointsPerSeries.push(
-                        Array.isArray(obj.data) ? obj.data.length : 0,
-                    );
+                    pointsPerSeries.push(Array.isArray(obj.data) ? obj.data.length : 0);
                 }
             }
             return {

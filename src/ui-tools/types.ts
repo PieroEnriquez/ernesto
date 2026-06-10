@@ -31,9 +31,7 @@ export interface UiHitlPauser {
  *  rasterized SVG → PNG); `ok: false` surfaces a per-attachment
  *  error in the tool result so the agent receives it synchronously
  *  and can retry with a different shape. */
-export type AttachmentTransformResult =
-    | { ok: true; component?: AttachmentComponent }
-    | { ok: false; error: string };
+export type AttachmentTransformResult = { ok: true; component?: AttachmentComponent } | { ok: false; error: string };
 
 /** Optional pre-emit hook for `attachment` components. The lib calls
  *  this after structural validation but before `fact.component` is
@@ -41,9 +39,7 @@ export type AttachmentTransformResult =
  *  rasterization) can surface as a tool-result error the agent can
  *  react to in the same turn. Hooks must not throw; return
  *  `{ok: false, error}` for any failure surface. */
-export type AttachmentTransformer = (
-    component: AttachmentComponent,
-) => Promise<AttachmentTransformResult>;
+export type AttachmentTransformer = (component: AttachmentComponent) => Promise<AttachmentTransformResult>;
 
 /** Per-tool-call context. Constructed by the server from the walker-
  *  bound `HandlerContext.emit` + the runner's `HitlController` (or

@@ -76,15 +76,8 @@ import {
     canAdmin as canAdminFm,
     type WorkspaceFrontmatter,
 } from '../workspaces/access';
-import {
-    parseWorkflowYaml,
-    validateWorkflow,
-    compileManagedAgentMdToWorkflow,
-} from '../workflows';
-import type {
-    WorkflowValidateContext,
-    WorkflowValidationError,
-} from '../workflows';
+import { parseWorkflowYaml, validateWorkflow, compileManagedAgentMdToWorkflow } from '../workflows';
+import type { WorkflowValidateContext, WorkflowValidationError } from '../workflows';
 import { parseManagedAgentMd } from '../managed-agents';
 import { AGENT_OPS_SCOPE } from '../shared/scope';
 
@@ -107,12 +100,7 @@ const ERNESTO_WORKSPACE = '_ernesto';
  *
  *  Exported so other layers (visibility, editor surface) treat the same
  *  set as system without duplicating the constant. */
-export const RESERVED_SYSTEM_WORKSPACES: ReadonlySet<string> = new Set([
-    ERNESTO_WORKSPACE,
-    '_tmp',
-    '_example',
-    '_docs',
-]);
+export const RESERVED_SYSTEM_WORKSPACES: ReadonlySet<string> = new Set([ERNESTO_WORKSPACE, '_tmp', '_example', '_docs']);
 
 // ─── Diff parser ──────────────────────────────────────────────────────────
 
@@ -133,7 +121,10 @@ function parseDiff(diff: string): DiffEntry[] {
     while (i < lines.length) {
         const line = lines[i];
         const header = /^diff --git a\/(.+?) b\/(.+)$/.exec(line);
-        if (!header) { i++; continue; }
+        if (!header) {
+            i++;
+            continue;
+        }
 
         let fromPath: string | undefined = header[1];
         let toPath: string | undefined = header[2];
@@ -150,8 +141,10 @@ function parseDiff(diff: string): DiffEntry[] {
                     if (m) fromPath = m[1];
                 }
             } else if (l.startsWith('+++ ')) {
-                if (l === '+++ /dev/null') { toPath = undefined; isDelete = true; }
-                else {
+                if (l === '+++ /dev/null') {
+                    toPath = undefined;
+                    isDelete = true;
+                } else {
                     const m = /^\+\+\+ b\/(.+)$/.exec(l);
                     if (m) toPath = m[1];
                 }
@@ -198,7 +191,10 @@ function wsMdLeaf(p: string): string | undefined {
  *  its `WORKSPACE.md`. For a flat workspace the two coincide
  *  (`{ name:'hr', dir:'workspaces/hr' }`); for a nested sub-workspace the dir
  *  records the location (`{ name:'recruiting', dir:'workspaces/hr/recruiting' }`). */
-interface WsRef { name: string; dir: string; }
+interface WsRef {
+    name: string;
+    dir: string;
+}
 
 /**
  * Depth-aware workspace attribution. A directory under `workspaces/` is a
@@ -223,8 +219,10 @@ function makeWorkspaceResolver(workingTreeRoot: string) {
     const probe = (dir: string): Promise<boolean> => {
         let hit = dirIsBoundary.get(dir);
         if (!hit) {
-            hit = readFile(path.join(workingTreeRoot, dir, 'WORKSPACE.md'), 'utf8')
-                .then(() => true, () => false);
+            hit = readFile(path.join(workingTreeRoot, dir, 'WORKSPACE.md'), 'utf8').then(
+                () => true,
+                () => false,
+            );
             dirIsBoundary.set(dir, hit);
         }
         return hit;
@@ -233,7 +231,10 @@ function makeWorkspaceResolver(workingTreeRoot: string) {
     return async (p: string): Promise<WsRef | undefined> => {
         if (cache.has(p)) return cache.get(p);
         const m = /^workspaces\/(.+)$/.exec(p);
-        if (!m) { cache.set(p, undefined); return undefined; }
+        if (!m) {
+            cache.set(p, undefined);
+            return undefined;
+        }
         const segs = m[1].split('/');
         let ref: WsRef | undefined;
         for (let depth = segs.length; depth >= 1 && !ref; depth--) {
@@ -254,12 +255,10 @@ function makeWorkspaceResolver(workingTreeRoot: string) {
  *  frontmatter. Returns the validated list of section names, plus whether
  *  the field was present but malformed (so the caller can fire
  *  `invalid_workspace_sections` once). */
-function readDeclaredSections(
-    fm: Frontmatter | undefined,
-): { present: boolean; valid: boolean; sections: readonly string[] } {
+function readDeclaredSections(fm: Frontmatter | undefined): { present: boolean; valid: boolean; sections: readonly string[] } {
     const raw = fm?.sections;
     if (raw === undefined) return { present: false, valid: true, sections: [] };
-    if (!Array.isArray(raw) || raw.some(s => typeof s !== 'string')) {
+    if (!Array.isArray(raw) || raw.some((s) => typeof s !== 'string')) {
         return { present: true, valid: false, sections: [] };
     }
     return { present: true, valid: true, sections: raw as string[] };
@@ -284,9 +283,19 @@ interface Frontmatter {
     [k: string]: unknown;
 }
 
-interface FrontmatterParse { ok: true; data: Frontmatter; }
-interface FrontmatterMissing { ok: false; reason: 'missing'; }
-interface FrontmatterInvalid { ok: false; reason: 'invalid'; detail: string; }
+interface FrontmatterParse {
+    ok: true;
+    data: Frontmatter;
+}
+interface FrontmatterMissing {
+    ok: false;
+    reason: 'missing';
+}
+interface FrontmatterInvalid {
+    ok: false;
+    reason: 'invalid';
+    detail: string;
+}
 type FrontmatterResult = FrontmatterParse | FrontmatterMissing | FrontmatterInvalid;
 
 function parseFrontmatter(body: string): FrontmatterResult {
@@ -314,10 +323,7 @@ function parseFrontmatter(body: string): FrontmatterResult {
     return { ok: true, data: parsed as Frontmatter };
 }
 
-async function readWorkspaceMdFromDisk(
-    workingTreeRoot: string,
-    wsDir: string,
-): Promise<{ exists: boolean; frontmatter?: Frontmatter }> {
+async function readWorkspaceMdFromDisk(workingTreeRoot: string, wsDir: string): Promise<{ exists: boolean; frontmatter?: Frontmatter }> {
     const file = path.join(workingTreeRoot, wsDir, 'WORKSPACE.md');
     try {
         const body = await readFile(file, 'utf8');
@@ -334,14 +340,9 @@ async function readWorkspaceMdFromDisk(
  * being created in this commit) or if git isn't available (test fixture
  * without a repo — falls back to "treat as new", which gates harder).
  */
-async function readOldFrontmatter(
-    workingTreeRoot: string,
-    wsDir: string,
-): Promise<{ exists: boolean; frontmatter?: Frontmatter }> {
+async function readOldFrontmatter(workingTreeRoot: string, wsDir: string): Promise<{ exists: boolean; frontmatter?: Frontmatter }> {
     try {
-        const content = await runGit(workingTreeRoot, [
-            'show', `HEAD:${wsDir}/WORKSPACE.md`,
-        ]);
+        const content = await runGit(workingTreeRoot, ['show', `HEAD:${wsDir}/WORKSPACE.md`]);
         const fm = parseFrontmatter(content);
         return { exists: true, frontmatter: fm.ok ? fm.data : undefined };
     } catch {
@@ -376,9 +377,15 @@ function asStr(v: unknown): string | undefined {
     return typeof v === 'string' && v.trim() !== '' ? v : undefined;
 }
 
-function readScopeOf(fm: Frontmatter): string | undefined { return asStr(fm.read); }
-function writeScopeOf(fm: Frontmatter): string | undefined { return asStr(fm.write); }
-function adminScopeOf(fm: Frontmatter): string | undefined { return asStr(fm.admin); }
+function readScopeOf(fm: Frontmatter): string | undefined {
+    return asStr(fm.read);
+}
+function writeScopeOf(fm: Frontmatter): string | undefined {
+    return asStr(fm.write);
+}
+function adminScopeOf(fm: Frontmatter): string | undefined {
+    return asStr(fm.admin);
+}
 
 function hasAgentOps(p: LintPrincipal | undefined): boolean {
     return !!p && p.scopes.has(AGENT_OPS_SCOPE);
@@ -491,9 +498,7 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
         // directly under a boundary — at any depth, relative to that boundary.
         const isGenerated = (p: string): boolean => {
             const rel = relToBoundary(p);
-            if ((GENERATED_SUBDIRS as readonly string[]).some(
-                s => rel === s || rel.startsWith(s + '/'),
-            )) return true;
+            if ((GENERATED_SUBDIRS as readonly string[]).some((s) => rel === s || rel.startsWith(s + '/'))) return true;
             return rel === 'attachments.yaml';
         };
         // A markdown content file the viewer renders in its curated nav: any
@@ -618,14 +623,18 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
             const fm = parseFrontmatter(fileBody);
             if (!fm.ok && fm.reason === 'missing') {
                 errors.push({
-                    code: 'missing_frontmatter', workspace: w, path: target,
+                    code: 'missing_frontmatter',
+                    workspace: w,
+                    path: target,
                     message: `WORKSPACE.md for '${w}' is missing YAML frontmatter (must start with '---')`,
                 });
                 continue;
             }
             if (!fm.ok && fm.reason === 'invalid') {
                 errors.push({
-                    code: 'invalid_frontmatter', workspace: w, path: target,
+                    code: 'invalid_frontmatter',
+                    workspace: w,
+                    path: target,
                     message: `WORKSPACE.md for '${w}' has invalid frontmatter: ${fm.detail}`,
                 });
                 continue;
@@ -633,24 +642,32 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
             const data = fm.data;
             if (typeof data.name !== 'string' || data.name.trim() === '') {
                 errors.push({
-                    code: 'invalid_frontmatter', workspace: w, path: target,
+                    code: 'invalid_frontmatter',
+                    workspace: w,
+                    path: target,
                     message: `WORKSPACE.md for '${w}' frontmatter must declare a non-empty 'name'`,
                 });
             } else if (data.name !== w) {
                 errors.push({
-                    code: 'invalid_frontmatter', workspace: w, path: target,
+                    code: 'invalid_frontmatter',
+                    workspace: w,
+                    path: target,
                     message: `WORKSPACE.md frontmatter 'name: ${data.name}' does not match directory name '${w}'`,
                 });
             }
             if (typeof data.description !== 'string' || data.description.trim() === '') {
                 errors.push({
-                    code: 'invalid_frontmatter', workspace: w, path: target,
+                    code: 'invalid_frontmatter',
+                    workspace: w,
+                    path: target,
                     message: `WORKSPACE.md for '${w}' frontmatter must declare a non-empty 'description'`,
                 });
             }
             if (typeof data.admin !== 'string' || data.admin.trim() === '') {
                 errors.push({
-                    code: 'invalid_frontmatter', workspace: w, path: target,
+                    code: 'invalid_frontmatter',
+                    workspace: w,
+                    path: target,
                     message: `WORKSPACE.md for '${w}' frontmatter must declare a non-empty 'admin' scope (required field)`,
                 });
             }
@@ -661,7 +678,9 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
             const declaredSections = readDeclaredSections(data);
             if (declaredSections.present && !declaredSections.valid) {
                 errors.push({
-                    code: 'invalid_workspace_sections', workspace: w, path: target,
+                    code: 'invalid_workspace_sections',
+                    workspace: w,
+                    path: target,
                     message: `WORKSPACE.md for '${w}' frontmatter 'sections' must be an array of strings`,
                 });
             }
@@ -750,9 +769,7 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
         // `sections:` list) enforces that each file's `section` is one of
         // them. Reads post-stage frontmatter from disk; deletes are skipped.
         const declaredSectionsCache = new Map<string, ReadonlySet<string>>();
-        const getDeclaredSections = async (
-            wsDir: string,
-        ): Promise<ReadonlySet<string> | undefined> => {
+        const getDeclaredSections = async (wsDir: string): Promise<ReadonlySet<string> | undefined> => {
             if (declaredSectionsCache.has(wsDir)) return declaredSectionsCache.get(wsDir);
             const ws = await readWorkspaceMdFromDisk(workingTreeRoot, wsDir);
             const decl = readDeclaredSections(ws.frontmatter);
@@ -781,23 +798,27 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
             if (!fm.ok) continue;
             const data = fm.data;
 
-            if (data.section !== undefined &&
-                (typeof data.section !== 'string' || data.section.trim() === '')) {
+            if (data.section !== undefined && (typeof data.section !== 'string' || data.section.trim() === '')) {
                 errors.push({
-                    code: 'invalid_nav_frontmatter', workspace: w, path: p,
+                    code: 'invalid_nav_frontmatter',
+                    workspace: w,
+                    path: p,
                     message: `File ${p} frontmatter 'section' must be a non-empty string`,
                 });
             }
-            if (data.order !== undefined &&
-                (typeof data.order !== 'number' || Number.isNaN(data.order))) {
+            if (data.order !== undefined && (typeof data.order !== 'number' || Number.isNaN(data.order))) {
                 errors.push({
-                    code: 'invalid_nav_frontmatter', workspace: w, path: p,
+                    code: 'invalid_nav_frontmatter',
+                    workspace: w,
+                    path: p,
                     message: `File ${p} frontmatter 'order' must be a number`,
                 });
             }
             if (data.title !== undefined && typeof data.title !== 'string') {
                 errors.push({
-                    code: 'invalid_nav_frontmatter', workspace: w, path: p,
+                    code: 'invalid_nav_frontmatter',
+                    workspace: w,
+                    path: p,
                     message: `File ${p} frontmatter 'title' must be a string`,
                 });
             }
@@ -810,7 +831,9 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
                 const allowed = await getDeclaredSections(ref.dir);
                 if (allowed && !allowed.has(data.section)) {
                     errors.push({
-                        code: 'unknown_section', workspace: w, path: p,
+                        code: 'unknown_section',
+                        workspace: w,
+                        path: p,
                         message: `File ${p} declares section '${data.section}', which is not in WORKSPACE.md's declared sections [${[...allowed].join(', ')}]`,
                     });
                 }
@@ -852,8 +875,8 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
             // transition itself unreachable (you could only ever unarchive).
             const wasArchived = oldFmRead.exists && oldFmRead.frontmatter?.archived === true;
             if (wasArchived) {
-                const touchedInWs = [...touchedPaths].filter(p => refOf(p)?.name === w);
-                const onlyWorkspaceMd = touchedInWs.every(p => isWsMd(p));
+                const touchedInWs = [...touchedPaths].filter((p) => refOf(p)?.name === w);
+                const onlyWorkspaceMd = touchedInWs.every((p) => isWsMd(p));
                 const unarchives = onlyWorkspaceMd && fm.archived === false;
                 if (!unarchives) {
                     errors.push({
@@ -878,7 +901,9 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
             }
             for (const proj of touchedProjects) {
                 const pmd = path.join(workingTreeRoot, wsDir, 'projects', proj, 'PROJECT.md');
-                const exists = await readFile(pmd, 'utf8').then(() => true).catch(() => false);
+                const exists = await readFile(pmd, 'utf8')
+                    .then(() => true)
+                    .catch(() => false);
                 if (!exists) {
                     errors.push({
                         code: 'project_md_missing',
@@ -902,7 +927,7 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
             }
 
             // Per-file write_denied / admin_denied. (`oldFmRead` computed above.)
-            const wsEntries = entries.filter(e => {
+            const wsEntries = entries.filter((e) => {
                 const t = e.toPath ?? e.fromPath;
                 return t !== undefined && refOf(t)?.name === w;
             });
@@ -995,10 +1020,7 @@ export interface MakeLintWorkspaceOptions {
 }
 
 /** Build a lint function bound to the principal's live scope set. */
-export function makeLintWorkspace(
-    principal: LintPrincipal,
-    options: MakeLintWorkspaceOptions = {},
-): LintFn {
+export function makeLintWorkspace(principal: LintPrincipal, options: MakeLintWorkspaceOptions = {}): LintFn {
     return build({
         principal,
         bypass: options.bypass,
@@ -1024,11 +1046,7 @@ export function makeLintWorkspace(
  * `compileManagedAgentMdToWorkflow` before validation, so the same
  * `workflow_*` codes fire on both forms.
  */
-export async function lintWorkflowFile(
-    filepath: string,
-    text: string,
-    ctx: WorkflowValidateContext = {},
-): Promise<LintError[]> {
+export async function lintWorkflowFile(filepath: string, text: string, ctx: WorkflowValidateContext = {}): Promise<LintError[]> {
     const base = filepath.replace(/^.*\//, '');
     const stem = /^(.+?)(?:\.workflow)?\.(yaml|yml|md)$/.exec(base)?.[1];
     const workspace = workspaceOf(filepath);
@@ -1062,22 +1080,20 @@ export async function lintWorkflowFile(
             filename: ctx.filename ?? filepath,
         };
         const result = validateWorkflow(decl, effectiveCtx);
-        return result.errors.map(e => workflowErrorToLintError(e, filepath, workspace));
+        return result.errors.map((e) => workflowErrorToLintError(e, filepath, workspace));
     } catch (e) {
-        return [{
-            code: 'workflow_parse_error',
-            path: filepath,
-            workspace,
-            message: (e as Error).message,
-        }];
+        return [
+            {
+                code: 'workflow_parse_error',
+                path: filepath,
+                workspace,
+                message: (e as Error).message,
+            },
+        ];
     }
 }
 
-function workflowErrorToLintError(
-    e: WorkflowValidationError,
-    filepath: string,
-    workspace: string | undefined,
-): LintError {
+function workflowErrorToLintError(e: WorkflowValidationError, filepath: string, workspace: string | undefined): LintError {
     const stepHint = e.stepId ? ` (step "${e.stepId}")` : '';
     const fieldHint = e.field ? ` [field: ${e.field}]` : '';
     return {

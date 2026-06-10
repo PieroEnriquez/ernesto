@@ -44,14 +44,9 @@ export interface SettleFromPatchInput {
     trailers?: Readonly<Record<string, string>>;
 }
 
-export type SettleFromPatchResult =
-    | SettleResult
-    | { ok: false; error: 'patch_rejected'; reason: string };
+export type SettleFromPatchResult = SettleResult | { ok: false; error: 'patch_rejected'; reason: string };
 
-export async function settleFromPatch(
-    workdir: Workdir,
-    input: SettleFromPatchInput,
-): Promise<SettleFromPatchResult> {
+export async function settleFromPatch(workdir: Workdir, input: SettleFromPatchInput): Promise<SettleFromPatchResult> {
     return workdir.lock(async () => {
         const root = workdir.workingTreeRoot;
 
@@ -79,10 +74,7 @@ export async function settleFromPatch(
         // We do NOT use --3way: any conflict means the patch is stale and
         // the dev must rebase locally. Server-side merge would silently
         // drop the dev's authorship of the conflict resolution.
-        const patchPath = join(
-            tmpdir(),
-            `ernesto-patch-${Date.now()}-${randomBytes(6).toString('hex')}.diff`,
-        );
+        const patchPath = join(tmpdir(), `ernesto-patch-${Date.now()}-${randomBytes(6).toString('hex')}.diff`);
         await writeFile(patchPath, input.patch, 'utf8');
 
         let applyOk = false;
@@ -110,14 +102,20 @@ export async function settleFromPatch(
                     checkoutArgs.push(`:(exclude)workspaces/${ws}/${sub}`);
                 }
             }
-            try { await runGit(root, checkoutArgs); }
-            catch { /* fall through; apply will surface the real error */ }
+            try {
+                await runGit(root, checkoutArgs);
+            } catch {
+                /* fall through; apply will surface the real error */
+            }
 
             // Refresh the index's stat cache so `apply --index` can tell
             // "stat-dirty" from "content-dirty" (defense-in-depth; the
             // checkout above writes fresh stat too).
-            try { await runGit(root, ['update-index', '--refresh']); }
-            catch { /* harmless — partial refresh still helps */ }
+            try {
+                await runGit(root, ['update-index', '--refresh']);
+            } catch {
+                /* harmless — partial refresh still helps */
+            }
 
             await runGit(root, ['apply', '--check', '--index', '--whitespace=nowarn', patchPath]);
             await runGit(root, ['apply', '--index', '--whitespace=nowarn', patchPath]);
@@ -125,7 +123,11 @@ export async function settleFromPatch(
         } catch (err: any) {
             applyErr = String(err?.stderr ?? err?.message ?? 'unknown apply error');
         } finally {
-            try { await unlink(patchPath); } catch { /* ignore */ }
+            try {
+                await unlink(patchPath);
+            } catch {
+                /* ignore */
+            }
         }
 
         if (!applyOk) {
@@ -133,7 +135,11 @@ export async function settleFromPatch(
             // so the next request against this ephemeral workdir starts
             // fresh. The ephemeral lifetime is per-request, but defense in
             // depth.
-            try { await runGit(root, ['reset', '--hard', 'HEAD']); } catch { /* ignore */ }
+            try {
+                await runGit(root, ['reset', '--hard', 'HEAD']);
+            } catch {
+                /* ignore */
+            }
             return {
                 ok: false,
                 error: 'patch_rejected',

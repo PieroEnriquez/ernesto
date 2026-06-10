@@ -53,18 +53,12 @@ describe('compileAgent — pure passthrough', () => {
     });
 
     it('returns a preset systemPrompt structurally identical when no workdir cwd is bound', () => {
-        const r = compileAgent(
-            { ...baseDecl, systemPrompt: { type: 'preset', preset: 'claude_code' } },
-            baseCtx,
-        );
+        const r = compileAgent({ ...baseDecl, systemPrompt: { type: 'preset', preset: 'claude_code' } }, baseCtx);
         expect(r.systemPrompt).toEqual({ type: 'preset', preset: 'claude_code', append: undefined });
     });
 
     it('preserves an explicit preset.append when no workdir cwd is bound', () => {
-        const r = compileAgent(
-            { ...baseDecl, systemPrompt: { type: 'preset', preset: 'claude_code', append: 'extra' } },
-            baseCtx,
-        );
+        const r = compileAgent({ ...baseDecl, systemPrompt: { type: 'preset', preset: 'claude_code', append: 'extra' } }, baseCtx);
         expect(r.systemPrompt).toEqual({ type: 'preset', preset: 'claude_code', append: 'extra' });
     });
 });
@@ -76,11 +70,7 @@ describe('compileAgent — disallowedTools defaults', () => {
     });
 
     it('declaration disallowedTools wins over the default', () => {
-        const r = compileAgent(
-            { ...baseDecl, disallowedTools: ['Bash'] },
-            baseCtx,
-            { disallowedTools: ['Task'] },
-        );
+        const r = compileAgent({ ...baseDecl, disallowedTools: ['Bash'] }, baseCtx, { disallowedTools: ['Task'] });
         expect(r.disallowedTools).toEqual(['Bash']);
     });
 
@@ -90,11 +80,7 @@ describe('compileAgent — disallowedTools defaults', () => {
     });
 
     it('treats an explicit empty array on the declaration as "no tools disallowed"', () => {
-        const r = compileAgent(
-            { ...baseDecl, disallowedTools: [] },
-            baseCtx,
-            { disallowedTools: ['Task'] },
-        );
+        const r = compileAgent({ ...baseDecl, disallowedTools: [] }, baseCtx, { disallowedTools: ['Task'] });
         expect(r.disallowedTools).toEqual([]);
     });
 });
@@ -143,10 +129,7 @@ describe('compileAgent — L2 platform body append', () => {
 
     it('preset without a prior append still receives the platform body', () => {
         writeErnestoBody('Solo platform note.');
-        const r = compileAgent(
-            { ...baseDecl, systemPrompt: { type: 'preset', preset: 'claude_code' } },
-            { cwd: tmp },
-        );
+        const r = compileAgent({ ...baseDecl, systemPrompt: { type: 'preset', preset: 'claude_code' } }, { cwd: tmp });
         expect(r.systemPrompt).toEqual({
             type: 'preset',
             preset: 'claude_code',
@@ -191,9 +174,7 @@ describe('compileAgent — transport-specific platform body', () => {
         writePlatformFile('WORKSPACE.md', 'Universal rules.');
         writePlatformFile('in-process.md', 'In-process specifics.');
         const r = compileAgent(baseDecl, { cwd: tmp, transport: 'in-process' });
-        expect(r.systemPrompt).toBe(
-            'You are a test agent.\n\nUniversal rules.\n\nIn-process specifics.',
-        );
+        expect(r.systemPrompt).toBe('You are a test agent.\n\nUniversal rules.\n\nIn-process specifics.');
     });
 
     it('uses mcp.md for transport "mcp"', () => {
@@ -241,9 +222,7 @@ describe('compileAgent — transport-specific platform body', () => {
         writePlatformFile('WORKSPACE.md', 'Universal.');
         writePlatformFile('in-process.md', '---\nname: in-process\n---\nFrontmatter-stripped overlay body.');
         const r = compileAgent(baseDecl, { cwd: tmp, transport: 'in-process' });
-        expect(r.systemPrompt).toBe(
-            'You are a test agent.\n\nUniversal.\n\nFrontmatter-stripped overlay body.',
-        );
+        expect(r.systemPrompt).toBe('You are a test agent.\n\nUniversal.\n\nFrontmatter-stripped overlay body.');
     });
 
     it('composeErnestoBody returns the concatenated body for direct (non-compileAgent) callers', () => {

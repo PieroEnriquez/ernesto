@@ -16,10 +16,7 @@ export interface CommitTurnResult {
  * the named paths; create a commit on the current branch. Releases the lock
  * via the `lock(fn)` contract regardless of success/failure.
  */
-export async function commitTurn(
-    workdir: Workdir,
-    input: CommitTurnInput,
-): Promise<CommitTurnResult> {
+export async function commitTurn(workdir: Workdir, input: CommitTurnInput): Promise<CommitTurnResult> {
     return workdir.lock(async () => {
         if (input.files) {
             for (const f of input.files) {

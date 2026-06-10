@@ -34,9 +34,7 @@ export interface LoggingMiddlewareOpts {
     redact?: (meta: Record<string, unknown>) => Record<string, unknown>;
 }
 
-export function loggingMiddleware(
-    opts: LoggingMiddlewareOpts = {},
-): DispatchMiddleware {
+export function loggingMiddleware(opts: LoggingMiddlewareOpts = {}): DispatchMiddleware {
     const log: Log = opts.log ?? { info: () => undefined, warn: () => undefined };
     const redact = opts.redact ?? ((m) => m);
 
@@ -57,9 +55,7 @@ export function loggingMiddleware(
             return ctx;
         },
         after(ctx: DispatchPreContext, run: Run): void {
-            const startedAt = ctx.annotations.__loggingStartedAt as
-                | number
-                | undefined;
+            const startedAt = ctx.annotations.__loggingStartedAt as number | undefined;
             const wallMs = startedAt ? Date.now() - startedAt : undefined;
             const meta: Record<string, unknown> = {
                 kind: ctx.kind,
@@ -81,4 +77,3 @@ export function loggingMiddleware(
         },
     };
 }
-

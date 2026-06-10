@@ -55,10 +55,7 @@ export function resolvePath(filePath: string): string {
  * The lib does not import from `fs` itself so it can run in non-Node
  * environments where appropriate; pass `null` to skip the canonicalization.
  */
-export function resolveAllowedDir(
-    filePath: string,
-    realpath: ((p: string) => string) | null,
-): string {
+export function resolveAllowedDir(filePath: string, realpath: ((p: string) => string) | null): string {
     if (realpath === null) return resolvePath(filePath);
     try {
         return realpath(resolve(filePath));

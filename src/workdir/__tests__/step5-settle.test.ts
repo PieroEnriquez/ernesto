@@ -10,8 +10,7 @@ const enc = (s: string) => new TextEncoder().encode(s);
 
 const allowAllLint: LintFn = async () => ({ ok: true });
 
-const denyLint: (errors: ReadonlyArray<LintError>) => LintFn =
-    (errors) => async () => ({ ok: false, errors });
+const denyLint: (errors: ReadonlyArray<LintError>) => LintFn = (errors) => async () => ({ ok: false, errors });
 
 describe('settleFromWorktree', () => {
     let tmpRoot: string;
@@ -57,7 +56,12 @@ describe('settleFromWorktree', () => {
         await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# bad\n'));
 
         const errors: ReadonlyArray<LintError> = [
-            { code: 'missing_frontmatter', workspace: 'hr', path: 'workspaces/hr/WORKSPACE.md', message: 'WORKSPACE.md must have frontmatter' },
+            {
+                code: 'missing_frontmatter',
+                workspace: 'hr',
+                path: 'workspaces/hr/WORKSPACE.md',
+                message: 'WORKSPACE.md must have frontmatter',
+            },
         ];
         const r = await settleFromWorktree(workdir, {
             workspaces: ['hr'],
@@ -83,7 +87,10 @@ describe('settleFromWorktree', () => {
         await workdir.fs.writeFile('workspaces/hr/attachments.yaml', enc('- name: x\n'));
 
         let seen: { diff: string } | null = null;
-        const captureLint: LintFn = async (input) => { seen = input; return { ok: true }; };
+        const captureLint: LintFn = async (input) => {
+            seen = input;
+            return { ok: true };
+        };
 
         await settleFromWorktree(workdir, {
             workspaces: ['hr'],
@@ -102,13 +109,13 @@ describe('settleFromWorktree', () => {
         // The execute verb writes per-conversation route-result archives under
         // workspaces/<ws>/_results/*.json. They are present + untracked in the
         // worktree at settle time and must NEVER be staged/committed/pushed.
-        await workdir.fs.writeFile(
-            'workspaces/hr/_results/2026-01-01--some-route.json',
-            enc('{"data":[]}\n'),
-        );
+        await workdir.fs.writeFile('workspaces/hr/_results/2026-01-01--some-route.json', enc('{"data":[]}\n'));
 
         let seen: { diff: string } | null = null;
-        const captureLint: LintFn = async (input) => { seen = input; return { ok: true }; };
+        const captureLint: LintFn = async (input) => {
+            seen = input;
+            return { ok: true };
+        };
 
         await settleFromWorktree(workdir, {
             workspaces: ['hr'],
@@ -127,7 +134,10 @@ describe('settleFromWorktree', () => {
         await workdir.fs.writeFile('workspaces/cs/WORKSPACE.md', enc('# cs\n'));
 
         let seen: { diff: string; workspaces: ReadonlyArray<string> } | null = null;
-        const captureLint: LintFn = async (input) => { seen = input; return { ok: true }; };
+        const captureLint: LintFn = async (input) => {
+            seen = input;
+            return { ok: true };
+        };
 
         await settleFromWorktree(workdir, {
             workspaces: ['hr'],
@@ -171,7 +181,9 @@ describe('settleFromWorktree', () => {
         await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# hr\n'));
 
         const pushToMain: PushToMainFn = async () => ({
-            ok: false, error: 'fast_forward_required', currentSha: 'upstream-xyz',
+            ok: false,
+            error: 'fast_forward_required',
+            currentSha: 'upstream-xyz',
         });
 
         const r = await settleFromWorktree(workdir, {
@@ -192,7 +204,7 @@ describe('settleFromWorktree', () => {
             workspaces: ['hr'],
             message: 'add hr',
             lint: allowAllLint,
-            trailers: { 'Workdir-Id': 'wd1', 'User': 'poc@example.com', 'Transport': 'in-process' },
+            trailers: { 'Workdir-Id': 'wd1', User: 'poc@example.com', Transport: 'in-process' },
         });
 
         const body = await runGit(tmpRoot, ['log', '-1', '--format=%B']);
@@ -214,7 +226,10 @@ describe('settleFromWorktree', () => {
         await runGit(tmpRoot, ['mv', 'workspaces/pricing', 'workspaces/product/pricing']);
 
         let captured = '';
-        const capturingLint: LintFn = async ({ diff }) => { captured = diff; return { ok: true }; };
+        const capturingLint: LintFn = async ({ diff }) => {
+            captured = diff;
+            return { ok: true };
+        };
 
         const r = await settleFromWorktree(workdir, {
             workspaces: ['pricing', 'product'], // declare by leaf identity

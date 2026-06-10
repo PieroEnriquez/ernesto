@@ -34,31 +34,14 @@ import type {
     UiComponentKind,
     RenderableComponentKind,
 } from './types';
-import {
-    UI_COMPONENT_KINDS,
-    RENDERABLE_COMPONENT_KINDS,
-} from './types';
+import { UI_COMPONENT_KINDS, RENDERABLE_COMPONENT_KINDS } from './types';
 
-export type ValidationResult<T> =
-    | { ok: true; value: T }
-    | { ok: false; error: string };
+export type ValidationResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
 const UI_KINDS: ReadonlySet<string> = new Set(UI_COMPONENT_KINDS);
 const RENDERABLE_KINDS: ReadonlySet<string> = new Set(RENDERABLE_COMPONENT_KINDS);
-const STATUS_LEVEL_SET: ReadonlySet<string> = new Set([
-    'info',
-    'progress',
-    'success',
-    'warn',
-    'error',
-]);
-const CHART_TYPE_SET: ReadonlySet<string> = new Set([
-    'line',
-    'bar',
-    'pie',
-    'scatter',
-    'area',
-]);
+const STATUS_LEVEL_SET: ReadonlySet<string> = new Set(['info', 'progress', 'success', 'warn', 'error']);
+const CHART_TYPE_SET: ReadonlySet<string> = new Set(['line', 'bar', 'pie', 'scatter', 'area']);
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
     return !!v && typeof v === 'object' && !Array.isArray(v);
@@ -99,22 +82,13 @@ const FIELD_TYPES = {
     /** required non-empty string */
     nes: [(v: unknown) => isNonEmptyString(v), 'must be a non-empty string'],
     /** required finite number */
-    num: [
-        (v: unknown) => typeof v === 'number' && Number.isFinite(v),
-        'must be a finite number',
-    ],
+    num: [(v: unknown) => typeof v === 'number' && Number.isFinite(v), 'must be a finite number'],
     /** required string-or-number */
-    strnum: [
-        (v: unknown) => typeof v === 'string' || typeof v === 'number',
-        'must be a string or number',
-    ],
+    strnum: [(v: unknown) => typeof v === 'string' || typeof v === 'number', 'must be a string or number'],
     /** optional string (validated only when present) */
     'str?': [(v: unknown) => typeof v === 'string', 'must be a string when present'],
     /** status level enum */
-    level: [
-        (v: unknown) => typeof v === 'string' && STATUS_LEVEL_SET.has(v),
-        'must be one of: info, progress, success, warn, error',
-    ],
+    level: [(v: unknown) => typeof v === 'string' && STATUS_LEVEL_SET.has(v), 'must be one of: info, progress, success, warn, error'],
 } as const satisfies Record<string, readonly [(v: unknown) => boolean, string]>;
 
 type FieldType = keyof typeof FIELD_TYPES;
@@ -188,8 +162,7 @@ const SPECS: Record<string, KindSpec> = {
     },
     table: {
         propsHint: 'columns: [{id, label}], rows: [...], caption?',
-        example:
-            "{ kind: 'table', props: { columns: [{id:'region',label:'Region'}], rows: [...] } }",
+        example: "{ kind: 'table', props: { columns: [{id:'region',label:'Region'}], rows: [...] } }",
         fields: [],
     },
     metric: {
@@ -249,11 +222,7 @@ const SPECS: Record<string, KindSpec> = {
 function fieldError(kind: string, field: FieldSpec, value: unknown): string {
     const [name, type, tail] = field;
     const constraint = FIELD_TYPES[type][1];
-    return (
-        `${kind}.props.${name} ${constraint}. ` +
-        `Received ${typeLabel(value)}. ` +
-        `Try: ${tail}`
-    );
+    return `${kind}.props.${name} ${constraint}. ` + `Received ${typeLabel(value)}. ` + `Try: ${tail}`;
 }
 
 /**
@@ -262,10 +231,7 @@ function fieldError(kind: string, field: FieldSpec, value: unknown): string {
  * caller (renderable/top-level dispatchers) layers any bespoke
  * `extra` checks (nested arrays, either-or) on top.
  */
-function validateFlatFields(
-    kind: string,
-    props: Record<string, unknown>,
-): string | null {
+function validateFlatFields(kind: string, props: Record<string, unknown>): string | null {
     for (const field of SPECS[kind].fields) {
         const [name, type] = field;
         const value = props[name];
@@ -279,10 +245,7 @@ function validateFlatFields(
 
 /** Copy only the spec'd flat fields that are present onto an output
  *  object (drops unknown keys; keeps optional ones when set). */
-function pickFlatFields(
-    kind: string,
-    props: Record<string, unknown>,
-): Record<string, unknown> {
+function pickFlatFields(kind: string, props: Record<string, unknown>): Record<string, unknown> {
     const out: Record<string, unknown> = {};
     for (const [name] of SPECS[kind].fields) {
         const value = props[name];
@@ -295,9 +258,7 @@ function pickFlatFields(
 // ─── Top-level dispatcher ────────────────────────────────────────────
 
 /** Validate any top-level UI component. */
-export function validateUiComponent(
-    value: unknown,
-): ValidationResult<UiComponent> {
+export function validateUiComponent(value: unknown): ValidationResult<UiComponent> {
     if (!isPlainObject(value)) {
         return err(
             `component must be an object. Received ${typeLabel(value)}. ` +
@@ -312,10 +273,7 @@ export function validateUiComponent(
         );
     }
     if (!UI_KINDS.has(kind)) {
-        return err(
-            `component.kind '${kind}' is not a top-level UiComponent kind. ` +
-                `Try: one of ${UI_COMPONENT_KINDS.join(', ')}`,
-        );
+        return err(`component.kind '${kind}' is not a top-level UiComponent kind. ` + `Try: one of ${UI_COMPONENT_KINDS.join(', ')}`);
     }
     switch (kind as UiComponentKind) {
         case 'thinking':
@@ -362,10 +320,7 @@ export function collectUiComponentErrors(value: unknown): string[] {
         ];
     }
     if (!UI_KINDS.has(kind)) {
-        return [
-            `component.kind '${kind}' is not a top-level UiComponent kind. ` +
-                `Try: one of ${UI_COMPONENT_KINDS.join(', ')}`,
-        ];
+        return [`component.kind '${kind}' is not a top-level UiComponent kind. ` + `Try: one of ${UI_COMPONENT_KINDS.join(', ')}`];
     }
     // For non-hitl kinds the single-error path is already exhaustive
     // (props are flat, no nested arrays-of-renderables to unroll).
@@ -422,9 +377,7 @@ function collectHitlErrors(value: Record<string, unknown>): string[] {
             for (let i = 0; i < props.nextSteps.length; i++) {
                 const stepResult = validateNextStep(props.nextSteps[i]);
                 if (!stepResult.ok) {
-                    errors.push(
-                        `hitl.props.nextSteps[${i}]: ${stepResult.error}`,
-                    );
+                    errors.push(`hitl.props.nextSteps[${i}]: ${stepResult.error}`);
                 }
             }
         }
@@ -434,14 +387,9 @@ function collectHitlErrors(value: Record<string, unknown>): string[] {
 
 // ─── Per-kind top-level validators ──────────────────────────────────
 
-export function validateThinking(
-    value: unknown,
-): ValidationResult<ThinkingComponent> {
+export function validateThinking(value: unknown): ValidationResult<ThinkingComponent> {
     if (!isPlainObject(value) || value.kind !== 'thinking') {
-        return err(
-            "expected component with kind: 'thinking'. " +
-                "Try: { kind: 'thinking', props: { text: '…' } }",
-        );
+        return err("expected component with kind: 'thinking'. " + "Try: { kind: 'thinking', props: { text: '…' } }");
     }
     const props = value.props;
     if (!isPlainObject(props)) {
@@ -460,9 +408,7 @@ export function validateThinking(
     return ok(out);
 }
 
-export function validateStatus(
-    value: unknown,
-): ValidationResult<StatusComponent> {
+export function validateStatus(value: unknown): ValidationResult<StatusComponent> {
     if (!isPlainObject(value) || value.kind !== 'status') {
         return err(
             "expected component with kind: 'status'. " +
@@ -481,21 +427,16 @@ export function validateStatus(
     const level = props.level as StatusComponent['props']['level'] | undefined;
     const out: StatusComponent = {
         kind: 'status',
-        props: level === undefined
-            ? { text: props.text as string }
-            : { text: props.text as string, level },
+        props: level === undefined ? { text: props.text as string } : { text: props.text as string, level },
     };
     if (typeof value.slotId === 'string') out.slotId = value.slotId;
     return ok(out);
 }
 
-export function validateProgress(
-    value: unknown,
-): ValidationResult<ProgressComponent> {
+export function validateProgress(value: unknown): ValidationResult<ProgressComponent> {
     if (!isPlainObject(value) || value.kind !== 'progress') {
         return err(
-            "expected component with kind: 'progress'. " +
-                "Try: { kind: 'progress', props: { label: '…', current: 3, total: 10 } }",
+            "expected component with kind: 'progress'. " + "Try: { kind: 'progress', props: { label: '…', current: 3, total: 10 } }",
         );
     }
     const props = value.props;
@@ -519,14 +460,9 @@ export function validateProgress(
     return ok(out);
 }
 
-export function validateAttachment(
-    value: unknown,
-): ValidationResult<AttachmentComponent> {
+export function validateAttachment(value: unknown): ValidationResult<AttachmentComponent> {
     if (!isPlainObject(value) || value.kind !== 'attachment') {
-        return err(
-            "expected component with kind: 'attachment'. " +
-                "Try: { kind: 'attachment', props: { filename: '…', path|url: '…' } }",
-        );
+        return err("expected component with kind: 'attachment'. " + "Try: { kind: 'attachment', props: { filename: '…', path|url: '…' } }");
     }
     const props = value.props;
     if (!isPlainObject(props)) {
@@ -546,22 +482,18 @@ export function validateAttachment(
     const hasUrl = typeof props.url === 'string' && props.url.length > 0;
     if (!hasPath && !hasUrl) {
         return err(
-            "attachment.props requires at least one of: path, url. " +
+            'attachment.props requires at least one of: path, url. ' +
                 "Try: props: { filename: '…', path: '_results/r.json' } " +
                 "or props: { filename: '…', url: 'https://…' }",
         );
     }
     if (props.mimeType !== undefined && typeof props.mimeType !== 'string') {
         return err(
-            `attachment.props.mimeType must be a string. Received ${typeLabel(props.mimeType)}. ` +
-                "Try: mimeType: 'application/json'",
+            `attachment.props.mimeType must be a string. Received ${typeLabel(props.mimeType)}. ` + "Try: mimeType: 'application/json'",
         );
     }
     if (props.caption !== undefined && typeof props.caption !== 'string') {
-        return err(
-            `attachment.props.caption must be a string. Received ${typeLabel(props.caption)}. ` +
-                "Try: caption: 'Daily report'",
-        );
+        return err(`attachment.props.caption must be a string. Received ${typeLabel(props.caption)}. ` + "Try: caption: 'Daily report'");
     }
     const outProps: AttachmentComponent['props'] = { filename: props.filename };
     if (hasPath) outProps.path = props.path as string;
@@ -571,9 +503,7 @@ export function validateAttachment(
     return ok({ kind: 'attachment', props: outProps });
 }
 
-export function validateHitl(
-    value: unknown,
-): ValidationResult<HitlComponent> {
+export function validateHitl(value: unknown): ValidationResult<HitlComponent> {
     if (!isPlainObject(value) || value.kind !== 'hitl') {
         return err(
             "expected component with kind: 'hitl'. " +
@@ -634,18 +564,19 @@ export function validateHitl(
     }
     const out: HitlComponent = {
         kind: 'hitl',
-        props: nextSteps === undefined
-            ? {
-                  render,
-                  expect: expectResult.value,
-                  resumePrompt: props.resumePrompt,
-              }
-            : {
-                  render,
-                  expect: expectResult.value,
-                  resumePrompt: props.resumePrompt,
-                  nextSteps,
-              },
+        props:
+            nextSteps === undefined
+                ? {
+                      render,
+                      expect: expectResult.value,
+                      resumePrompt: props.resumePrompt,
+                  }
+                : {
+                      render,
+                      expect: expectResult.value,
+                      resumePrompt: props.resumePrompt,
+                      nextSteps,
+                  },
     };
     return ok(out);
 }
@@ -653,8 +584,7 @@ export function validateHitl(
 function validateHitlExpect(value: unknown): ValidationResult<HitlExpect> {
     if (!isPlainObject(value)) {
         return err(
-            `expect must be an object. Received ${typeLabel(value)}. ` +
-                "Try: expect: { kind: 'message' } (or 'choice'|'form'|'none')",
+            `expect must be an object. Received ${typeLabel(value)}. ` + "Try: expect: { kind: 'message' } (or 'choice'|'form'|'none')",
         );
     }
     const kind = value.kind;
@@ -699,33 +629,25 @@ function validateHitlExpect(value: unknown): ValidationResult<HitlExpect> {
         }
         return ok(out);
     }
-    return err(
-        `expect.kind '${String(kind)}' is not one of: message, choice, form, none. ` +
-            "Try: expect: { kind: 'message' }",
-    );
+    return err(`expect.kind '${String(kind)}' is not one of: message, choice, form, none. ` + "Try: expect: { kind: 'message' }");
 }
 
 function validateNextStep(value: unknown): ValidationResult<NextStep> {
     if (typeof value === 'string') {
         if (value.length === 0) {
-            return err(
-                "nextStep string must be non-empty. " +
-                    "Try: 'retry' or { id: 'retry', label: 'Retry' }",
-            );
+            return err('nextStep string must be non-empty. ' + "Try: 'retry' or { id: 'retry', label: 'Retry' }");
         }
         return ok(value);
     }
     if (isPlainObject(value)) {
         if (!isNonEmptyString(value.id)) {
             return err(
-                `nextStep.id must be a non-empty string. Received ${typeLabel(value.id)}. ` +
-                    "Try: { id: 'retry', label: 'Retry' }",
+                `nextStep.id must be a non-empty string. Received ${typeLabel(value.id)}. ` + "Try: { id: 'retry', label: 'Retry' }",
             );
         }
         if (!isNonEmptyString(value.label)) {
             return err(
-                `nextStep.label must be a non-empty string. Received ${typeLabel(value.label)}. ` +
-                    "Try: { id: 'retry', label: 'Retry' }",
+                `nextStep.label must be a non-empty string. Received ${typeLabel(value.label)}. ` + "Try: { id: 'retry', label: 'Retry' }",
             );
         }
         return ok({ id: value.id, label: value.label });
@@ -740,37 +662,26 @@ function validateNextStep(value: unknown): ValidationResult<NextStep> {
 
 /** Validate any renderable component (the kinds nested inside
  *  `hitl.props.render`). */
-export function validateRenderableComponent(
-    value: unknown,
-): ValidationResult<RenderableComponent> {
+export function validateRenderableComponent(value: unknown): ValidationResult<RenderableComponent> {
     if (!isPlainObject(value)) {
-        return err(
-            `renderable must be an object. Received ${typeLabel(value)}. ` +
-                "Try: { kind: 'markdown', props: { body: '…' } }",
-        );
+        return err(`renderable must be an object. Received ${typeLabel(value)}. ` + "Try: { kind: 'markdown', props: { body: '…' } }");
     }
     const kind = value.kind;
     if (typeof kind !== 'string') {
         return err(
-            `renderable.kind must be a string. Received ${typeLabel(kind)}. ` +
-                `Try: one of ${RENDERABLE_COMPONENT_KINDS.join(', ')}`,
+            `renderable.kind must be a string. Received ${typeLabel(kind)}. ` + `Try: one of ${RENDERABLE_COMPONENT_KINDS.join(', ')}`,
         );
     }
     if (!RENDERABLE_KINDS.has(kind)) {
         return err(
-            `renderable.kind '${kind}' is not a RenderableComponent kind. ` +
-                `Try: one of ${RENDERABLE_COMPONENT_KINDS.join(', ')}`,
+            `renderable.kind '${kind}' is not a RenderableComponent kind. ` + `Try: one of ${RENDERABLE_COMPONENT_KINDS.join(', ')}`,
         );
     }
     const rKind = kind as RenderableComponentKind;
     const spec = SPECS[rKind];
     const props = value.props;
     if (!isPlainObject(props)) {
-        return err(
-            `${kind}.props must be {${spec.propsHint}}. ` +
-                `Received ${typeLabel(props)}. ` +
-                `Try: ${spec.example}`,
-        );
+        return err(`${kind}.props must be {${spec.propsHint}}. ` + `Received ${typeLabel(props)}. ` + `Try: ${spec.example}`);
     }
     // Flat-field pass (table/chart/tree have no flat fields; their
     // nested-array shapes are validated bespoke below).
@@ -798,9 +709,7 @@ export function validateRenderableComponent(
     }
 }
 
-function validateTable(
-    props: Record<string, unknown>,
-): ValidationResult<RenderableComponent> {
+function validateTable(props: Record<string, unknown>): ValidationResult<RenderableComponent> {
     if (!Array.isArray(props.columns)) {
         return err(
             `table.props.columns must be an array of {id, label}. Received ${typeLabel(props.columns)}. ` +
@@ -830,12 +739,7 @@ function validateTable(
                     "Try: {id: 'region', label: 'Region'}",
             );
         }
-        if (
-            col.align !== undefined &&
-            col.align !== 'left' &&
-            col.align !== 'right' &&
-            col.align !== 'center'
-        ) {
+        if (col.align !== undefined && col.align !== 'left' && col.align !== 'right' && col.align !== 'center') {
             return err(
                 `table.props.columns[${i}].align must be one of: left, right, center. ` +
                     `Received ${typeLabel(col.align)}. ` +
@@ -845,8 +749,7 @@ function validateTable(
     }
     if (!Array.isArray(props.rows)) {
         return err(
-            `table.props.rows must be an array. Received ${typeLabel(props.rows)}. ` +
-                "Try: rows: [{ region: 'EU', gmv: 1200 }, …]",
+            `table.props.rows must be an array. Received ${typeLabel(props.rows)}. ` + "Try: rows: [{ region: 'EU', gmv: 1200 }, …]",
         );
     }
     return ok({
@@ -855,9 +758,7 @@ function validateTable(
     });
 }
 
-function validateMetric(
-    props: Record<string, unknown>,
-): ValidationResult<RenderableComponent> {
+function validateMetric(props: Record<string, unknown>): ValidationResult<RenderableComponent> {
     // label / value / unit validated by the flat-field pass; only the
     // nested `delta` shape is bespoke.
     if (props.delta !== undefined) {
@@ -888,9 +789,7 @@ function validateMetric(
     });
 }
 
-function validateChart(
-    props: Record<string, unknown>,
-): ValidationResult<RenderableComponent> {
+function validateChart(props: Record<string, unknown>): ValidationResult<RenderableComponent> {
     if (!Array.isArray(props.series)) {
         return err(
             `chart.props.series must be an array. Received ${typeLabel(props.series)}. ` +
@@ -910,9 +809,7 @@ function validateChart(
     });
 }
 
-function validateTree(
-    props: Record<string, unknown>,
-): ValidationResult<RenderableComponent> {
+function validateTree(props: Record<string, unknown>): ValidationResult<RenderableComponent> {
     if (!Array.isArray(props.nodes)) {
         return err(
             `tree.props.nodes must be an array. Received ${typeLabel(props.nodes)}. ` +
@@ -925,9 +822,7 @@ function validateTree(
     });
 }
 
-function validateActions(
-    props: Record<string, unknown>,
-): ValidationResult<RenderableComponent> {
+function validateActions(props: Record<string, unknown>): ValidationResult<RenderableComponent> {
     if (!Array.isArray(props.buttons) || props.buttons.length === 0) {
         return err(
             `actions.props.buttons must be a non-empty array. Received ${typeLabel(props.buttons)}. ` +
@@ -938,8 +833,7 @@ function validateActions(
         const b = props.buttons[i];
         if (!isPlainObject(b) || typeof b.label !== 'string' || typeof b.actionId !== 'string') {
             return err(
-                `actions.props.buttons[${i}] must be { label: string, actionId: string, value?, style? }. ` +
-                    `Received ${typeLabel(b)}.`,
+                `actions.props.buttons[${i}] must be { label: string, actionId: string, value?, style? }. ` + `Received ${typeLabel(b)}.`,
             );
         }
     }

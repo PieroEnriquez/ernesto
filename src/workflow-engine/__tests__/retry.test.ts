@@ -144,12 +144,7 @@ describe('runner retry — kind.policy.retry', () => {
         });
 
         const ac = new AbortController();
-        const dispatchPromise = runner.dispatch(
-            'wf',
-            {},
-            userPrincipal('u', []),
-            { abortSignal: ac.signal },
-        );
+        const dispatchPromise = runner.dispatch('wf', {}, userPrincipal('u', []), { abortSignal: ac.signal });
         // Abort after first attempt completes + during backoff
         setTimeout(() => ac.abort(), 25);
         const run = await dispatchPromise;

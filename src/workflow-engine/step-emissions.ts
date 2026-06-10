@@ -22,9 +22,7 @@ export interface StepEmissionSummary {
 }
 
 /** Find the latest `hitl`-kind component in the emissions, if any. */
-export function latestHitl(
-    summary: StepEmissionSummary,
-): HitlComponent | undefined {
+export function latestHitl(summary: StepEmissionSummary): HitlComponent | undefined {
     const components = summary.components;
     for (let i = components.length - 1; i >= 0; i--) {
         const c = components[i];

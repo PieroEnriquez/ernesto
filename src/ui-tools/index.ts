@@ -6,24 +6,9 @@
  * taxonomy.
  */
 
-export {
-    createUiMcpServer,
-    UI_TOOL_COUNT,
-    UI_TOOL_NAMES,
-} from './server';
-export type {
-    UiMcpServerConfig,
-    UiMcpServerHandle,
-    UiToolContextResolver,
-    CreateUiMcpServerOpts,
-} from './server';
-export type {
-    UiToolContext,
-    UiToolResult,
-    UiHitlPauser,
-    AttachmentTransformer,
-    AttachmentTransformResult,
-} from './types';
+export { createUiMcpServer, UI_TOOL_COUNT, UI_TOOL_NAMES } from './server';
+export type { UiMcpServerConfig, UiMcpServerHandle, UiToolContextResolver, CreateUiMcpServerOpts } from './server';
+export type { UiToolContext, UiToolResult, UiHitlPauser, AttachmentTransformer, AttachmentTransformResult } from './types';
 
 // Unified dispatcher — single entry the MCP server registers.
 export { handleUi } from './tool-handlers/ui';
@@ -31,13 +16,5 @@ export type { UiArgs, UiCallResult } from './tool-handlers/ui';
 
 // Bundled-UI middleware — generic side-channel for tools that want to
 // fold a UI emission into the same call as their primary action.
-export {
-    extractAndEmitBundledUi,
-    withBundledUiField,
-    bundledUiComponentSchema,
-    bundledUiFieldSchema,
-} from './bundled-ui';
-export type {
-    BundledUiContext,
-    BundledUiResult,
-} from './bundled-ui';
+export { extractAndEmitBundledUi, withBundledUiField, bundledUiComponentSchema, bundledUiFieldSchema } from './bundled-ui';
+export type { BundledUiContext, BundledUiResult } from './bundled-ui';

@@ -45,10 +45,7 @@ describe('qasePlugin – auth header shape', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         const plugin = qasePlugin({ token: TOKEN });
-        await plugin.fetch(
-            { target: 'case:DEMO:1' },
-            makeCtx(),
-        );
+        await plugin.fetch({ target: 'case:DEMO:1' }, makeCtx());
 
         const [, init] = fetchMock.mock.calls[0];
         const headers = (init as RequestInit).headers as Record<string, string>;
@@ -65,10 +62,7 @@ describe('qasePlugin – happy path per target kind', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         const plugin = qasePlugin({ token: TOKEN });
-        const result = await plugin.fetch(
-            { target: 'case:DEMO:42' },
-            makeCtx(),
-        );
+        const result = await plugin.fetch({ target: 'case:DEMO:42' }, makeCtx());
 
         expect(fetchMock).toHaveBeenCalledTimes(1);
         const [url] = fetchMock.mock.calls[0];
@@ -96,10 +90,7 @@ describe('qasePlugin – happy path per target kind', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         const plugin = qasePlugin({ token: TOKEN });
-        const result = await plugin.fetch(
-            { target: 'project:DEMO' },
-            makeCtx(),
-        );
+        const result = await plugin.fetch({ target: 'project:DEMO' }, makeCtx());
 
         expect(fetchMock).toHaveBeenCalledTimes(1);
         const [url] = fetchMock.mock.calls[0];
@@ -133,10 +124,7 @@ describe('qasePlugin – happy path per target kind', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         const plugin = qasePlugin({ token: TOKEN });
-        const result = await plugin.fetch(
-            { target: 'suite:DEMO:7' },
-            makeCtx(),
-        );
+        const result = await plugin.fetch({ target: 'suite:DEMO:7' }, makeCtx());
 
         expect(fetchMock).toHaveBeenCalledTimes(2);
         const urls = fetchMock.mock.calls.map((c) => c[0] as string);
@@ -183,10 +171,7 @@ describe('qasePlugin – happy path per target kind', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         const plugin = qasePlugin({ token: TOKEN, pageSize: 2 });
-        const result = await plugin.fetch(
-            { target: 'suite:DEMO:7' },
-            makeCtx(),
-        );
+        const result = await plugin.fetch({ target: 'suite:DEMO:7' }, makeCtx());
 
         expect(fetchMock).toHaveBeenCalledTimes(3);
         const urls = fetchMock.mock.calls.map((c) => c[0] as string);
@@ -196,11 +181,7 @@ describe('qasePlugin – happy path per target kind', () => {
 
         // 1 suite + 3 cases
         expect(result.entries).toHaveLength(4);
-        expect(result.entries.slice(1).map((e) => e.path)).toEqual([
-            'cases/7/1.json',
-            'cases/7/2.json',
-            'cases/7/3.json',
-        ]);
+        expect(result.entries.slice(1).map((e) => e.path)).toEqual(['cases/7/1.json', 'cases/7/2.json', 'cases/7/3.json']);
     });
 });
 
@@ -210,9 +191,7 @@ describe('qasePlugin – error paths', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         const plugin = qasePlugin({ token: TOKEN });
-        await expect(
-            plugin.fetch({ target: 'case:DEMO:1' }, makeCtx()),
-        ).rejects.toThrow(/auth rejected.*401/);
+        await expect(plugin.fetch({ target: 'case:DEMO:1' }, makeCtx())).rejects.toThrow(/auth rejected.*401/);
     });
 
     it('returns empty entries on 404 (target absent is not fatal)', async () => {
@@ -221,31 +200,21 @@ describe('qasePlugin – error paths', () => {
 
         const ctx = makeCtx();
         const plugin = qasePlugin({ token: TOKEN });
-        const result = await plugin.fetch(
-            { target: 'case:DEMO:gone' },
-            ctx,
-        );
+        const result = await plugin.fetch({ target: 'case:DEMO:gone' }, ctx);
 
         expect(result.entries).toEqual([]);
         expect(typeof result.fetchedAt).toBe('string');
-        expect(ctx.log.info).toHaveBeenCalledWith(
-            'Qase target not found',
-            expect.objectContaining({ kind: 'case' }),
-        );
+        expect(ctx.log.info).toHaveBeenCalledWith('Qase target not found', expect.objectContaining({ kind: 'case' }));
     });
 
     it('rejects unsupported target prefixes', async () => {
         const plugin = qasePlugin({ token: TOKEN });
-        await expect(
-            plugin.fetch({ target: 'milestone:DEMO:1' }, makeCtx()),
-        ).rejects.toThrow(/unsupported target kind/);
+        await expect(plugin.fetch({ target: 'milestone:DEMO:1' }, makeCtx())).rejects.toThrow(/unsupported target kind/);
     });
 
     it('rejects malformed suite/case targets (missing id segment)', async () => {
         const plugin = qasePlugin({ token: TOKEN });
-        await expect(
-            plugin.fetch({ target: 'suite:DEMO' }, makeCtx()),
-        ).rejects.toThrow(/suite target must be/);
+        await expect(plugin.fetch({ target: 'suite:DEMO' }, makeCtx())).rejects.toThrow(/suite target must be/);
     });
 });
 
@@ -256,10 +225,7 @@ describe('qasePlugin – 429 retry behaviour', () => {
 
     it('retries on 429 with exponential backoff then resolves', async () => {
         const casePayload = { id: 9, title: 'rate-limited then ok' };
-        const fetchMock = vi
-            .fn()
-            .mockResolvedValueOnce(emptyResponse(429))
-            .mockResolvedValueOnce(qaseOk(casePayload));
+        const fetchMock = vi.fn().mockResolvedValueOnce(emptyResponse(429)).mockResolvedValueOnce(qaseOk(casePayload));
         vi.stubGlobal('fetch', fetchMock);
 
         const ctx = makeCtx();
@@ -279,10 +245,7 @@ describe('qasePlugin – 429 retry behaviour', () => {
         const result = await promise;
 
         expect(fetchMock).toHaveBeenCalledTimes(2);
-        expect(ctx.log.warn).toHaveBeenCalledWith(
-            'Qase rate limited, backing off',
-            expect.objectContaining({ attempt: 1, delayMs: 500 }),
-        );
+        expect(ctx.log.warn).toHaveBeenCalledWith('Qase rate limited, backing off', expect.objectContaining({ attempt: 1, delayMs: 500 }));
         expect(result.entries).toHaveLength(1);
         expect(JSON.parse(result.entries[0].content)).toEqual(casePayload);
     });
@@ -290,10 +253,7 @@ describe('qasePlugin – 429 retry behaviour', () => {
 
 describe('qasePlugin – token redaction', () => {
     it('never logs the token in info/warn/error calls', async () => {
-        const fetchMock = vi
-            .fn()
-            .mockResolvedValueOnce(emptyResponse(429))
-            .mockResolvedValueOnce(emptyResponse(404));
+        const fetchMock = vi.fn().mockResolvedValueOnce(emptyResponse(429)).mockResolvedValueOnce(emptyResponse(404));
         vi.stubGlobal('fetch', fetchMock);
         vi.useFakeTimers();
 

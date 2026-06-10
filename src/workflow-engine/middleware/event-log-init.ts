@@ -55,9 +55,7 @@ export interface ClaimRunInput {
 /** Backend-supplied durable claim. Atomic — implementations are
  *  expected to use a unique index on `idempotencyKey` (or equivalent)
  *  so concurrent claims collide deterministically. */
-export type ClaimRunResult =
-    | { ok: true }
-    | { ok: false; conflictsWith: string };
+export type ClaimRunResult = { ok: true } | { ok: false; conflictsWith: string };
 
 export interface EventLogInitMiddlewareOpts {
     claim?: (input: ClaimRunInput) => Promise<ClaimRunResult>;
@@ -67,11 +65,8 @@ export interface EventLogInitMiddlewareOpts {
     idempotencyAnnotationKey?: string;
 }
 
-export function eventLogInitMiddleware(
-    opts: EventLogInitMiddlewareOpts = {},
-): DispatchMiddleware {
-    const idempotencyAnnotationKey =
-        opts.idempotencyAnnotationKey ?? '__idempotencyKey';
+export function eventLogInitMiddleware(opts: EventLogInitMiddlewareOpts = {}): DispatchMiddleware {
+    const idempotencyAnnotationKey = opts.idempotencyAnnotationKey ?? '__idempotencyKey';
 
     return {
         name: 'event-log-init',
@@ -99,10 +94,7 @@ export function eventLogInitMiddleware(
                 // The backend reports who already holds the claim;
                 // surface it via the same error idempotencyDedup uses
                 // so call-site catch handlers are uniform.
-                throw new IdempotencyConflictError(
-                    idempotencyKey ?? `<run:${ctx.runId}>`,
-                    result.conflictsWith,
-                );
+                throw new IdempotencyConflictError(idempotencyKey ?? `<run:${ctx.runId}>`, result.conflictsWith);
             }
             return ctx;
         },

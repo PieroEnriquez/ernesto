@@ -47,8 +47,10 @@ describe('settleFromWorktree — step 6 journal rebase', () => {
     function buildWorkdir() {
         const fs = makeNodeFsAdapter(workRoot);
         return rehydrateWorkdir({
-            workdirId: 'wd1', workingTreeRoot: workRoot,
-            fs, master: { resolve: async () => ({ kind: 'not-found' }) },
+            workdirId: 'wd1',
+            workingTreeRoot: workRoot,
+            fs,
+            master: { resolve: async () => ({ kind: 'not-found' }) },
             lock: makeInMemoryWorkdirLock('wd1'),
         });
     }
@@ -146,7 +148,9 @@ describe('settleFromWorktree — step 6 journal rebase', () => {
         const beforeOriginMain = (await runGit(workRoot, ['rev-parse', 'origin/main'])).trim();
 
         const pushToMain: PushToMainFn = async () => ({
-            ok: false, error: 'fast_forward_required', currentSha: 'upstream-xyz',
+            ok: false,
+            error: 'fast_forward_required',
+            currentSha: 'upstream-xyz',
         });
 
         const r = await settleFromWorktree(workdir, {

@@ -82,9 +82,7 @@ export const bundledUiFieldSchema = z.array(bundledUiComponentSchema).default([]
  * raw shape. Used by tools that opt into bundling so their declared
  * input schema reflects the side-channel field on the wire.
  */
-export function withBundledUiField<S extends z.ZodRawShape>(
-    schema: S,
-): S & { ui: typeof bundledUiFieldSchema } {
+export function withBundledUiField<S extends z.ZodRawShape>(schema: S): S & { ui: typeof bundledUiFieldSchema } {
     return { ...schema, ui: bundledUiFieldSchema };
 }
 
@@ -93,10 +91,7 @@ export function withBundledUiField<S extends z.ZodRawShape>(
  * log + hitl.pauseForHuman. Returns the args with `ui` stripped so the
  * downstream handler sees only its own input shape.
  */
-export async function extractAndEmitBundledUi(
-    args: Record<string, unknown>,
-    ctx: BundledUiContext,
-): Promise<BundledUiResult> {
+export async function extractAndEmitBundledUi(args: Record<string, unknown>, ctx: BundledUiContext): Promise<BundledUiResult> {
     const rawUi = args.ui;
     if (!Array.isArray(rawUi) || rawUi.length === 0) {
         // Strip a present-but-empty `ui` field defensively so the
@@ -177,10 +172,9 @@ export async function extractAndEmitBundledUi(
         } else {
             // No HITL surface for this dispatch — the component is still
             // emitted (best-effort visibility) but we can't pause.
-            ctx.log.warn(
-                'bundled-ui: hitl component with structured expect bundled, but no hitl context available — skipping pause',
-                { expectKind: pauseExpectKind },
-            );
+            ctx.log.warn('bundled-ui: hitl component with structured expect bundled, but no hitl context available — skipping pause', {
+                expectKind: pauseExpectKind,
+            });
         }
     }
 

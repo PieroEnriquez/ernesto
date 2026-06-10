@@ -24,26 +24,14 @@ function scalar(v: unknown): string {
     }
 }
 
-export function substituteFields(
-    template: string | undefined,
-    value: unknown,
-): string {
+export function substituteFields(template: string | undefined, value: unknown): string {
     if (!template || template.length === 0) {
         return `The user responded: ${scalar(value)}`;
     }
     let out = template.replace(/\{value\}/g, scalar(value));
-    if (
-        value &&
-        typeof value === 'object' &&
-        !Array.isArray(value)
-    ) {
-        for (const [field, fieldValue] of Object.entries(
-            value as Record<string, unknown>,
-        )) {
-            const placeholder = new RegExp(
-                `\\{${field.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\}`,
-                'g',
-            );
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+        for (const [field, fieldValue] of Object.entries(value as Record<string, unknown>)) {
+            const placeholder = new RegExp(`\\{${field.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\}`, 'g');
             out = out.replace(placeholder, scalar(fieldValue));
         }
     }

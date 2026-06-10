@@ -46,28 +46,28 @@ export type ResolveUiRefError =
 
 export type ResolveUiRefResult =
     | {
-        ok: true;
-        /** Coerced to an array even when the file had a single object
-         *  under `component`. */
-        components: unknown[];
-        /** Number of leading list items unwrapped — `1` when the file
-         *  had `{component: <obj>}`, otherwise the array length. Just
-         *  a sanity-check value the caller may surface in diagnostics. */
-        count: number;
-        /** Build the JSON-path-ish identifier for the i-th component
-         *  in the parsed `component` field. With a single-object
-         *  shape it's `/component`, with an array it's
-         *  `/component/<i>`. Used in error responses so the agent can
-         *  jump straight to the right slice with `Read` / `Edit`. */
-        jsonPathForIndex: (i: number) => string;
-    }
+          ok: true;
+          /** Coerced to an array even when the file had a single object
+           *  under `component`. */
+          components: unknown[];
+          /** Number of leading list items unwrapped — `1` when the file
+           *  had `{component: <obj>}`, otherwise the array length. Just
+           *  a sanity-check value the caller may surface in diagnostics. */
+          count: number;
+          /** Build the JSON-path-ish identifier for the i-th component
+           *  in the parsed `component` field. With a single-object
+           *  shape it's `/component`, with an array it's
+           *  `/component/<i>`. Used in error responses so the agent can
+           *  jump straight to the right slice with `Read` / `Edit`. */
+          jsonPathForIndex: (i: number) => string;
+      }
     | {
-        ok: false;
-        error: ResolveUiRefError;
-        /** Diagnostic message — surfaced verbatim in the tool result
-         *  so the agent has a concrete recovery instruction. */
-        message: string;
-    };
+          ok: false;
+          error: ResolveUiRefError;
+          /** Diagnostic message — surfaced verbatim in the tool result
+           *  so the agent has a concrete recovery instruction. */
+          message: string;
+      };
 
 export interface ResolveUiRefInput {
     /** Absolute path to the run's workdir root. Omitted in contexts
@@ -79,9 +79,7 @@ export interface ResolveUiRefInput {
     ref: string;
 }
 
-export async function resolveUiRef(
-    input: ResolveUiRefInput,
-): Promise<ResolveUiRefResult> {
+export async function resolveUiRef(input: ResolveUiRefInput): Promise<ResolveUiRefResult> {
     const { workdirRoot, ref } = input;
     if (!ref || ref.length === 0) {
         return {
@@ -114,9 +112,7 @@ export async function resolveUiRef(
         return {
             ok: false,
             error: 'outside_workdir',
-            message:
-                `ui ref "${ref}" resolves outside the workdir and is rejected. ` +
-                'Use a workdir-relative path.',
+            message: `ui ref "${ref}" resolves outside the workdir and is rejected. ` + 'Use a workdir-relative path.',
         };
     }
     let stats: { size: number };
@@ -127,8 +123,7 @@ export async function resolveUiRef(
             ok: false,
             error: 'not_found',
             message:
-                `ui ref "${ref}" not found. Write the file first with the Write tool, ` +
-                'then call mcp__ui__ui again with the same ref.',
+                `ui ref "${ref}" not found. Write the file first with the Write tool, ` + 'then call mcp__ui__ui again with the same ref.',
         };
     }
     if (stats.size > MAX_REF_BYTES) {
@@ -176,20 +171,15 @@ export async function resolveUiRef(
         return {
             ok: false,
             error: 'missing_component_field',
-            message:
-                `ui ref "${ref}" has no "component" field. ` +
-                'Try: { "component": [{ "kind": "hitl", "props": { ... } }] }.',
+            message: `ui ref "${ref}" has no "component" field. ` + 'Try: { "component": [{ "kind": "hitl", "props": { ... } }] }.',
         };
     }
     const isArray = Array.isArray(componentField);
-    const components: unknown[] = isArray
-        ? (componentField as unknown[])
-        : [componentField];
+    const components: unknown[] = isArray ? (componentField as unknown[]) : [componentField];
     return {
         ok: true,
         components,
         count: components.length,
-        jsonPathForIndex: (i: number): string =>
-            isArray ? `/component/${i}` : '/component',
+        jsonPathForIndex: (i: number): string => (isArray ? `/component/${i}` : '/component'),
     };
 }

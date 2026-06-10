@@ -101,11 +101,7 @@ export interface SandboxClient {
     exec(h: SandboxHandle, argv: string[], opts?: ExecOpts): Promise<ExecResult>;
     /** Start a long-lived command and stream its stdout incrementally
      *  (the agent `claude` process). */
-    execStream(
-        h: SandboxHandle,
-        argv: string[],
-        opts?: ExecOpts,
-    ): Promise<ExecStreamHandle>;
+    execStream(h: SandboxHandle, argv: string[], opts?: ExecOpts): Promise<ExecStreamHandle>;
     /** Tear down the sandbox (cancel / end of run). The harness exposes this
      *  as the run's stop handler so a renderer-initiated stop propagates all
      *  the way down to releasing the microVM. */

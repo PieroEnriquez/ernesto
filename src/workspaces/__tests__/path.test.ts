@@ -6,11 +6,7 @@ describe('validateTreeRelPath', () => {
     // or null on reject. Each row preserves a former bespoke `it` assertion.
     const cases: ReadonlyArray<[string, unknown, string | null]> = [
         // accept: a clean tree-relative path is returned unchanged.
-        [
-            'accepts a clean tree-relative path',
-            'workspaces/product/pricing/esim.md',
-            'workspaces/product/pricing/esim.md',
-        ],
+        ['accepts a clean tree-relative path', 'workspaces/product/pricing/esim.md', 'workspaces/product/pricing/esim.md'],
         // reject: non-strings.
         ['rejects undefined', undefined, null],
         ['rejects a number', 42, null],

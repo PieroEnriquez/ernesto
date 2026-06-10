@@ -66,11 +66,7 @@ describe('walker', () => {
         expect(result.status).toBe('completed');
         expect(result.outputs).toEqual({ s1: { ok: true } });
         const types = rig.events.map((e) => e.type);
-        expect(types).toEqual([
-            'fact.run_started',
-            'fact.node_completed',
-            'fact.run_terminated',
-        ]);
+        expect(types).toEqual(['fact.run_started', 'fact.node_completed', 'fact.run_terminated']);
         const state = await rig.store.getRunState('run-1');
         expect(state?.status).toBe('completed');
         expect(state?.endedAt).toBeDefined();
@@ -101,9 +97,7 @@ describe('walker', () => {
             { ...rig, log: NOOP_LOG },
         );
         expect(result.status).toBe('errored');
-        const terminal = rig.events.find(
-            (e) => e.type === 'fact.run_terminated',
-        );
+        const terminal = rig.events.find((e) => e.type === 'fact.run_terminated');
         expect(terminal?.payload).toMatchObject({
             status: 'errored',
             code: 'boom',
@@ -154,12 +148,8 @@ describe('walker', () => {
         // The independent sibling completed before the run parked.
         expect(result.outputs.s2).toEqual({ done: true });
         // No terminal event — the run is parked, not finished.
-        expect(
-            rig.events.find((e) => e.type === 'fact.run_terminated'),
-        ).toBeUndefined();
-        const paused = rig.events.find(
-            (e) => e.type === 'fact.run_paused_human',
-        );
+        expect(rig.events.find((e) => e.type === 'fact.run_terminated')).toBeUndefined();
+        const paused = rig.events.find((e) => e.type === 'fact.run_paused_human');
         expect(paused).toBeDefined();
         const promptId = (paused!.payload as any).promptId as string;
         // The durable resume blob carries the parked step + its promptId.
@@ -317,17 +307,13 @@ describe('walker', () => {
             cacheWrite: 2,
             costUsd: 0.001,
         });
-        const subStarted = rig.events.find(
-            (e) => e.type === 'fact.subagent_started',
-        );
+        const subStarted = rig.events.find((e) => e.type === 'fact.subagent_started');
         expect(subStarted?.payload).toMatchObject({
             stepId: 's1',
             slug: 'translate',
             subRunId: 'child-1',
         });
-        const subCompleted = rig.events.find(
-            (e) => e.type === 'fact.subagent_completed',
-        );
+        const subCompleted = rig.events.find((e) => e.type === 'fact.subagent_completed');
         expect(subCompleted?.payload).toMatchObject({
             stepId: 's1',
             slug: 'translate',
@@ -390,9 +376,7 @@ describe('walker', () => {
             },
             { ...rig, log: NOOP_LOG },
         );
-        const componentEvents = rig.events.filter(
-            (e) => e.type === 'fact.component',
-        );
+        const componentEvents = rig.events.filter((e) => e.type === 'fact.component');
         expect(componentEvents.length).toBe(2);
         expect(componentEvents[0]!.payload).toMatchObject({
             stepId: 's1',
@@ -448,9 +432,7 @@ describe('walker', () => {
             metric: 42,
             rows: [{ a: 1 }, { a: 2 }],
         });
-        const componentEvents = rig.events.filter(
-            (e) => e.type === 'fact.component',
-        );
+        const componentEvents = rig.events.filter((e) => e.type === 'fact.component');
         expect(componentEvents.length).toBe(2);
         expect(componentEvents[0]!.payload).toMatchObject({
             stepId: 's1',
@@ -498,9 +480,7 @@ describe('walker', () => {
             { ...rig, log: NOOP_LOG },
         );
         expect(result.outputs.s1).toEqual({ plain: 'value', render: [] });
-        const componentEvents = rig.events.filter(
-            (e) => e.type === 'fact.component',
-        );
+        const componentEvents = rig.events.filter((e) => e.type === 'fact.component');
         expect(componentEvents.length).toBe(0);
     });
 
@@ -529,11 +509,7 @@ describe('walker', () => {
         );
         const stored = await rig.store.listEvents('run-5');
         expect(stored.length).toBe(3);
-        expect(stored.map((e) => e.type)).toEqual([
-            'fact.run_started',
-            'fact.node_completed',
-            'fact.run_terminated',
-        ]);
+        expect(stored.map((e) => e.type)).toEqual(['fact.run_started', 'fact.node_completed', 'fact.run_terminated']);
     });
 });
 

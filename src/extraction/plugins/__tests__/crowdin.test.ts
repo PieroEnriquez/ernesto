@@ -62,17 +62,11 @@ describe('crowdinPlugin', () => {
             vi.stubGlobal('fetch', fetchMock);
 
             const plugin = crowdinPlugin({ apiKey: API_KEY });
-            const result = await plugin.fetch(
-                { target: 'glossaries:project:100' },
-                makeCtx(),
-            );
+            const result = await plugin.fetch({ target: 'glossaries:project:100' }, makeCtx());
 
             // Only glossaries 11 and 22 belong to project 100.
             const paths = result.entries.map((e) => e.path).sort();
-            expect(paths).toEqual([
-                'glossaries/11-en-terms.json',
-                'glossaries/22-fr-terms.json',
-            ]);
+            expect(paths).toEqual(['glossaries/11-en-terms.json', 'glossaries/22-fr-terms.json']);
 
             // Each entry's content carries both the glossary and its terms.
             const eleven = result.entries.find((e) => e.path.startsWith('glossaries/11-'))!;
@@ -90,9 +84,7 @@ describe('crowdinPlugin', () => {
         it('rejects glossaries target without the project sub-target', async () => {
             const plugin = crowdinPlugin({ apiKey: API_KEY });
             vi.stubGlobal('fetch', vi.fn());
-            await expect(
-                plugin.fetch({ target: 'glossaries:42' }, makeCtx()),
-            ).rejects.toThrow(/glossaries:project/);
+            await expect(plugin.fetch({ target: 'glossaries:42' }, makeCtx())).rejects.toThrow(/glossaries:project/);
         });
     });
 
@@ -114,10 +106,7 @@ describe('crowdinPlugin', () => {
             const plugin = crowdinPlugin({ apiKey: API_KEY });
             const result = await plugin.fetch({ target: 'styleguides' }, makeCtx());
 
-            expect(result.entries.map((e) => e.path).sort()).toEqual([
-                'styleguides/7-brand-voice.json',
-                'styleguides/8-tone-guide.json',
-            ]);
+            expect(result.entries.map((e) => e.path).sort()).toEqual(['styleguides/7-brand-voice.json', 'styleguides/8-tone-guide.json']);
         });
 
         it('returns empty entries when the styleguides endpoint 404s (plan-gated)', async () => {

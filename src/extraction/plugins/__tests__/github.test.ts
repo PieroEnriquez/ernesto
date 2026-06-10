@@ -80,10 +80,7 @@ describe('githubPlugin – happy path per target kind', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         const plugin = githubPlugin({ token: TOKEN, owner: OWNER });
-        const result = await plugin.fetch(
-            { target: `pr:${REPO}:6298` },
-            makeCtx(),
-        );
+        const result = await plugin.fetch({ target: `pr:${REPO}:6298` }, makeCtx());
 
         expect(fetchMock).toHaveBeenCalledTimes(1);
         const [url, init] = fetchMock.mock.calls[0];
@@ -107,15 +104,10 @@ describe('githubPlugin – happy path per target kind', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         const plugin = githubPlugin({ token: TOKEN, owner: OWNER });
-        const result = await plugin.fetch(
-            { target: `commit:${REPO}:a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0` },
-            makeCtx(),
-        );
+        const result = await plugin.fetch({ target: `commit:${REPO}:a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0` }, makeCtx());
 
         const [url] = fetchMock.mock.calls[0];
-        expect(url).toBe(
-            'https://api.github.com/repos/acme/backend/commits/a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0',
-        );
+        expect(url).toBe('https://api.github.com/repos/acme/backend/commits/a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0');
 
         expect(result.entries).toHaveLength(1);
         const entry = result.entries[0];
@@ -136,15 +128,10 @@ describe('githubPlugin – happy path per target kind', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         const plugin = githubPlugin({ token: TOKEN, owner: OWNER });
-        const result = await plugin.fetch(
-            { target: `prs:${REPO}` },
-            makeCtx(),
-        );
+        const result = await plugin.fetch({ target: `prs:${REPO}` }, makeCtx());
 
         const [url] = fetchMock.mock.calls[0];
-        expect(url).toMatch(
-            /^https:\/\/api\.github\.com\/repos\/acme\/backend\/pulls\?/,
-        );
+        expect(url).toMatch(/^https:\/\/api\.github\.com\/repos\/acme\/backend\/pulls\?/);
         expect(url).toMatch(/state=closed/);
         expect(url).toMatch(/sort=created/);
         expect(url).toMatch(/direction=desc/);
@@ -154,23 +141,15 @@ describe('githubPlugin – happy path per target kind', () => {
     });
 
     it('fetches recent commits on the default branch', async () => {
-        const list = [
-            sampleCommit,
-            { ...sampleCommit, sha: 'b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1' },
-        ];
+        const list = [sampleCommit, { ...sampleCommit, sha: 'b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1' }];
         const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, list));
         vi.stubGlobal('fetch', fetchMock);
 
         const plugin = githubPlugin({ token: TOKEN, owner: OWNER });
-        const result = await plugin.fetch(
-            { target: `commits:${REPO}` },
-            makeCtx(),
-        );
+        const result = await plugin.fetch({ target: `commits:${REPO}` }, makeCtx());
 
         const [url] = fetchMock.mock.calls[0];
-        expect(url).toMatch(
-            /^https:\/\/api\.github\.com\/repos\/acme\/backend\/commits\?/,
-        );
+        expect(url).toMatch(/^https:\/\/api\.github\.com\/repos\/acme\/backend\/commits\?/);
 
         expect(result.entries).toHaveLength(2);
         expect(result.entries[0].path).toBe('commits/backend/a1b2c3d.md');
@@ -185,12 +164,10 @@ describe('githubPlugin – error paths', () => {
 
         const ctx = makeCtx();
         const plugin = githubPlugin({ token: TOKEN, owner: OWNER });
-        const err = await plugin
-            .fetch({ target: `pr:${REPO}:1` }, ctx)
-            .then(
-                () => null,
-                (e: Error) => e,
-            );
+        const err = await plugin.fetch({ target: `pr:${REPO}:1` }, ctx).then(
+            () => null,
+            (e: Error) => e,
+        );
 
         expect(err).toBeInstanceOf(Error);
         expect(err!.message).toMatch(/auth rejected.*401/);
@@ -209,31 +186,21 @@ describe('githubPlugin – error paths', () => {
 
         const ctx = makeCtx();
         const plugin = githubPlugin({ token: TOKEN, owner: OWNER });
-        const result = await plugin.fetch(
-            { target: `pr:${REPO}:9999` },
-            ctx,
-        );
+        const result = await plugin.fetch({ target: `pr:${REPO}:9999` }, ctx);
 
         expect(result.entries).toEqual([]);
         expect(typeof result.fetchedAt).toBe('string');
-        expect(ctx.log.info).toHaveBeenCalledWith(
-            'GitHub target not found',
-            expect.objectContaining({ kind: 'pr', repo: REPO }),
-        );
+        expect(ctx.log.info).toHaveBeenCalledWith('GitHub target not found', expect.objectContaining({ kind: 'pr', repo: REPO }));
     });
 
     it('rejects unsupported target prefixes', async () => {
         const plugin = githubPlugin({ token: TOKEN, owner: OWNER });
-        await expect(
-            plugin.fetch({ target: 'issue:backend:1' }, makeCtx()),
-        ).rejects.toThrow(/unsupported target kind/);
+        await expect(plugin.fetch({ target: 'issue:backend:1' }, makeCtx())).rejects.toThrow(/unsupported target kind/);
     });
 
     it('rejects pr target with non-numeric number', async () => {
         const plugin = githubPlugin({ token: TOKEN, owner: OWNER });
-        await expect(
-            plugin.fetch({ target: 'pr:backend:notanumber' }, makeCtx()),
-        ).rejects.toThrow(/pr target id must be numeric/);
+        await expect(plugin.fetch({ target: 'pr:backend:notanumber' }, makeCtx())).rejects.toThrow(/pr target id must be numeric/);
     });
 });
 
@@ -243,10 +210,7 @@ describe('githubPlugin – 429 retry behaviour', () => {
     });
 
     it('retries on 429 with exponential backoff then resolves', async () => {
-        const fetchMock = vi
-            .fn()
-            .mockResolvedValueOnce(emptyResponse(429))
-            .mockResolvedValueOnce(jsonResponse(200, samplePr));
+        const fetchMock = vi.fn().mockResolvedValueOnce(emptyResponse(429)).mockResolvedValueOnce(jsonResponse(200, samplePr));
         vi.stubGlobal('fetch', fetchMock);
 
         const ctx = makeCtx();
@@ -257,10 +221,7 @@ describe('githubPlugin – 429 retry behaviour', () => {
             maxRetries: 3,
         });
 
-        const promise = plugin.fetch(
-            { target: `pr:${REPO}:6298` },
-            ctx,
-        );
+        const promise = plugin.fetch({ target: `pr:${REPO}:6298` }, ctx);
 
         await vi.advanceTimersByTimeAsync(0);
         expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -294,10 +255,7 @@ describe('githubPlugin – 429 retry behaviour', () => {
             maxRetries: 3,
         });
 
-        const promise = plugin.fetch(
-            { target: `pr:${REPO}:6298` },
-            ctx,
-        );
+        const promise = plugin.fetch({ target: `pr:${REPO}:6298` }, ctx);
         // Swallow the rejection now so an unhandled-rejection doesn't fire while we advance timers.
         const settled = promise.then(
             (r) => ({ ok: true as const, r }),
@@ -317,9 +275,7 @@ describe('githubPlugin – 429 retry behaviour', () => {
 
         // 1 initial + 3 retries = 4 attempts.
         expect(fetchMock).toHaveBeenCalledTimes(4);
-        const delays = (ctx.log.warn as ReturnType<typeof vi.fn>).mock.calls.map(
-            (c) => (c[1] as { delayMs: number }).delayMs,
-        );
+        const delays = (ctx.log.warn as ReturnType<typeof vi.fn>).mock.calls.map((c) => (c[1] as { delayMs: number }).delayMs);
         expect(delays).toEqual([500, 1000, 2000]);
     });
 });

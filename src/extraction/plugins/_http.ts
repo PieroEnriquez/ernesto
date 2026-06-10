@@ -103,10 +103,7 @@ export interface FetchWithRetryOptions {
  *   - other non-2xx → throw `${source}: ${kind} fetch failed with status N`,
  *   - 2xx → resolve with the raw `Response` (callers decode as needed).
  */
-export async function fetchWithRetry(
-    url: string,
-    opts: FetchWithRetryOptions,
-): Promise<Response | 'not_found'> {
+export async function fetchWithRetry(url: string, opts: FetchWithRetryOptions): Promise<Response | 'not_found'> {
     let attempt = 0;
     // attempts: 1 initial + maxRetries retries (only on 429).
     while (true) {
@@ -143,9 +140,7 @@ export async function fetchWithRetry(
         }
 
         if (res.status === 401 || res.status === 403) {
-            throw new Error(
-                `${opts.source}: auth rejected (status ${res.status}) for ${opts.kind} — check ${opts.authHint}`,
-            );
+            throw new Error(`${opts.source}: auth rejected (status ${res.status}) for ${opts.kind} — check ${opts.authHint}`);
         }
 
         if (!res.ok) {

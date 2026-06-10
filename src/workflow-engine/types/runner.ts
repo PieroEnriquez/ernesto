@@ -85,10 +85,7 @@ export interface RunUsage {
     durationMs: number;
     /** Per-model line items so the renderer can break out
      *  "Claude Sonnet 4.6: X tokens / $Y" vs "kimi-k2.6: ..." */
-    modelUsage: Record<
-        string,
-        { inputTokens: number; outputTokens: number; costUsd?: number }
-    >;
+    modelUsage: Record<string, { inputTokens: number; outputTokens: number; costUsd?: number }>;
     /** Recursive descendants — populated by the cost-rollup reducer
      *  when this run dispatched children via `kind: 'subworkflow'` or
      *  the harness's subagent surface. */
@@ -115,11 +112,7 @@ export type RunHandleStatus =
     // Forward (M3) shape only: `dispatch` blocks until terminal today,
     // so `projectRunHandle`/`mapWalkStatus` never emit 'running' yet.
     // Consumers branch on the terminal members below.
-    | 'running'
-    | 'completed'
-    | 'errored'
-    | 'canceled'
-    | 'awaiting_input';
+    'running' | 'completed' | 'errored' | 'canceled' | 'awaiting_input';
 
 /** Returned by `dispatch(...)` — a handle to an in-flight or
  *  terminal run. Today the runner blocks `dispatch` until terminal,

@@ -49,18 +49,12 @@ describe('Node FsAdapter — glob (picomatch)', () => {
 
     it('supports brace expansion {ts,tsx}', async () => {
         const out = await fs.glob('workspaces/hr/routes/*.{ts,tsx}');
-        expect(out.sort()).toEqual([
-            'workspaces/hr/routes/a.ts',
-            'workspaces/hr/routes/b.tsx',
-        ]);
+        expect(out.sort()).toEqual(['workspaces/hr/routes/a.ts', 'workspaces/hr/routes/b.tsx']);
     });
 
     it('supports character classes [a-b]', async () => {
         const out = await fs.glob('workspaces/hr/routes/[a-b].ts*');
-        expect(out.sort()).toEqual([
-            'workspaces/hr/routes/a.ts',
-            'workspaces/hr/routes/b.tsx',
-        ]);
+        expect(out.sort()).toEqual(['workspaces/hr/routes/a.ts', 'workspaces/hr/routes/b.tsx']);
     });
 
     it('honors `path` to restrict the search subtree', async () => {
@@ -101,21 +95,18 @@ describe('Node FsAdapter — grep (ripgrep)', () => {
 
     it('case-insensitive flag matches both cases', async () => {
         const r = await fs.grep({ pattern: 'leave', caseInsensitive: true });
-        expect(r.lines.sort()).toEqual([
-            'workspaces/cs/INDEX.md',
-            'workspaces/hr/INDEX.md',
-        ]);
+        expect(r.lines.sort()).toEqual(['workspaces/cs/INDEX.md', 'workspaces/hr/INDEX.md']);
     });
 
     it('content mode emits `path:line:text`', async () => {
         const r = await fs.grep({ pattern: 'leave: [0-9]+', outputMode: 'content' });
-        expect(r.lines.some(l => /workspaces\/hr\/INDEX\.md:\d+:leave: 25 days/.test(l))).toBe(true);
+        expect(r.lines.some((l) => /workspaces\/hr\/INDEX\.md:\d+:leave: 25 days/.test(l))).toBe(true);
     });
 
     it('count mode emits `path:n`', async () => {
         const r = await fs.grep({ pattern: 'leave', outputMode: 'count', caseInsensitive: true });
         expect(r.lines.length).toBe(2);
-        expect(r.lines.every(l => /:\d+$/.test(l))).toBe(true);
+        expect(r.lines.every((l) => /:\d+$/.test(l))).toBe(true);
     });
 
     it('glob filter restricts file set', async () => {
@@ -125,10 +116,7 @@ describe('Node FsAdapter — grep (ripgrep)', () => {
 
     it('type filter restricts to ripgrep type set', async () => {
         const r = await fs.grep({ pattern: 'export', type: 'ts', outputMode: 'files_with_matches' });
-        expect(r.lines.sort()).toEqual([
-            'workspaces/hr/routes/a.ts',
-            'workspaces/hr/routes/b.tsx',
-        ]);
+        expect(r.lines.sort()).toEqual(['workspaces/hr/routes/a.ts', 'workspaces/hr/routes/b.tsx']);
     });
 
     it('context-after lines surface in content mode', async () => {
@@ -138,7 +126,7 @@ describe('Node FsAdapter — grep (ripgrep)', () => {
             contextAfter: 1,
         });
         // Expect the next line ("health: covered") to also appear.
-        expect(r.lines.some(l => l.includes('health: covered'))).toBe(true);
+        expect(r.lines.some((l) => l.includes('health: covered'))).toBe(true);
     });
 
     it('headLimit caps and marks truncated', async () => {
@@ -153,7 +141,7 @@ describe('Node FsAdapter — grep (ripgrep)', () => {
 
     it('path restricts the search', async () => {
         const r = await fs.grep({ pattern: 'export', path: 'workspaces/hr/routes' });
-        expect(r.lines.every(l => l.startsWith('workspaces/hr/routes/'))).toBe(true);
+        expect(r.lines.every((l) => l.startsWith('workspaces/hr/routes/'))).toBe(true);
     });
 
     it('empty result set is not an error', async () => {
@@ -178,10 +166,7 @@ describe('InMemory FsAdapter — glob / grep parity', () => {
     it('brace expansion + char classes match the same files', async () => {
         const fs = await seed();
         const out = await fs.glob('workspaces/hr/routes/*.{ts,tsx}');
-        expect(out.sort()).toEqual([
-            'workspaces/hr/routes/a.ts',
-            'workspaces/hr/routes/b.tsx',
-        ]);
+        expect(out.sort()).toEqual(['workspaces/hr/routes/a.ts', 'workspaces/hr/routes/b.tsx']);
     });
 
     it('grep default = files_with_matches, case-sensitive', async () => {
@@ -199,7 +184,7 @@ describe('InMemory FsAdapter — glob / grep parity', () => {
     it('grep content mode includes line numbers', async () => {
         const fs = await seed();
         const r = await fs.grep({ pattern: 'leave: 25', outputMode: 'content' });
-        expect(r.lines.some(l => /:\d+:leave: 25 days/.test(l))).toBe(true);
+        expect(r.lines.some((l) => /:\d+:leave: 25 days/.test(l))).toBe(true);
     });
 
     it('grep glob filter', async () => {

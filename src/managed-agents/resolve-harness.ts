@@ -15,10 +15,7 @@ import type { AgentDeclaration } from './types';
 
 export type AgentHarness = 'cas' | 'cursor' | 'fragua-pi' | 'remote-vm';
 
-export function resolveHarness(
-    decl: Pick<AgentDeclaration, 'harness' | 'provider'> | undefined,
-    override?: AgentHarness,
-): AgentHarness {
+export function resolveHarness(decl: Pick<AgentDeclaration, 'harness' | 'provider'> | undefined, override?: AgentHarness): AgentHarness {
     if (override) return override;
     if (decl?.harness) return decl.harness;
     if (decl?.provider === 'OPEN_ROUTER') return 'fragua-pi';

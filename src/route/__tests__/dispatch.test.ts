@@ -56,12 +56,7 @@ describe('dispatchRoute', () => {
         const reg = new RouteRegistry();
         reg.register(echoRoute);
 
-        const result = await dispatchRoute(
-            reg,
-            'test://echo',
-            { msg: 'agent' },
-            makeCtx(['ernesto:agent-ops']),
-        );
+        const result = await dispatchRoute(reg, 'test://echo', { msg: 'agent' }, makeCtx(['ernesto:agent-ops']));
         expect(result).toEqual({ ok: true, data: { msg: 'agent' } });
     });
 
@@ -114,24 +109,14 @@ describe('dispatchRoute', () => {
         it('resolves scope from validated input and accepts when caller has the derived scope', async () => {
             const reg = new RouteRegistry();
             reg.register(platformDashboards);
-            const result = await dispatchRoute(
-                reg,
-                '_ernesto://list-dashboards',
-                { workspace: 'marketing' },
-                makeCtx(['marketing:read']),
-            );
+            const result = await dispatchRoute(reg, '_ernesto://list-dashboards', { workspace: 'marketing' }, makeCtx(['marketing:read']));
             expect(result).toEqual({ ok: true, data: { ok: true } });
         });
 
         it('denies when caller has a different workspace scope', async () => {
             const reg = new RouteRegistry();
             reg.register(platformDashboards);
-            const result = await dispatchRoute(
-                reg,
-                '_ernesto://list-dashboards',
-                { workspace: 'payments' },
-                makeCtx(['marketing:read']),
-            );
+            const result = await dispatchRoute(reg, '_ernesto://list-dashboards', { workspace: 'payments' }, makeCtx(['marketing:read']));
             expect(result.ok).toBe(false);
             if (result.ok) return;
             expect(result.error).toBe('scope_denied');
@@ -147,12 +132,7 @@ describe('dispatchRoute', () => {
             // No `workspace` field → input invalid; we can't derive scope
             // without parsed input, so invalid_input must come back, not
             // scope_denied. This is the post-reorder guarantee.
-            const result = await dispatchRoute(
-                reg,
-                '_ernesto://list-dashboards',
-                { not_a_workspace: 'x' },
-                makeCtx([]),
-            );
+            const result = await dispatchRoute(reg, '_ernesto://list-dashboards', { not_a_workspace: 'x' }, makeCtx([]));
             expect(result.ok).toBe(false);
             if (result.ok) return;
             expect(result.error).toBe('invalid_input');
@@ -317,12 +297,7 @@ describe('dispatchRoute', () => {
         const reg = new RouteRegistry();
         reg.register(echoRoute);
 
-        const result = await dispatchRoute(
-            reg,
-            'test://echo',
-            { msg: 'hi' },
-            { ...makeCtx(['test:read']), emitComponent: () => {} },
-        );
+        const result = await dispatchRoute(reg, 'test://echo', { msg: 'hi' }, { ...makeCtx(['test:read']), emitComponent: () => {} });
         expect(result.ok).toBe(true);
         if (!result.ok) return;
         // Plain envelope passes through — no stripping when no manifest fires.

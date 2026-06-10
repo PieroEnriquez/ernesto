@@ -42,11 +42,7 @@
 import { promises as fs } from 'node:fs';
 import { dirname, join, posix, sep } from 'node:path';
 import { z } from 'zod';
-import {
-    containsParentSegment,
-    isPathWithin,
-    resolvePath,
-} from '../../path-security';
+import { containsParentSegment, isPathWithin, resolvePath } from '../../path-security';
 import { defineRoute } from '../../route/define-route';
 import type { RouteRegistry } from '../../route/route-registry';
 
@@ -121,28 +117,16 @@ interface WorkspaceErr {
     details?: unknown;
 }
 
-function pathError(
-    code: WorkspaceErr['error'],
-    message: string,
-): WorkspaceErr {
+function pathError(code: WorkspaceErr['error'], message: string): WorkspaceErr {
     return { ok: false, error: code, details: { message } };
 }
 
-function resolveWorkspacePath(
-    workdirRoot: string | undefined,
-    inputPath: string,
-): ResolvedPath | WorkspaceErr {
+function resolveWorkspacePath(workdirRoot: string | undefined, inputPath: string): ResolvedPath | WorkspaceErr {
     if (!workdirRoot) {
-        return pathError(
-            'invalid_input',
-            'brain://* requires a workdir-bound context',
-        );
+        return pathError('invalid_input', 'brain://* requires a workdir-bound context');
     }
     if (containsParentSegment(inputPath)) {
-        return pathError(
-            'invalid_input',
-            `path "${inputPath}" contains a parent segment ("..") and is rejected`,
-        );
+        return pathError('invalid_input', `path "${inputPath}" contains a parent segment ("..") and is rejected`);
     }
     // Normalise the relative path (strip leading ./ and slashes) so
     // join produces a clean absolute. Posix-style on the input even on
@@ -151,17 +135,12 @@ function resolveWorkspacePath(
     const abs = resolvePath(join(workdirRoot, rel));
     const allowed = resolvePath(workdirRoot);
     if (!isPathWithin(abs, allowed)) {
-        return pathError(
-            'invalid_input',
-            `path "${inputPath}" resolves outside the workdir and is rejected`,
-        );
+        return pathError('invalid_input', `path "${inputPath}" resolves outside the workdir and is rejected`);
     }
     return { rel, abs };
 }
 
-function isWorkspaceErr(
-    v: ResolvedPath | WorkspaceErr,
-): v is WorkspaceErr {
+function isWorkspaceErr(v: ResolvedPath | WorkspaceErr): v is WorkspaceErr {
     return (v as WorkspaceErr).ok === false;
 }
 
@@ -181,22 +160,16 @@ export function registerBrainRoutes(registry: RouteRegistry): void {
             handler: async (input, ctx) => {
                 const resolved = resolveWorkspacePath(ctx.workdirRoot, input.path);
                 if (isWorkspaceErr(resolved)) {
-                    throw new Error(
-                        (resolved.details as { message: string }).message,
-                    );
+                    throw new Error((resolved.details as { message: string }).message);
                 }
                 let stat;
                 try {
                     stat = await fs.stat(resolved.abs);
                 } catch (err) {
-                    throw new Error(
-                        `read "${input.path}" failed: ${(err as Error).message}`,
-                    );
+                    throw new Error(`read "${input.path}" failed: ${(err as Error).message}`);
                 }
                 if (stat.size > MAX_FILE_BYTES) {
-                    throw new Error(
-                        `file "${input.path}" is ${stat.size} bytes, over the ${MAX_FILE_BYTES}-byte cap`,
-                    );
+                    throw new Error(`file "${input.path}" is ${stat.size} bytes, over the ${MAX_FILE_BYTES}-byte cap`);
                 }
                 const content = await fs.readFile(resolved.abs, 'utf8');
                 return { path: resolved.rel, content };
@@ -219,9 +192,7 @@ export function registerBrainRoutes(registry: RouteRegistry): void {
                     throw new Error('brain://* requires a workdir-bound context');
                 }
                 if (containsParentSegment(input.pattern)) {
-                    throw new Error(
-                        `pattern "${input.pattern}" contains a parent segment ("..") and is rejected`,
-                    );
+                    throw new Error(`pattern "${input.pattern}" contains a parent segment ("..") and is rejected`);
                 }
                 // Use node's glob via fs.glob (Node 22+) — falls back
                 // to manual walk if not available. Workdir-bounded by
@@ -280,9 +251,7 @@ export function registerBrainRoutes(registry: RouteRegistry): void {
             handler: async (input, ctx) => {
                 const resolved = resolveWorkspacePath(ctx.workdirRoot, input.path);
                 if (isWorkspaceErr(resolved)) {
-                    throw new Error(
-                        (resolved.details as { message: string }).message,
-                    );
+                    throw new Error((resolved.details as { message: string }).message);
                 }
                 await fs.mkdir(dirname(resolved.abs), { recursive: true });
                 // Atomic write: tmp file + rename. Avoids partial reads
@@ -313,16 +282,12 @@ export function registerBrainRoutes(registry: RouteRegistry): void {
             handler: async (input, ctx) => {
                 const resolved = resolveWorkspacePath(ctx.workdirRoot, input.path);
                 if (isWorkspaceErr(resolved)) {
-                    throw new Error(
-                        (resolved.details as { message: string }).message,
-                    );
+                    throw new Error((resolved.details as { message: string }).message);
                 }
                 const original = await fs.readFile(resolved.abs, 'utf8');
                 const idx = original.indexOf(input.oldString);
                 if (idx < 0) {
-                    throw new Error(
-                        `edit "${input.path}": oldString not found`,
-                    );
+                    throw new Error(`edit "${input.path}": oldString not found`);
                 }
                 if (original.indexOf(input.oldString, idx + 1) >= 0) {
                     throw new Error(
@@ -330,10 +295,7 @@ export function registerBrainRoutes(registry: RouteRegistry): void {
                             'pass a longer substring that uniquely identifies the site',
                     );
                 }
-                const updated =
-                    original.slice(0, idx) +
-                    input.newString +
-                    original.slice(idx + input.oldString.length);
+                const updated = original.slice(0, idx) + input.newString + original.slice(idx + input.oldString.length);
                 const tmp = `${resolved.abs}.tmp-${Date.now()}-${process.pid}`;
                 await fs.writeFile(tmp, updated, 'utf8');
                 await fs.rename(tmp, resolved.abs);
@@ -357,9 +319,7 @@ export function registerBrainRoutes(registry: RouteRegistry): void {
                     throw new Error('brain://* requires a workdir-bound context');
                 }
                 const allowed = resolvePath(ctx.workdirRoot);
-                const needle = input.caseInsensitive
-                    ? input.pattern.toLowerCase()
-                    : input.pattern;
+                const needle = input.caseInsensitive ? input.pattern.toLowerCase() : input.pattern;
                 const matches: Array<{ path: string; line: number; text: string }> = [];
                 let truncated = false;
                 async function walk(dir: string): Promise<void> {
@@ -399,9 +359,7 @@ export function registerBrainRoutes(registry: RouteRegistry): void {
                         }
                         const lines = content.split('\n');
                         for (let i = 0; i < lines.length; i++) {
-                            const hay = input.caseInsensitive
-                                ? lines[i].toLowerCase()
-                                : lines[i];
+                            const hay = input.caseInsensitive ? lines[i].toLowerCase() : lines[i];
                             if (hay.includes(needle)) {
                                 if (matches.length >= MAX_GREP_MATCHES) {
                                     truncated = true;

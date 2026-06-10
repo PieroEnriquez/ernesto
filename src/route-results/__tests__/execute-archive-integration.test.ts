@@ -11,9 +11,7 @@ import type { ExecuteVerbContext } from '../../agent-verbs/execute';
 let WORKDIR_ROOT = '';
 
 beforeAll(async () => {
-    WORKDIR_ROOT = await fs.mkdtemp(
-        path.join(os.tmpdir(), 'ernesto-archive-integration-'),
-    );
+    WORKDIR_ROOT = await fs.mkdtemp(path.join(os.tmpdir(), 'ernesto-archive-integration-'));
 });
 afterAll(async () => {
     if (WORKDIR_ROOT) {
@@ -55,9 +53,7 @@ const tabularRoute = defineRoute({
     scope: 'test:read',
     input: z.object({}),
     output: z.object({
-        rows: z.array(
-            z.object({ method: z.string(), gross_usd: z.number() }),
-        ),
+        rows: z.array(z.object({ method: z.string(), gross_usd: z.number() })),
     }),
     handler: async () => ({
         rows: Array.from({ length: 12 }, (_, i) => ({
@@ -72,12 +68,7 @@ describe('execute → archive + preview', () => {
         const reg = new RouteRegistry();
         reg.register(tabularRoute);
         const wd = makeWorkdir();
-        const result = await handleExecute(
-            wd,
-            reg,
-            { uri: 'redshift://mock-rows', params: {} },
-            makeCtx(reg, wd),
-        );
+        const result = await handleExecute(wd, reg, { uri: 'redshift://mock-rows', params: {} }, makeCtx(reg, wd));
         expect(result.ok).toBe(true);
         if (!result.ok) return;
         // data is still the route's typed shape (no strip; no render manifest)
@@ -101,12 +92,7 @@ describe('execute → archive + preview', () => {
         const reg = new RouteRegistry();
         reg.register(tabularRoute);
         const wd = makeWorkdir();
-        const result = await handleExecute(
-            wd,
-            reg,
-            { uri: 'redshift://mock-rows', params: {}, previewLimit: 2 },
-            makeCtx(reg, wd),
-        );
+        const result = await handleExecute(wd, reg, { uri: 'redshift://mock-rows', params: {}, previewLimit: 2 }, makeCtx(reg, wd));
         expect(result.ok).toBe(true);
         if (!result.ok) return;
         const preview = (result as any).preview;
@@ -118,12 +104,7 @@ describe('execute → archive + preview', () => {
         const reg = new RouteRegistry();
         reg.register(tabularRoute);
         const wd = makeWorkdir();
-        const result = await handleExecute(
-            wd,
-            reg,
-            { uri: 'redshift://mock-rows', params: {}, previewLimit: 0 },
-            makeCtx(reg, wd),
-        );
+        const result = await handleExecute(wd, reg, { uri: 'redshift://mock-rows', params: {}, previewLimit: 0 }, makeCtx(reg, wd));
         expect(result.ok).toBe(true);
         if (!result.ok) return;
         expect((result as any).preview).toBeUndefined();
@@ -134,12 +115,7 @@ describe('execute → archive + preview', () => {
         const reg = new RouteRegistry();
         reg.register(tabularRoute);
         const wd = makeWorkdir();
-        const result = await handleExecute(
-            wd,
-            reg,
-            { uri: 'redshift://mock-rows', params: {}, previewLimit: 'all' },
-            makeCtx(reg, wd),
-        );
+        const result = await handleExecute(wd, reg, { uri: 'redshift://mock-rows', params: {}, previewLimit: 'all' }, makeCtx(reg, wd));
         expect(result.ok).toBe(true);
         if (!result.ok) return;
         const preview = (result as any).preview;
@@ -155,12 +131,7 @@ describe('execute → archive + preview', () => {
             firstMethod: (data as any).rows[0]?.method,
         }));
         const wd = makeWorkdir();
-        const result = await handleExecute(
-            wd,
-            reg,
-            { uri: 'redshift://mock-rows', params: {} },
-            makeCtx(reg, wd),
-        );
+        const result = await handleExecute(wd, reg, { uri: 'redshift://mock-rows', params: {} }, makeCtx(reg, wd));
         expect(result.ok).toBe(true);
         if (!result.ok) return;
         const preview = (result as any).preview as any;

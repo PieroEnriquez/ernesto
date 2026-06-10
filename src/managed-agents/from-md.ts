@@ -1,10 +1,6 @@
 import { load as yamlLoad } from 'js-yaml';
 import { readFrontmatter } from '../frontmatter';
-import type {
-    AgentDeclaration,
-    SystemPromptConfig,
-    JsonSchemaOutputFormat,
-} from './types';
+import type { AgentDeclaration, SystemPromptConfig, JsonSchemaOutputFormat } from './types';
 
 /**
  * Raw parsed shape of a `workspaces/<w>/managed-agents/<slug>.md` file.
@@ -30,13 +26,22 @@ export interface ManagedAgentMd {
  * for stops 7+ but rejected nowhere else.
  */
 const PROJECTED_FRONTMATTER_KEYS = new Set([
-    'slug', 'name', 'description', 'provider', 'harness', 'model',
-    'systemPrompt', 'maxTurns', 'mcpServers', 'outputFormat',
-    'disallowedTools', 'scope', 'callableAs', 'subagents',
+    'slug',
+    'name',
+    'description',
+    'provider',
+    'harness',
+    'model',
+    'systemPrompt',
+    'maxTurns',
+    'mcpServers',
+    'outputFormat',
+    'disallowedTools',
+    'scope',
+    'callableAs',
+    'subagents',
 ]);
-const RESERVED_FRONTMATTER_KEYS = new Set([
-    'trigger', 'requires', 'consumes',
-]);
+const RESERVED_FRONTMATTER_KEYS = new Set(['trigger', 'requires', 'consumes']);
 
 /**
  * §7.13.5 — `extends:` is parsed and kept on `frontMatter` until
@@ -54,21 +59,14 @@ const COMPOSITION_FRONTMATTER_KEYS = new Set(['extends']);
  * the rest is the agent body. Body composes into the system prompt
  * per §7 (see `toAgentDeclaration`).
  */
-export function parseManagedAgentMd(
-    raw: string,
-    opts: { slug: string; workspace: string },
-): ManagedAgentMd {
+export function parseManagedAgentMd(raw: string, opts: { slug: string; workspace: string }): ManagedAgentMd {
     const { frontMatter, body } = readFrontmatter(raw);
     if (frontMatter === '') {
-        throw new Error(
-            `managed-agents/${opts.slug}.md: missing YAML frontmatter (file must begin with "---")`,
-        );
+        throw new Error(`managed-agents/${opts.slug}.md: missing YAML frontmatter (file must begin with "---")`);
     }
     const fm = yamlLoad(frontMatter);
     if (!fm || typeof fm !== 'object' || Array.isArray(fm)) {
-        throw new Error(
-            `managed-agents/${opts.slug}.md: frontmatter must be a YAML object`,
-        );
+        throw new Error(`managed-agents/${opts.slug}.md: frontmatter must be a YAML object`);
     }
     return {
         slug: opts.slug,
@@ -106,10 +104,7 @@ export function toAgentDeclaration(md: ManagedAgentMd): AgentDeclaration {
     const fm = md.frontMatter;
 
     for (const key of Object.keys(fm)) {
-        if (
-            !PROJECTED_FRONTMATTER_KEYS.has(key) &&
-            !RESERVED_FRONTMATTER_KEYS.has(key)
-        ) {
+        if (!PROJECTED_FRONTMATTER_KEYS.has(key) && !RESERVED_FRONTMATTER_KEYS.has(key)) {
             if (COMPOSITION_FRONTMATTER_KEYS.has(key)) {
                 throw new Error(
                     `managed-agents/${md.slug}.md: "extends" must be resolved by composeExtends before toAgentDeclaration (§7.13.5)`,
@@ -117,21 +112,17 @@ export function toAgentDeclaration(md: ManagedAgentMd): AgentDeclaration {
             }
             throw new Error(
                 `managed-agents/${md.slug}.md: unknown frontmatter key "${key}" ` +
-                `(allowed: ${[...PROJECTED_FRONTMATTER_KEYS, ...RESERVED_FRONTMATTER_KEYS].sort().join(', ')})`,
+                    `(allowed: ${[...PROJECTED_FRONTMATTER_KEYS, ...RESERVED_FRONTMATTER_KEYS].sort().join(', ')})`,
             );
         }
     }
 
     const slug = strField(fm, 'slug', md.slug);
     if (slug !== md.slug) {
-        throw new Error(
-            `managed-agents/${md.slug}.md: frontmatter slug "${slug}" disagrees with filename`,
-        );
+        throw new Error(`managed-agents/${md.slug}.md: frontmatter slug "${slug}" disagrees with filename`);
     }
     if (!/^[a-z][a-z0-9-]{0,39}$/.test(slug)) {
-        throw new Error(
-            `managed-agents/${md.slug}.md: slug must match /^[a-z][a-z0-9-]{0,39}$/`,
-        );
+        throw new Error(`managed-agents/${md.slug}.md: slug must match /^[a-z][a-z0-9-]{0,39}$/`);
     }
 
     const provider = providerField(fm, slug);
@@ -163,29 +154,20 @@ export function toAgentDeclaration(md: ManagedAgentMd): AgentDeclaration {
 /** Project `subagents: { <slug>: { ref: <workflow-name> } }`. Shape-
  *  validates each entry; deeper resolution (does `ref` resolve to a
  *  known workflow?) belongs to wire-fragua's `resolveSubagents`. */
-function subagentsField(
-    fm: Record<string, unknown>,
-    slug: string,
-): Record<string, { ref: string }> | undefined {
+function subagentsField(fm: Record<string, unknown>, slug: string): Record<string, { ref: string }> | undefined {
     const raw = fm.subagents;
     if (raw === undefined) return undefined;
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-        throw new Error(
-            `managed-agents/${slug}.md: frontmatter "subagents" must be an object mapping slug → { ref }`,
-        );
+        throw new Error(`managed-agents/${slug}.md: frontmatter "subagents" must be an object mapping slug → { ref }`);
     }
     const out: Record<string, { ref: string }> = {};
     for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
         if (!value || typeof value !== 'object' || Array.isArray(value)) {
-            throw new Error(
-                `managed-agents/${slug}.md: subagents.${key} must be an object with a "ref" string`,
-            );
+            throw new Error(`managed-agents/${slug}.md: subagents.${key} must be an object with a "ref" string`);
         }
         const ref = (value as { ref?: unknown }).ref;
         if (typeof ref !== 'string' || ref.length === 0) {
-            throw new Error(
-                `managed-agents/${slug}.md: subagents.${key}.ref must be a non-empty string`,
-            );
+            throw new Error(`managed-agents/${slug}.md: subagents.${key}.ref must be a non-empty string`);
         }
         out[key] = { ref };
     }
@@ -194,15 +176,9 @@ function subagentsField(
 
 // ─── system prompt composition ────────────────────────────────────────────
 
-function composeSystemPrompt(
-    fmSystemPrompt: unknown,
-    body: string,
-    slug: string,
-): SystemPromptConfig {
+function composeSystemPrompt(fmSystemPrompt: unknown, body: string, slug: string): SystemPromptConfig {
     if (body.length === 0) {
-        throw new Error(
-            `managed-agents/${slug}.md: body cannot be empty — it becomes the system prompt or the preset append`,
-        );
+        throw new Error(`managed-agents/${slug}.md: body cannot be empty — it becomes the system prompt or the preset append`);
     }
     if (fmSystemPrompt === undefined) {
         return body;
@@ -229,11 +205,7 @@ function composeSystemPrompt(
 
 // ─── frontmatter readers ──────────────────────────────────────────────────
 
-function strField(
-    fm: Record<string, unknown>,
-    key: string,
-    fallback?: string,
-): string {
+function strField(fm: Record<string, unknown>, key: string, fallback?: string): string {
     const v = fm[key];
     if (typeof v === 'string' && v.length > 0) return v;
     if (fallback !== undefined && v === undefined) return fallback;
@@ -246,57 +218,34 @@ function intField(fm: Record<string, unknown>, key: string): number {
     throw new Error(`managed-agents frontmatter: "${key}" must be a positive integer`);
 }
 
-function strArrayField(
-    fm: Record<string, unknown>,
-    key: string,
-): string[] | undefined {
+function strArrayField(fm: Record<string, unknown>, key: string): string[] | undefined {
     const v = fm[key];
     if (v === undefined) return undefined;
-    if (!Array.isArray(v) || !v.every(x => typeof x === 'string')) {
+    if (!Array.isArray(v) || !v.every((x) => typeof x === 'string')) {
         throw new Error(`managed-agents frontmatter: "${key}" must be an array of strings`);
     }
     return v as string[];
 }
 
-function providerField(
-    fm: Record<string, unknown>,
-    slug: string,
-): 'ANTHROPIC' | 'OPEN_ROUTER' | undefined {
+function providerField(fm: Record<string, unknown>, slug: string): 'ANTHROPIC' | 'OPEN_ROUTER' | undefined {
     const v = fm.provider;
     if (v === undefined) return undefined;
     if (v === 'ANTHROPIC' || v === 'OPEN_ROUTER') return v;
-    throw new Error(
-        `managed-agents/${slug}.md: provider must be "ANTHROPIC" or "OPEN_ROUTER"`,
-    );
+    throw new Error(`managed-agents/${slug}.md: provider must be "ANTHROPIC" or "OPEN_ROUTER"`);
 }
 
-function harnessField(
-    fm: Record<string, unknown>,
-    slug: string,
-): 'cas' | 'cursor' | 'fragua-pi' | 'remote-vm' | undefined {
+function harnessField(fm: Record<string, unknown>, slug: string): 'cas' | 'cursor' | 'fragua-pi' | 'remote-vm' | undefined {
     const v = fm.harness;
     if (v === undefined) return undefined;
     if (v === 'cas' || v === 'cursor' || v === 'fragua-pi' || v === 'remote-vm') return v;
-    throw new Error(
-        `managed-agents/${slug}.md: harness must be "cas" | "cursor" | "fragua-pi" | "remote-vm"`,
-    );
+    throw new Error(`managed-agents/${slug}.md: harness must be "cas" | "cursor" | "fragua-pi" | "remote-vm"`);
 }
 
-function outputFormatField(
-    fm: Record<string, unknown>,
-    slug: string,
-): JsonSchemaOutputFormat | undefined {
+function outputFormatField(fm: Record<string, unknown>, slug: string): JsonSchemaOutputFormat | undefined {
     const v = fm.outputFormat;
     if (v === undefined) return undefined;
-    if (
-        typeof v !== 'object' ||
-        v === null ||
-        Array.isArray(v) ||
-        (v as Record<string, unknown>).type !== 'json_schema'
-    ) {
-        throw new Error(
-            `managed-agents/${slug}.md: outputFormat must be { type: "json_schema", schema: {...} }`,
-        );
+    if (typeof v !== 'object' || v === null || Array.isArray(v) || (v as Record<string, unknown>).type !== 'json_schema') {
+        throw new Error(`managed-agents/${slug}.md: outputFormat must be { type: "json_schema", schema: {...} }`);
     }
     const o = v as Record<string, unknown>;
     if (typeof o.schema !== 'object' || o.schema === null || Array.isArray(o.schema)) {
@@ -321,10 +270,7 @@ function outputFormatField(
  * pre-fetched chain pulled from Mongo. Either way the resolver is sync
  * — `composeExtends` is structural composition, not I/O.
  */
-export type ExtendsResolver = (
-    workspace: string,
-    slug: string,
-) => ManagedAgentMd | undefined;
+export type ExtendsResolver = (workspace: string, slug: string) => ManagedAgentMd | undefined;
 
 /**
  * §7.13.5 — max length of an `extends:` chain (hops between files).
@@ -356,18 +302,14 @@ export const ERNESTO_WORKSPACE = '_ernesto';
  * same-workspace bases (legibility + grep). The qualified form is the
  * only way to reach the platform-level shared bases.
  */
-function parseExtendsKey(
-    extendsKey: string,
-    md: ManagedAgentMd,
-): { workspace: string; slug: string } {
+function parseExtendsKey(extendsKey: string, md: ManagedAgentMd): { workspace: string; slug: string } {
     if (!extendsKey.includes('/')) {
         return { workspace: md.workspace, slug: extendsKey };
     }
     const parts = extendsKey.split('/');
     if (parts.length !== 2 || parts[0].length === 0 || parts[1].length === 0) {
         throw new Error(
-            `managed-agents/${md.slug}.md: "extends" must be "<slug>" or "<workspace>/<slug>" ` +
-            `(got ${JSON.stringify(extendsKey)})`,
+            `managed-agents/${md.slug}.md: "extends" must be "<slug>" or "<workspace>/<slug>" ` + `(got ${JSON.stringify(extendsKey)})`,
         );
     }
     return { workspace: parts[0], slug: parts[1] };
@@ -400,24 +342,14 @@ function parseExtendsKey(
  *   target throws.
  * - Missing base → `extends_target_not_found: <workspace>/<slug>`.
  */
-export function composeExtends(
-    md: ManagedAgentMd,
-    opts: { resolveBase: ExtendsResolver },
-): ManagedAgentMd {
+export function composeExtends(md: ManagedAgentMd, opts: { resolveBase: ExtendsResolver }): ManagedAgentMd {
     return composeExtendsInner(md, opts.resolveBase, []);
 }
 
-function composeExtendsInner(
-    md: ManagedAgentMd,
-    resolveBase: ExtendsResolver,
-    chain: string[],
-): ManagedAgentMd {
+function composeExtendsInner(md: ManagedAgentMd, resolveBase: ExtendsResolver, chain: string[]): ManagedAgentMd {
     const nodeKey = `${md.workspace}/${md.slug}`;
     if (chain.includes(nodeKey)) {
-        throw new Error(
-            `managed-agents/${md.slug}.md: extends cycle detected ` +
-            `(${[...chain, nodeKey].join(' → ')})`,
-        );
+        throw new Error(`managed-agents/${md.slug}.md: extends cycle detected ` + `(${[...chain, nodeKey].join(' → ')})`);
     }
 
     const extendsKey = md.frontMatter.extends;
@@ -425,33 +357,28 @@ function composeExtendsInner(
         return md;
     }
     if (typeof extendsKey !== 'string' || extendsKey.length === 0) {
-        throw new Error(
-            `managed-agents/${md.slug}.md: "extends" must be a non-empty string slug ` +
-            `(got ${JSON.stringify(extendsKey)})`,
-        );
+        throw new Error(`managed-agents/${md.slug}.md: "extends" must be a non-empty string slug ` + `(got ${JSON.stringify(extendsKey)})`);
     }
     const { workspace: baseWorkspace, slug: baseSlug } = parseExtendsKey(extendsKey, md);
 
     if (baseWorkspace !== md.workspace && baseWorkspace !== ERNESTO_WORKSPACE) {
         throw new Error(
             `managed-agents/${md.slug}.md: cross-workspace extends only allowed from ` +
-            `"${ERNESTO_WORKSPACE}" (got ${md.workspace} → ${baseWorkspace}/${baseSlug})`,
+                `"${ERNESTO_WORKSPACE}" (got ${md.workspace} → ${baseWorkspace}/${baseSlug})`,
         );
     }
 
     if (chain.length >= MAX_EXTENDS_DEPTH) {
         throw new Error(
             `managed-agents/${md.slug}.md: extends chain exceeds ` +
-            `max_extends_depth=${MAX_EXTENDS_DEPTH} ` +
-            `(${[...chain, nodeKey, `${baseWorkspace}/${baseSlug}`].join(' → ')})`,
+                `max_extends_depth=${MAX_EXTENDS_DEPTH} ` +
+                `(${[...chain, nodeKey, `${baseWorkspace}/${baseSlug}`].join(' → ')})`,
         );
     }
 
     const baseRaw = resolveBase(baseWorkspace, baseSlug);
     if (!baseRaw) {
-        throw new Error(
-            `managed-agents/${md.slug}.md: extends_target_not_found: ${baseWorkspace}/${baseSlug}`,
-        );
+        throw new Error(`managed-agents/${md.slug}.md: extends_target_not_found: ${baseWorkspace}/${baseSlug}`);
     }
     // Resolver integrity: returned base must match what we asked for.
     // Catches buggy resolvers that silently return a wrong-workspace row
@@ -460,7 +387,7 @@ function composeExtendsInner(
     if (baseRaw.workspace !== baseWorkspace || baseRaw.slug !== baseSlug) {
         throw new Error(
             `managed-agents/${md.slug}.md: resolver returned wrong base ` +
-            `(asked for ${baseWorkspace}/${baseSlug}, got ${baseRaw.workspace}/${baseRaw.slug})`,
+                `(asked for ${baseWorkspace}/${baseSlug}, got ${baseRaw.workspace}/${baseRaw.slug})`,
         );
     }
 
@@ -474,7 +401,7 @@ function composeExtendsInner(
         if (typeof v !== 'string' || v.length === 0) {
             throw new Error(
                 `managed-agents/${md.slug}.md: "${key}" must be set on the extending file ` +
-                `(no inheritance from "${baseRaw.workspace}/${baseRaw.slug}")`,
+                    `(no inheritance from "${baseRaw.workspace}/${baseRaw.slug}")`,
             );
         }
     }

@@ -31,19 +31,20 @@ describe('bootWorkdir — in-memory adapter pair (bytes mode)', () => {
         const result = await bootWorkdir({
             workdirId: 'wd1',
             workingTreeRoot: '/wt',
-            fs, master,
+            fs,
+            master,
             lock: makeInMemoryWorkdirLock('wd1'),
             visibleWorkspaces: ['hr', 'cs'],
             layout: FIXTURE_LAYOUT,
         });
 
-        expect(result.placed.map(p => p.treePath).sort()).toEqual([
+        expect(result.placed.map((p) => p.treePath).sort()).toEqual([
             'workspaces/cs/INDEX.md',
             'workspaces/hr/INDEX.md',
             'workspaces/hr/extracted/_index.md',
             'workspaces/hr/routes/_index.md',
         ]);
-        expect(result.placed.every(p => p.kind === 'bytes')).toBe(true);
+        expect(result.placed.every((p) => p.kind === 'bytes')).toBe(true);
 
         expect(await result.workdir.fs.exists('workspaces/hr/INDEX.md')).toBe(true);
         expect(await result.workdir.fs.exists('workspaces/cs/INDEX.md')).toBe(true);
@@ -74,8 +75,11 @@ describe('bootWorkdir — in-memory adapter pair (bytes mode)', () => {
         });
 
         const result = await bootWorkdir({
-            workdirId: 'wd1', workingTreeRoot: '/wt',
-            fs, master, lock: makeInMemoryWorkdirLock('wd1'),
+            workdirId: 'wd1',
+            workingTreeRoot: '/wt',
+            fs,
+            master,
+            lock: makeInMemoryWorkdirLock('wd1'),
             visibleWorkspaces: ['hr'],
             layout: [
                 { workspace: 'hr', masterFsPath: 'workspaces/hr/INDEX.md', treePath: 'workspaces/hr/INDEX.md' },
@@ -104,13 +108,16 @@ describe('bootWorkdir — in-memory adapter pair (hardlink mode)', () => {
         });
 
         const result = await bootWorkdir({
-            workdirId: 'wd1', workingTreeRoot: '/wt',
-            fs, master, lock: makeInMemoryWorkdirLock('wd1'),
+            workdirId: 'wd1',
+            workingTreeRoot: '/wt',
+            fs,
+            master,
+            lock: makeInMemoryWorkdirLock('wd1'),
             visibleWorkspaces: ['hr'],
             layout: FIXTURE_LAYOUT,
         });
 
-        expect(result.placed.every(p => p.kind === 'hardlink')).toBe(true);
+        expect(result.placed.every((p) => p.kind === 'hardlink')).toBe(true);
         expect(result.placed).toHaveLength(3);
     });
 });

@@ -15,11 +15,7 @@
 
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { HarnessEvent } from '../types';
-import {
-    createTranslatorState,
-    mapSdkMessage,
-    type TranslatorState,
-} from '../cas/events';
+import { createTranslatorState, mapSdkMessage, type TranslatorState } from '../cas/events';
 
 export { createTranslatorState };
 export type { TranslatorState };
@@ -49,11 +45,7 @@ export function parseSdkLine(line: string): SDKMessage | null {
  * state across lines. Blank/non-JSON lines yield no events. Exported for
  * unit testing per-line.
  */
-export function mapVmLine(
-    line: string,
-    runId: string,
-    state: TranslatorState,
-): HarnessEvent[] {
+export function mapVmLine(line: string, runId: string, state: TranslatorState): HarnessEvent[] {
     const msg = parseSdkLine(line);
     if (msg === null) return [];
     return mapSdkMessage(msg, runId, state);

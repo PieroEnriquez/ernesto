@@ -60,9 +60,7 @@ describe('substituteBinds', () => {
             spec,
             filterValues,
         );
-        expect(result.text).toBe(
-            'SELECT SUM(x) FROM t WHERE date_id BETWEEN $1 AND $2 AND m = ANY($3)',
-        );
+        expect(result.text).toBe('SELECT SUM(x) FROM t WHERE date_id BETWEEN $1 AND $2 AND m = ANY($3)');
         expect(result.values).toEqual([20260220, 20260520, ['visa', 'mc']]);
     });
 
@@ -72,11 +70,7 @@ describe('substituteBinds', () => {
             dateRange: { startDate: '2026-02-20', endDate: '2026-05-20' },
             methods: [],
         };
-        const result = substituteBinds(
-            'SELECT 1 WHERE (:methods IS NULL OR m = ANY(:methods))',
-            spec,
-            filterValues,
-        );
+        const result = substituteBinds('SELECT 1 WHERE (:methods IS NULL OR m = ANY(:methods))', spec, filterValues);
         expect(result.text).toBe('SELECT 1 WHERE ($1 IS NULL OR m = ANY($1))');
         expect(result.values).toEqual([null]);
     });
@@ -99,9 +93,7 @@ describe('substituteBinds', () => {
 
     it('throws on a :bind that has no producing filter', () => {
         const spec = makeSpec();
-        expect(() =>
-            substituteBinds('SELECT :ghost', spec, { dateRange: null, methods: [] }),
-        ).toThrow(/Unknown :bind/);
+        expect(() => substituteBinds('SELECT :ghost', spec, { dateRange: null, methods: [] })).toThrow(/Unknown :bind/);
     });
 });
 

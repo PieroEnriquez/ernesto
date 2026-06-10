@@ -16,11 +16,7 @@ import { describe, expect, it, afterEach } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { ToolSpec } from '../../types';
-import {
-    wrapFnAsMcpServer,
-    wrapFnToolsAsMcpServers,
-    type SynthMcpServerHandle,
-} from '../mcp-bridge';
+import { wrapFnAsMcpServer, wrapFnToolsAsMcpServers, type SynthMcpServerHandle } from '../mcp-bridge';
 
 const openHandles: SynthMcpServerHandle[] = [];
 
@@ -34,10 +30,7 @@ function trackHandle(handle: SynthMcpServerHandle): SynthMcpServerHandle {
 }
 
 async function makeClient(url: string): Promise<Client> {
-    const client = new Client(
-        { name: 'test-client', version: '0.0.0' },
-        { capabilities: {} },
-    );
+    const client = new Client({ name: 'test-client', version: '0.0.0' }, { capabilities: {} });
     const transport = new StreamableHTTPClientTransport(new URL(url));
     await client.connect(transport);
     return client;
@@ -137,11 +130,7 @@ describe('wrapFnToolsAsMcpServers', () => {
         const builtinTool: ToolSpec = { kind: 'builtin', name: 'Read' };
         const mcpTool: ToolSpec = { kind: 'mcp', serverName: 'remote' };
 
-        const wrapped = await wrapFnToolsAsMcpServers([
-            fnTool,
-            builtinTool,
-            mcpTool,
-        ]);
+        const wrapped = await wrapFnToolsAsMcpServers([fnTool, builtinTool, mcpTool]);
         try {
             expect(Object.keys(wrapped.mcpServers)).toHaveLength(1);
             expect(Object.keys(wrapped.mcpServers)[0]).toMatch(/^synth_/);

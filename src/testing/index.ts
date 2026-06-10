@@ -7,8 +7,5 @@
  * root (`ernesto`) so the production bundle never ships this scaffolding.
  */
 
-export {
-    makeInMemoryFsAdapter,
-    makeInMemoryMasterFs,
-} from '../workdir/in-memory-adapters';
+export { makeInMemoryFsAdapter, makeInMemoryMasterFs } from '../workdir/in-memory-adapters';
 export type { InMemoryMasterFsOptions } from '../workdir/in-memory-adapters';

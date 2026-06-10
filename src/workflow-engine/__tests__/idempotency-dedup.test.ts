@@ -6,10 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { createRunner } from '../runner';
 import { userPrincipal, servicePrincipal } from '../principal';
-import {
-    idempotencyDedupMiddleware,
-    IdempotencyConflictError,
-} from '../middleware/idempotency-dedup';
+import { idempotencyDedupMiddleware, IdempotencyConflictError } from '../middleware/idempotency-dedup';
 import type { WorkflowReader, WorkflowDetail } from '../workflow-reader';
 import type { WorkflowDeclaration, WorkflowStep } from '../../workflows/types';
 
@@ -58,23 +55,13 @@ describe('idempotencyDedupMiddleware', () => {
         runner.use(idempotencyDedupMiddleware());
 
         // Fire first dispatch (will block).
-        const first = runner.dispatch(
-            'wf-idem',
-            { productId: 'P-1' },
-            userPrincipal('alice', []),
-            {},
-        );
+        const first = runner.dispatch('wf-idem', { productId: 'P-1' }, userPrincipal('alice', []), {});
         // Give it a tick to land in the in-flight map.
         await new Promise((r) => setImmediate(r));
         // Second dispatch with same key — should throw immediately.
-        await expect(
-            runner.dispatch(
-                'wf-idem',
-                { productId: 'P-1' },
-                userPrincipal('bob', []),
-                {},
-            ),
-        ).rejects.toThrow(IdempotencyConflictError);
+        await expect(runner.dispatch('wf-idem', { productId: 'P-1' }, userPrincipal('bob', []), {})).rejects.toThrow(
+            IdempotencyConflictError,
+        );
         // Release and confirm the first completes normally.
         release!();
         const result = await first;
@@ -93,18 +80,8 @@ describe('idempotencyDedupMiddleware', () => {
         });
         runner.use(idempotencyDedupMiddleware());
 
-        const a = await runner.dispatch(
-            'wf-idem',
-            { productId: 'P-1' },
-            userPrincipal('u', []),
-            {},
-        );
-        const b = await runner.dispatch(
-            'wf-idem',
-            { productId: 'P-2' },
-            userPrincipal('u', []),
-            {},
-        );
+        const a = await runner.dispatch('wf-idem', { productId: 'P-1' }, userPrincipal('u', []), {});
+        const b = await runner.dispatch('wf-idem', { productId: 'P-2' }, userPrincipal('u', []), {});
         expect(a.status).toBe('completed');
         expect(b.status).toBe('completed');
     });
@@ -121,20 +98,10 @@ describe('idempotencyDedupMiddleware', () => {
         });
         runner.use(idempotencyDedupMiddleware());
 
-        const a = await runner.dispatch(
-            'wf-idem',
-            { productId: 'P-1' },
-            userPrincipal('u', []),
-            {},
-        );
+        const a = await runner.dispatch('wf-idem', { productId: 'P-1' }, userPrincipal('u', []), {});
         expect(a.status).toBe('completed');
         // After terminal, key should be released — same key can run again.
-        const b = await runner.dispatch(
-            'wf-idem',
-            { productId: 'P-1' },
-            userPrincipal('u', []),
-            {},
-        );
+        const b = await runner.dispatch('wf-idem', { productId: 'P-1' }, userPrincipal('u', []), {});
         expect(b.status).toBe('completed');
     });
 
@@ -157,20 +124,10 @@ describe('idempotencyDedupMiddleware', () => {
         });
         runner.use(idempotencyDedupMiddleware());
 
-        const alice = runner.dispatch(
-            'wf-idem',
-            { productId: 'P-1' },
-            userPrincipal('alice', []),
-            {},
-        );
+        const alice = runner.dispatch('wf-idem', { productId: 'P-1' }, userPrincipal('alice', []), {});
         await new Promise((r) => setImmediate(r));
         // Bob with same productId — different principal scope; allowed.
-        const bobPromise = runner.dispatch(
-            'wf-idem',
-            { productId: 'P-1' },
-            userPrincipal('bob', []),
-            {},
-        );
+        const bobPromise = runner.dispatch('wf-idem', { productId: 'P-1' }, userPrincipal('bob', []), {});
         await new Promise((r) => setImmediate(r));
         release!();
         const aliceResult = await alice;
@@ -193,18 +150,8 @@ describe('idempotencyDedupMiddleware', () => {
         runner.kindRegistry.registerWorkflow(DECL); // no policy
         runner.use(idempotencyDedupMiddleware());
 
-        const a = runner.dispatch(
-            'wf-idem',
-            { productId: 'X' },
-            userPrincipal('u', []),
-            {},
-        );
-        const b = runner.dispatch(
-            'wf-idem',
-            { productId: 'X' },
-            userPrincipal('u', []),
-            {},
-        );
+        const a = runner.dispatch('wf-idem', { productId: 'X' }, userPrincipal('u', []), {});
+        const b = runner.dispatch('wf-idem', { productId: 'X' }, userPrincipal('u', []), {});
         release!();
         const [ra, rb] = await Promise.all([a, b]);
         expect(ra.status).toBe('completed');
@@ -223,12 +170,7 @@ describe('idempotencyDedupMiddleware', () => {
         });
         runner.use(idempotencyDedupMiddleware());
 
-        const run = await runner.dispatch(
-            'wf-idem',
-            { productId: 'P-1' },
-            userPrincipal('u', []),
-            {},
-        );
+        const run = await runner.dispatch('wf-idem', { productId: 'P-1' }, userPrincipal('u', []), {});
         expect(run.status).toBe('completed');
     });
 
@@ -248,20 +190,10 @@ describe('idempotencyDedupMiddleware', () => {
         });
         runner.use(idempotencyDedupMiddleware());
 
-        const a = runner.dispatch(
-            'wf-idem',
-            { productId: 'P-42' },
-            userPrincipal('u', []),
-            {},
-        );
+        const a = runner.dispatch('wf-idem', { productId: 'P-42' }, userPrincipal('u', []), {});
         await new Promise((r) => setImmediate(r));
         try {
-            await runner.dispatch(
-                'wf-idem',
-                { productId: 'P-42' },
-                userPrincipal('u', []),
-                {},
-            );
+            await runner.dispatch('wf-idem', { productId: 'P-42' }, userPrincipal('u', []), {});
             expect.fail('should have thrown IdempotencyConflictError');
         } catch (err) {
             expect(err).toBeInstanceOf(IdempotencyConflictError);
@@ -290,29 +222,14 @@ describe('idempotencyDedupMiddleware', () => {
         });
         runner.use(idempotencyDedupMiddleware());
 
-        const first = runner.dispatch(
-            'wf-idem',
-            { cronTick: 'tick-1' },
-            servicePrincipal('worker-A', 'req-1'),
-            {},
-        );
+        const first = runner.dispatch('wf-idem', { cronTick: 'tick-1' }, servicePrincipal('worker-A', 'req-1'), {});
         await new Promise((r) => setImmediate(r));
         // Same worker, same tick → conflict
-        await expect(
-            runner.dispatch(
-                'wf-idem',
-                { cronTick: 'tick-1' },
-                servicePrincipal('worker-A', 'req-2'),
-                {},
-            ),
-        ).rejects.toThrow(IdempotencyConflictError);
-        // Different worker, same tick → OK (different principal scope)
-        const otherPromise = runner.dispatch(
-            'wf-idem',
-            { cronTick: 'tick-1' },
-            servicePrincipal('worker-B', 'req-3'),
-            {},
+        await expect(runner.dispatch('wf-idem', { cronTick: 'tick-1' }, servicePrincipal('worker-A', 'req-2'), {})).rejects.toThrow(
+            IdempotencyConflictError,
         );
+        // Different worker, same tick → OK (different principal scope)
+        const otherPromise = runner.dispatch('wf-idem', { cronTick: 'tick-1' }, servicePrincipal('worker-B', 'req-3'), {});
         await new Promise((r) => setImmediate(r));
         release!();
         await Promise.all([first, otherPromise]);

@@ -8,10 +8,7 @@ import { Workdir } from './types';
  *   - `bytes`    → write bytes to the working tree
  *   - `not-found` → the master FS adapter doesn't know the path
  */
-export type MaterializeResult =
-    | { kind: 'placed'; placement: 'hardlink' | 'bytes' }
-    | { kind: 'already-present' }
-    | { kind: 'not-found' };
+export type MaterializeResult = { kind: 'placed'; placement: 'hardlink' | 'bytes' } | { kind: 'already-present' } | { kind: 'not-found' };
 
 /**
  * Re-mirror an already-placed file, replacing
@@ -30,10 +27,7 @@ export type MaterializeResult =
  * to remove the workdir entry; this function does NOT remove, since that's
  * a policy call (a transient resolver miss shouldn't blow up the workdir).
  */
-export async function remirrorFile(
-    workdir: Workdir,
-    args: { treePath: string; masterFsPath: string },
-): Promise<MaterializeResult> {
+export async function remirrorFile(workdir: Workdir, args: { treePath: string; masterFsPath: string }): Promise<MaterializeResult> {
     const r = await workdir.master.resolve(args.masterFsPath);
     if (r.kind === 'not-found') return { kind: 'not-found' };
     if (r.kind === 'hardlink') {

@@ -55,9 +55,7 @@ describe('casCreateAgent (gap-2)', () => {
     });
 
     it('threads providerEnv into the SDK Options.env', async () => {
-        querySpy.mockReturnValue(makeAsyncIterable([
-            { type: 'result', subtype: 'success', result: 'ok' },
-        ]));
+        querySpy.mockReturnValue(makeAsyncIterable([{ type: 'result', subtype: 'success', result: 'ok' }]));
 
         const agent = await casCreateAgent(baseDef, {
             agentId: 'a1',
@@ -81,9 +79,7 @@ describe('casCreateAgent (gap-2)', () => {
     });
 
     it('threads sandbox hooks through to SDK Options.hooks', async () => {
-        querySpy.mockReturnValue(makeAsyncIterable([
-            { type: 'result', subtype: 'success', result: 'ok' },
-        ]));
+        querySpy.mockReturnValue(makeAsyncIterable([{ type: 'result', subtype: 'success', result: 'ok' }]));
 
         const fakeHook = { PreToolUse: [{ hooks: [() => undefined] }] };
         const agent = await casCreateAgent(baseDef, {
@@ -100,9 +96,7 @@ describe('casCreateAgent (gap-2)', () => {
     });
 
     it('threads mcpServers + cwd + abortController into SDK Options', async () => {
-        querySpy.mockReturnValue(makeAsyncIterable([
-            { type: 'result', subtype: 'success', result: 'ok' },
-        ]));
+        querySpy.mockReturnValue(makeAsyncIterable([{ type: 'result', subtype: 'success', result: 'ok' }]));
 
         const mcpServers = { ernesto: { type: 'sdk' as const, name: 'e', instance: {} as any } };
         const abortController = new AbortController();
@@ -128,9 +122,7 @@ describe('casCreateAgent (gap-2)', () => {
     });
 
     it('compiles SDK Options exactly once across multiple sends', async () => {
-        querySpy.mockReturnValue(makeAsyncIterable([
-            { type: 'result', subtype: 'success', result: 'ok' },
-        ]));
+        querySpy.mockReturnValue(makeAsyncIterable([{ type: 'result', subtype: 'success', result: 'ok' }]));
 
         const agent = await casCreateAgent(baseDef, {
             agentId: 'a4',
@@ -168,9 +160,7 @@ describe('casCreateAgent (gap-2)', () => {
     });
 
     it('returns a canonical RunHandle whose wait() drains the SDK stream', async () => {
-        querySpy.mockReturnValue(makeAsyncIterable([
-            { type: 'result', subtype: 'success', result: 'final-text', duration_ms: 42 },
-        ]));
+        querySpy.mockReturnValue(makeAsyncIterable([{ type: 'result', subtype: 'success', result: 'final-text', duration_ms: 42 }]));
 
         const agent = await casCreateAgent(baseDef, { agentId: 'a6' });
         const run = await agent.send('hi');
@@ -182,9 +172,7 @@ describe('casCreateAgent (gap-2)', () => {
     });
 
     it('overrides abortController per send without re-compiling options', async () => {
-        querySpy.mockReturnValue(makeAsyncIterable([
-            { type: 'result', subtype: 'success', result: 'ok' },
-        ]));
+        querySpy.mockReturnValue(makeAsyncIterable([{ type: 'result', subtype: 'success', result: 'ok' }]));
 
         const baseAbort = new AbortController();
         const agent = await casCreateAgent(baseDef, {
@@ -212,9 +200,7 @@ describe('createCasHarness.createAgent route (A1 regression)', () => {
     });
 
     it('forwards CreateOptions.hooks through to SDK Options.hooks', async () => {
-        querySpy.mockReturnValue(makeAsyncIterable([
-            { type: 'result', subtype: 'success', result: 'ok' },
-        ]));
+        querySpy.mockReturnValue(makeAsyncIterable([{ type: 'result', subtype: 'success', result: 'ok' }]));
 
         const fakeHook = { PreToolUse: [{ hooks: [() => undefined] }] };
         const harness = createCasHarness({});
@@ -236,9 +222,7 @@ describe('createCasHarness.createAgent route (A1 regression)', () => {
     });
 
     it('a harness built with no hooks yields Options.hooks undefined (no accidental default)', async () => {
-        querySpy.mockReturnValue(makeAsyncIterable([
-            { type: 'result', subtype: 'success', result: 'ok' },
-        ]));
+        querySpy.mockReturnValue(makeAsyncIterable([{ type: 'result', subtype: 'success', result: 'ok' }]));
 
         const harness = createCasHarness({});
         const agent = await harness.createAgent(baseDef, { agentId: 'wrap-2' });

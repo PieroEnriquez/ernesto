@@ -20,18 +20,11 @@
 import type { DashboardSpec, Block } from '../dashboards/schema';
 import { dataflowOrder } from '../dashboards/dataflow';
 import { isJsBlock, isNarrativeBlock, isSqlBlock } from '../dashboards/schema';
-import type {
-    WorkflowDeclaration,
-    RouteStep,
-    WorkflowInput,
-    WorkflowOutput,
-} from './types';
+import type { WorkflowDeclaration, RouteStep, WorkflowInput, WorkflowOutput } from './types';
 
-export function compileDashboardSpecToWorkflow(
-    spec: DashboardSpec,
-): WorkflowDeclaration {
+export function compileDashboardSpecToWorkflow(spec: DashboardSpec): WorkflowDeclaration {
     const orderedIds = stableDataflowOrder(spec);
-    const blocksById = new Map(spec.blocks.map(b => [b.id, b]));
+    const blocksById = new Map(spec.blocks.map((b) => [b.id, b]));
 
     // Pre-compute which blocks are "data" producers (their step output
     // can be referenced by later blocks). Markdown blocks render but
@@ -46,9 +39,7 @@ export function compileDashboardSpecToWorkflow(
         const id = orderedIds[i];
         const block = blocksById.get(id);
         if (!block) continue;
-        const next = i + 1 < orderedIds.length
-            ? orderedIds[i + 1]
-            : 'outputs.blocks';
+        const next = i + 1 < orderedIds.length ? orderedIds[i + 1] : 'outputs.blocks';
         steps[id] = compileBlock(block, next, dataBlockIds);
     }
 
@@ -128,19 +119,17 @@ function stableDataflowOrder(spec: DashboardSpec): string[] {
 }
 
 function insertSorted(arr: string[], v: string): void {
-    let lo = 0, hi = arr.length;
+    let lo = 0,
+        hi = arr.length;
     while (lo < hi) {
         const mid = (lo + hi) >>> 1;
-        if (arr[mid] < v) lo = mid + 1; else hi = mid;
+        if (arr[mid] < v) lo = mid + 1;
+        else hi = mid;
     }
     arr.splice(lo, 0, v);
 }
 
-function compileBlock(
-    block: Block,
-    next: string,
-    dataBlockIds: Set<string>,
-): RouteStep {
+function compileBlock(block: Block, next: string, dataBlockIds: Set<string>): RouteStep {
     if (block.kind === 'markdown') {
         return {
             kind: 'route',
@@ -198,17 +187,13 @@ function compileBlock(
     return exhaustive;
 }
 
-function renderForSqlBlock(
-    kind: 'metric-row' | 'timeseries' | 'table',
-): 'chart' | 'table' | 'value' {
+function renderForSqlBlock(kind: 'metric-row' | 'timeseries' | 'table'): 'chart' | 'table' | 'value' {
     if (kind === 'metric-row') return 'value';
     if (kind === 'timeseries') return 'chart';
     return 'table';
 }
 
-function renderForJsBlock(
-    asKind: 'metric-row' | 'timeseries' | 'table',
-): 'chart' | 'table' | 'value' {
+function renderForJsBlock(asKind: 'metric-row' | 'timeseries' | 'table'): 'chart' | 'table' | 'value' {
     return renderForSqlBlock(asKind);
 }
 
@@ -240,9 +225,7 @@ function rewriteCrossBlockRefs(body: string, dataBlockIds: Set<string>): string 
     return out;
 }
 
-function compileInputs(
-    spec: DashboardSpec,
-): Record<string, WorkflowInput> | undefined {
+function compileInputs(spec: DashboardSpec): Record<string, WorkflowInput> | undefined {
     if (spec.filters.length === 0) return undefined;
     const out: Record<string, WorkflowInput> = {};
     for (const f of spec.filters) {

@@ -8,11 +8,13 @@ describe('commitTurn — lock serializes concurrent calls on the same workdirId'
         const { workdir, root, cleanup } = await buildWorkdir({ workdirId: 'wd1' });
         try {
             const a = commitTurn(workdir, {
-                paths: ['a.txt'], message: 'add a',
+                paths: ['a.txt'],
+                message: 'add a',
                 files: [{ path: 'a.txt', content: new TextEncoder().encode('A\n') }],
             });
             const b = commitTurn(workdir, {
-                paths: ['b.txt'], message: 'add b',
+                paths: ['b.txt'],
+                message: 'add b',
                 files: [{ path: 'b.txt', content: new TextEncoder().encode('B\n') }],
             });
 
@@ -34,17 +36,21 @@ describe('commitTurn — lock serializes concurrent calls on the same workdirId'
         try {
             const calls = Array.from({ length: 10 }, (_, i) =>
                 commitTurn(workdir, {
-                    paths: [`f${i}.txt`], message: `commit ${i}`,
+                    paths: [`f${i}.txt`],
+                    message: `commit ${i}`,
                     files: [{ path: `f${i}.txt`, content: new TextEncoder().encode(`${i}\n`) }],
-                })
+                }),
             );
 
             const results = await Promise.all(calls);
-            const shas = new Set(results.map(r => r.sha));
+            const shas = new Set(results.map((r) => r.sha));
             expect(shas.size).toBe(10);
 
             const log = await runGit(root, ['log', '--format=%s', '--reverse']);
-            const lines = log.trim().split('\n').filter(l => l.startsWith('commit '));
+            const lines = log
+                .trim()
+                .split('\n')
+                .filter((l) => l.startsWith('commit '));
             expect(lines).toHaveLength(10);
             for (let i = 0; i < 10; i++) {
                 expect(lines[i]).toBe(`commit ${i}`);
@@ -62,7 +68,8 @@ describe('commitTurn — lock serializes concurrent calls on the same workdirId'
                 message: 'will fail',
             });
             const willSucceed = commitTurn(workdir, {
-                paths: ['ok.txt'], message: 'ok',
+                paths: ['ok.txt'],
+                message: 'ok',
                 files: [{ path: 'ok.txt', content: new TextEncoder().encode('ok\n') }],
             });
 

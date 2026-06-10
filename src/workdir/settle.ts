@@ -18,10 +18,7 @@ export interface LintInput {
     workingTreeRoot: string;
 }
 
-export type LintFn = (input: LintInput) => Promise<
-    | { ok: true }
-    | { ok: false; errors: ReadonlyArray<LintError> }
->;
+export type LintFn = (input: LintInput) => Promise<{ ok: true } | { ok: false; errors: ReadonlyArray<LintError> }>;
 
 /** Bot-side push. Deployer wires this; the lib calls it under the lock. */
 export type PushToMainFn = (input: {
@@ -29,9 +26,7 @@ export type PushToMainFn = (input: {
     sha: string;
     message: string;
 }) => Promise<
-    | { ok: true; sha: string }
-    | { ok: false; error: 'fast_forward_required'; currentSha: string }
-    | { ok: false; error: 'merge_conflict' }
+    { ok: true; sha: string } | { ok: false; error: 'fast_forward_required'; currentSha: string } | { ok: false; error: 'merge_conflict' }
 >;
 
 export interface SettleInput {
@@ -73,10 +68,7 @@ export type SettleResult =
  *
  * Always runs under `workdir.lock(…)`.
  */
-export async function settleFromWorktree(
-    workdir: Workdir,
-    input: SettleInput,
-): Promise<SettleResult> {
+export async function settleFromWorktree(workdir: Workdir, input: SettleInput): Promise<SettleResult> {
     return workdir.lock(async () => {
         const root = workdir.workingTreeRoot;
 

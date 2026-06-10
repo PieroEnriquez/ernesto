@@ -58,20 +58,13 @@ export interface ArchiveFile {
  * Archive the full route response to a workdir-relative JSON file.
  * Returns the workdir-relative path of the written file.
  */
-export async function archiveRouteResult(
-    input: ArchiveRouteResultInput,
-): Promise<string> {
+export async function archiveRouteResult(input: ArchiveRouteResultInput): Promise<string> {
     const { workdir, uri, params, runId, data, log } = input;
     const { workspace, slug } = parseRouteUri(uri);
     const ts = new Date().toISOString();
     const fsSafeTs = ts.replace(/[:.]/g, '-').slice(0, -5) + 'Z';
     const filename = `${fsSafeTs}--${slug}.json`;
-    const relPath = path.posix.join(
-        'workspaces',
-        workspace,
-        '_results',
-        filename,
-    );
+    const relPath = path.posix.join('workspaces', workspace, '_results', filename);
     const absPath = path.join(workdir, relPath);
     const dirAbs = path.dirname(absPath);
 
@@ -92,9 +85,7 @@ export async function archiveRouteResult(
             runId,
             data: {
                 __truncated: true,
-                note:
-                    `route response exceeded archive cap of ${ARCHIVE_MAX_BYTES} bytes; ` +
-                    `original was ${serialized.length} bytes`,
+                note: `route response exceeded archive cap of ${ARCHIVE_MAX_BYTES} bytes; ` + `original was ${serialized.length} bytes`,
             },
             truncated: true,
             originalByteLength: serialized.length,

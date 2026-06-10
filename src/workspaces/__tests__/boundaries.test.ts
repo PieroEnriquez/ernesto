@@ -2,11 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm, mkdir, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import * as path from 'path';
-import {
-    scanWorkspaceBoundaries,
-    boundaryForName,
-    boundaryForPath,
-} from '../boundaries';
+import { scanWorkspaceBoundaries, boundaryForName, boundaryForPath } from '../boundaries';
 
 describe('workspace boundaries (FS-derived resolver)', () => {
     let root: string;
@@ -40,12 +36,7 @@ describe('workspace boundaries (FS-derived resolver)', () => {
     it('discovers nested boundaries and prunes archive/ + extracted/', async () => {
         const b = await scanWorkspaceBoundaries(root);
         const dirs = b.map((x) => x.dir).sort();
-        expect(dirs).toEqual([
-            'workspaces/hr',
-            'workspaces/hr/recruiting',
-            'workspaces/product',
-            'workspaces/product/pricing',
-        ]);
+        expect(dirs).toEqual(['workspaces/hr', 'workspaces/hr/recruiting', 'workspaces/product', 'workspaces/product/pricing']);
     });
 
     it('does not treat a PROJECT.md-only folder as a boundary', async () => {

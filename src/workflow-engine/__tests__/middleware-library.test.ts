@@ -8,10 +8,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createRunner } from '../runner';
 import { userPrincipal, servicePrincipal } from '../principal';
-import {
-    modelRouterMiddleware,
-    ModelRouterError,
-} from '../middleware/model-router';
+import { modelRouterMiddleware, ModelRouterError } from '../middleware/model-router';
 import { timeoutMiddleware } from '../middleware/timeout';
 import { loggingMiddleware } from '../middleware/logging';
 import type { WorkflowReader, WorkflowDetail } from '../workflow-reader';
@@ -96,9 +93,7 @@ describe('modelRouterMiddleware', () => {
         const saved = process.env.OPENROUTER_API_KEY;
         delete process.env.OPENROUTER_API_KEY;
         try {
-            await expect(
-                runner.dispatch('wf', {}, userPrincipal('u', []), {}),
-            ).rejects.toThrow(ModelRouterError);
+            await expect(runner.dispatch('wf', {}, userPrincipal('u', []), {})).rejects.toThrow(ModelRouterError);
         } finally {
             if (saved !== undefined) process.env.OPENROUTER_API_KEY = saved;
         }
@@ -239,12 +234,7 @@ describe('timeoutMiddleware', () => {
         runner.use(timeoutMiddleware());
 
         const ac = new AbortController();
-        const dispatchPromise = runner.dispatch(
-            'wf',
-            {},
-            userPrincipal('u', []),
-            { abortSignal: ac.signal },
-        );
+        const dispatchPromise = runner.dispatch('wf', {}, userPrincipal('u', []), { abortSignal: ac.signal });
         setTimeout(() => ac.abort(), 10);
         const run = await dispatchPromise;
         expect(stepAborted).toBe(true);
@@ -267,12 +257,7 @@ describe('loggingMiddleware', () => {
         runner.registerWorkflowReader(readerOf(SIMPLE_DECL));
         runner.use(loggingMiddleware({ log }));
 
-        await runner.dispatch(
-            'wf',
-            {},
-            userPrincipal('alice', []),
-            { transport: 'in-process', surfaceRunId: 'surf-1' },
-        );
+        await runner.dispatch('wf', {}, userPrincipal('alice', []), { transport: 'in-process', surfaceRunId: 'surf-1' });
 
         expect(logs.length).toBe(2);
         expect(logs[0]!.msg).toBe('dispatch start');
@@ -293,10 +278,8 @@ describe('loggingMiddleware', () => {
         const runner = createRunner();
         const logs: Array<{ msg: string; level: 'info' | 'warn'; meta?: unknown }> = [];
         const log = {
-            info: (msg: string, meta?: unknown) =>
-                logs.push({ msg, level: 'info', meta }),
-            warn: (msg: string, meta?: unknown) =>
-                logs.push({ msg, level: 'warn', meta }),
+            info: (msg: string, meta?: unknown) => logs.push({ msg, level: 'info', meta }),
+            warn: (msg: string, meta?: unknown) => logs.push({ msg, level: 'warn', meta }),
         };
         runner.registerStepKind('route', async () => ({
             kind: 'error',
@@ -365,10 +348,7 @@ describe('scopeCheckMiddleware admin bypass', () => {
         steps: { s1: { kind: 'route', uri: 'x' } as WorkflowStep },
     };
 
-    async function runWith(
-        callerScopes: string[],
-        adminBypassScopes?: string[],
-    ) {
+    async function runWith(callerScopes: string[], adminBypassScopes?: string[]) {
         const runner = createRunner();
         runner.registerStepKind('route', async () => ({
             kind: 'completed',
@@ -380,17 +360,8 @@ describe('scopeCheckMiddleware admin bypass', () => {
             model: 'claude-sonnet-4-6',
         });
         const { scopeCheckMiddleware } = await import('../middleware/scope-check');
-        runner.use(
-            scopeCheckMiddleware(
-                adminBypassScopes ? { adminBypassScopes } : {},
-            ),
-        );
-        return runner.dispatch(
-            'wf-scoped',
-            {},
-            userPrincipal('alice', callerScopes),
-            {},
-        );
+        runner.use(scopeCheckMiddleware(adminBypassScopes ? { adminBypassScopes } : {}));
+        return runner.dispatch('wf-scoped', {}, userPrincipal('alice', callerScopes), {});
     }
 
     it('rejects a caller lacking the declared scope (no bypass configured)', async () => {
@@ -405,9 +376,7 @@ describe('scopeCheckMiddleware admin bypass', () => {
     });
 
     it('still rejects a caller without the bypass scope even when bypass is configured', async () => {
-        await expect(
-            runWith(['marketing:read'], ['ernesto:agent-ops']),
-        ).rejects.toMatchObject({ code: 'scope_escalation' });
+        await expect(runWith(['marketing:read'], ['ernesto:agent-ops'])).rejects.toMatchObject({ code: 'scope_escalation' });
     });
 });
 
@@ -450,12 +419,7 @@ describe('M6 middleware composition — three together', () => {
         process.env.ANTHROPIC_API_KEY = 'sk-test';
         try {
             runner.use(modelRouterMiddleware());
-            const run = await runner.dispatch(
-                'wf-stack',
-                {},
-                userPrincipal('alice', ['marketing:read']),
-                {},
-            );
+            const run = await runner.dispatch('wf-stack', {}, userPrincipal('alice', ['marketing:read']), {});
             expect(run.status).toBe('completed');
             // Both logging events fired
             expect(logs.map((l) => l.msg)).toContain('dispatch start');

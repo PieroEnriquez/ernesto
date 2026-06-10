@@ -28,9 +28,7 @@
  * See the unified-runtime architecture reference.
  */
 
-export type Principal =
-    | UserPrincipal
-    | ServicePrincipal;
+export type Principal = UserPrincipal | ServicePrincipal;
 
 export interface UserPrincipal {
     readonly kind: 'user';
@@ -53,11 +51,7 @@ export interface ServicePrincipal {
 
 /** Construct a user principal — convenience over an inline literal so
  *  callers don't accidentally drop the `kind: 'user'` discriminator. */
-export function userPrincipal(
-    userId: string,
-    scopes: Iterable<string>,
-    email?: string,
-): UserPrincipal {
+export function userPrincipal(userId: string, scopes: Iterable<string>, email?: string): UserPrincipal {
     return {
         kind: 'user',
         userId,
@@ -69,10 +63,7 @@ export function userPrincipal(
 /** Construct a service principal — empty scope set is intentional;
  *  the scope-check middleware consults the service allowlist for
  *  bypass authority. */
-export function servicePrincipal(
-    workerId: string,
-    requestId: string,
-): ServicePrincipal {
+export function servicePrincipal(workerId: string, requestId: string): ServicePrincipal {
     return { kind: 'service', workerId, requestId };
 }
 
@@ -95,10 +86,7 @@ export function isServicePrincipal(p: Principal): p is ServicePrincipal {
  *
  *  When the declared scope set is empty, the parent's scopes flow
  *  through (a kind that declares no scope inherits the caller's). */
-export function narrowPrincipalScopes(
-    parent: Principal,
-    declaredScopes: Iterable<string>,
-): Principal {
+export function narrowPrincipalScopes(parent: Principal, declaredScopes: Iterable<string>): Principal {
     if (parent.kind === 'service') return parent;
     const declared = new Set(declaredScopes);
     if (declared.size === 0) return parent;
@@ -118,7 +106,5 @@ export function narrowPrincipalScopes(
  *  `user:<userId>` for users, `service:<workerId>:<requestId>` for
  *  services. The format is deliberately greppable. */
 export function principalIdentity(p: Principal): string {
-    return p.kind === 'user'
-        ? `user:${p.userId}`
-        : `service:${p.workerId}:${p.requestId}`;
+    return p.kind === 'user' ? `user:${p.userId}` : `service:${p.workerId}:${p.requestId}`;
 }
