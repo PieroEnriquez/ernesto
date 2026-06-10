@@ -9,6 +9,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
 import { KindRegistry } from '../kind-registry';
+import { createRunner } from '../runner';
 import { makeRouteStepHandler } from '../handlers/route-step';
 import { defineRoute } from '../../route/define-route';
 import { userPrincipal } from '../principal';
@@ -149,6 +150,72 @@ describe('makeRouteStepHandler', () => {
         }
     });
 
+    it('promotes a handler throw message into the step error (tagged errors survive firstError)', async () => {
+        const throwingRoute = defineRoute({
+            uri: 'rooms://join',
+            scope: 'ws:read',
+            input: z.object({}),
+            output: z.object({ ok: z.literal(true) }),
+            handler: async () => {
+                throw new Error('scope_denied: you must personally hold every declared room scope; missing: hr-read');
+            },
+        });
+        const kindRegistry = new KindRegistry();
+        kindRegistry.registerRoute(throwingRoute);
+        const handler = makeRouteStepHandler({
+            kindRegistry,
+            log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        });
+        const result = await handler({ kind: 'route', uri: 'rooms://join', params: {} } as RouteStep, makeCtx());
+        expect(result.kind).toBe('error');
+        if (result.kind === 'error') {
+            expect(result.code).toBe('handler_failed');
+            // run-graph's firstError drops details — the thrown message must
+            // ride `message`, not the flattened `route … failed` wrapper.
+            expect(result.message).toBe('scope_denied: you must personally hold every declared room scope; missing: hr-read');
+        }
+    });
+
+    it('does NOT promote an untagged handler throw — raw server fault text stays out of the step message', async () => {
+        const blowingRoute = defineRoute({
+            uri: 'rooms://boom',
+            scope: 'ws:read',
+            input: z.object({}),
+            output: z.object({ ok: z.literal(true) }),
+            handler: async () => {
+                throw new Error('ECONNREFUSED 10.0.0.7:5432 — secret-shouldnt-leak');
+            },
+        });
+        const kindRegistry = new KindRegistry();
+        kindRegistry.registerRoute(blowingRoute);
+        const handler = makeRouteStepHandler({
+            kindRegistry,
+            log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        });
+        const result = await handler({ kind: 'route', uri: 'rooms://boom', params: {} } as RouteStep, makeCtx());
+        expect(result.kind).toBe('error');
+        if (result.kind === 'error') {
+            expect(result.code).toBe('handler_failed');
+            expect(result.message).toBe('route rooms://boom failed: handler_failed');
+        }
+    });
+
+    it('keeps the descriptive `route … failed` message for non-throw dispatch errors', async () => {
+        const kindRegistry = new KindRegistry();
+        kindRegistry.registerRoute(echoRoute);
+        const handler = makeRouteStepHandler({
+            kindRegistry,
+            log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        });
+        // Bad params → invalid_input from the dispatcher, no thrown message.
+        const result = await handler({ kind: 'route', uri: 'redshift://query', params: { sql: 42 } } as RouteStep, makeCtx());
+        expect(result.kind).toBe('error');
+        if (result.kind === 'error') {
+            expect(result.code).toBe('invalid_input');
+            expect(result.message).toBe('route redshift://query failed: invalid_input');
+        }
+    });
+
     it('requires a user principal — service principals are rejected', async () => {
         const kindRegistry = new KindRegistry();
         kindRegistry.registerRoute(echoRoute);
@@ -240,5 +307,52 @@ describe('makeRouteStepHandler', () => {
             expect(result.code).toBe('child_blew_up');
             expect(result.message).toBe('specific reason');
         }
+    });
+});
+
+describe('tagged handler throws through the REAL engine (createRunner + run-graph flattening)', () => {
+    // Pins the full chain the wire depends on: route dispatch synthesizes a
+    // one-step 'route' workflow, the handler promotes the tagged throw, and
+    // run-graph's firstError (which DROPS details) still carries the tagged
+    // text in run.error.message. This is the prerequisite the backend's
+    // tagged-error wire classifier reads — a fake-runner projection alone
+    // cannot prove it.
+    function makeRealRunner(uri: string, thrownMessage: string) {
+        const runner = createRunner();
+        runner.registerStepKind(
+            'route',
+            makeRouteStepHandler({ kindRegistry: runner.kindRegistry, log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }),
+        );
+        runner.kindRegistry.registerRoute(
+            defineRoute({
+                uri,
+                scope: 'ws:read',
+                input: z.object({}),
+                output: z.object({ ok: z.literal(true) }),
+                handler: async () => {
+                    throw new Error(thrownMessage);
+                },
+            }),
+        );
+        return runner;
+    }
+
+    it('run.error.message carries the tagged throw text', async () => {
+        const msg = "not_found: no room 'room_nope'";
+        const runner = makeRealRunner('rooms://real-nf', msg);
+        const run = await runner.dispatch('rooms://real-nf', {}, userPrincipal('u-1', ['ws:read']), { transport: 'in-process' });
+        expect(run.status).toBe('errored');
+        expect(run.error).toMatchObject({ stepId: 'main', code: 'handler_failed', message: msg });
+    });
+
+    it('run.error.message keeps the flattened form for untagged throws', async () => {
+        const runner = makeRealRunner('rooms://real-boom', 'ECONNREFUSED 10.0.0.7:5432 — internal text');
+        const run = await runner.dispatch('rooms://real-boom', {}, userPrincipal('u-1', ['ws:read']), { transport: 'in-process' });
+        expect(run.status).toBe('errored');
+        expect(run.error).toMatchObject({
+            stepId: 'main',
+            code: 'handler_failed',
+            message: 'route rooms://real-boom failed: handler_failed',
+        });
     });
 });

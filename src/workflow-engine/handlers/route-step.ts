@@ -30,6 +30,13 @@ export interface RouteStepHandlerDeps {
     log: EngineLogger;
 }
 
+/** Caller-fault tags route handlers throw (`Error('<tag>: <detail>')`).
+ *  Must stay in sync with the backend wire classifier
+ *  (`agent-api/tagged-error.ts` TAG_RE). Deliberately excludes
+ *  `not_implemented:` and untagged throws — those are server faults whose
+ *  raw text must not ride the wire. */
+const CALLER_FAULT_TAG_RE = /^(scope_denied|invalid_input|not_found): /;
+
 export function makeRouteStepHandler(deps: RouteStepHandlerDeps): StepKindHandler<RouteStep> {
     return async (step, ctx) => {
         const decl = deps.kindRegistry.resolve(step.uri);
@@ -112,10 +119,22 @@ export function makeRouteStepHandler(deps: RouteStepHandlerDeps): StepKindHandle
         const result = await dispatchResolvedRoute(decl.route, step.params ?? {}, routeCtx);
 
         if (!result.ok) {
+            // A handler throw reaches us as `handler_failed` with the thrown
+            // message only in details — and run-graph's firstError keeps just
+            // {stepId, code, message}. Promote TAGGED caller-fault messages
+            // (`scope_denied: …`) so they survive to the run error and the
+            // wire can classify them; untagged throws and other dispatch
+            // errors keep the flattened `route … failed` form so raw server
+            // fault text never rides `run.error.message` onto the wire.
+            const detailMessage = (result.details as { message?: unknown } | undefined)?.message;
+            const taggedMessage =
+                result.error === 'handler_failed' && typeof detailMessage === 'string' && CALLER_FAULT_TAG_RE.test(detailMessage)
+                    ? detailMessage
+                    : undefined;
             return {
                 kind: 'error',
                 code: result.error,
-                message: `route ${step.uri} failed: ${result.error}`,
+                message: taggedMessage ?? `route ${step.uri} failed: ${result.error}`,
                 details: result.details,
             };
         }
