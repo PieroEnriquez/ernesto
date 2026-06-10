@@ -9,8 +9,7 @@ import type { WorkspacePatch } from '../../workspaces/overlay';
 import { buildWorkdir as kitBuildWorkdir } from '../../__tests__/kit';
 
 const allowAllLint: LintFn = async () => ({ ok: true });
-const denyLint: (errors: ReadonlyArray<LintError>) => LintFn =
-    (errors) => async () => ({ ok: false, errors });
+const denyLint: (errors: ReadonlyArray<LintError>) => LintFn = (errors) => async () => ({ ok: false, errors });
 
 describe('settleFromOverlay — server-side 3-way reconcile', () => {
     let root: string;
@@ -44,7 +43,10 @@ describe('settleFromOverlay — server-side 3-way reconcile', () => {
         };
 
         let seenDiff = '';
-        const captureLint: LintFn = async (input) => { seenDiff = input.diff; return { ok: true }; };
+        const captureLint: LintFn = async (input) => {
+            seenDiff = input.diff;
+            return { ok: true };
+        };
 
         const r = await settleFromOverlay(workdir, {
             workspaces: ['hr'],
@@ -83,8 +85,8 @@ describe('settleFromOverlay — server-side 3-way reconcile', () => {
 
         expect(r.ok).toBe(true);
         const tree = await runGit(root, ['ls-tree', '-r', '--name-only', 'HEAD']);
-        expect(tree).toContain('workspaces/hr/notes.md');   // overlay's add
-        expect(tree).toContain('workspaces/hr/policy.md');  // main's add — not clobbered
+        expect(tree).toContain('workspaces/hr/notes.md'); // overlay's add
+        expect(tree).toContain('workspaces/hr/policy.md'); // main's add — not clobbered
     });
 
     it('CONFLICT: a file the overlay edits also changed on main → overlay_conflict, no commit', async () => {
@@ -111,6 +113,10 @@ describe('settleFromOverlay — server-side 3-way reconcile', () => {
         expect(r.ok).toBe(false);
         if (!r.ok && r.error === 'overlay_conflict') {
             expect(r.paths).toContain('workspaces/hr/handbook.md');
+            // A3: the conflict result is diagnosable — it carries the seeded
+            // merge base and the HEAD the 3-way ran against.
+            expect(r.baseSha).toBe(baseSha);
+            expect(r.headSha).toBe(headBefore);
         } else {
             throw new Error(`expected overlay_conflict, got ${JSON.stringify(r)}`);
         }
@@ -149,9 +155,7 @@ describe('settleFromOverlay — server-side 3-way reconcile', () => {
     it('lint failure hard-resets the ephemeral tree, surfaces errors, no commit', async () => {
         const workdir = buildWorkdir();
         const headBefore = (await runGit(root, ['rev-parse', 'HEAD'])).trim();
-        const errors: ReadonlyArray<LintError> = [
-            { code: 'bad', message: 'nope' },
-        ];
+        const errors: ReadonlyArray<LintError> = [{ code: 'bad', message: 'nope' }];
         const r = await settleFromOverlay(workdir, {
             workspaces: ['hr'],
             message: 'will be rejected',

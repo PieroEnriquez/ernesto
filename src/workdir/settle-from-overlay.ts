@@ -47,13 +47,13 @@ export interface SettleFromOverlayInput {
 
 export type SettleFromOverlayResult =
     | SettleResult
-    | { ok: false; error: 'overlay_conflict'; paths: ReadonlyArray<string> }
+    /** `baseSha` = the overlay's merge base, `headSha` = the workdir HEAD the
+     *  3-way ran against — carried so a conflict is diagnosable (genuine
+     *  two-sided edit vs a drifted/stale base) without re-deriving either. */
+    | { ok: false; error: 'overlay_conflict'; paths: ReadonlyArray<string>; baseSha: string; headSha: string }
     | { ok: false; error: 'patch_rejected'; reason: string };
 
-export async function settleFromOverlay(
-    workdir: Workdir,
-    input: SettleFromOverlayInput,
-): Promise<SettleFromOverlayResult> {
+export async function settleFromOverlay(workdir: Workdir, input: SettleFromOverlayInput): Promise<SettleFromOverlayResult> {
     return workdir.lock(async () => {
         const root = workdir.workingTreeRoot;
         const baseSha = (input.baseSha ?? input.patch.baseSha).trim();
@@ -67,8 +67,7 @@ export async function settleFromOverlay(
         // caller forgets from the draft. (The same `resolveScopedPaths` the lint
         // core uses, so apply-scope and commit-scope can never drift.)
         const scopedPaths = await resolveScopedPaths(root, input.workspaces);
-        const inScope = (p: string): boolean =>
-            scopedPaths.some((s) => p === s || p.startsWith(`${s}/`));
+        const inScope = (p: string): boolean => scopedPaths.some((s) => p === s || p.startsWith(`${s}/`));
         const fileEntries = Object.entries(input.patch.files).filter(([p]) => inScope(p));
         if (fileEntries.length === 0) {
             return { ok: false, error: 'patch_rejected', reason: 'empty_patch' };
@@ -97,40 +96,31 @@ export async function settleFromOverlay(
                 if (isDeleted(entry)) {
                     await tryRunGit(root, ['update-index', '--force-remove', '--', path], { env });
                 } else {
-                    const blob = (await runGit(
-                        root,
-                        ['hash-object', '-w', '--stdin', '--path', path],
-                        { env, stdin: entry.content },
-                    )).trim();
-                    await runGit(
-                        root,
-                        ['update-index', '--add', '--cacheinfo', `100644,${blob},${path}`],
-                        { env },
-                    );
+                    const blob = (
+                        await runGit(root, ['hash-object', '-w', '--stdin', '--path', path], { env, stdin: entry.content })
+                    ).trim();
+                    await runGit(root, ['update-index', '--add', '--cacheinfo', `100644,${blob},${path}`], { env });
                 }
             }
             const theirsTree = (await runGit(root, ['write-tree'], { env })).trim();
-            theirsSha = (await runGit(
-                root,
-                ['commit-tree', theirsTree, '-p', baseSha, '-m', 'overlay'],
-                { env },
-            )).trim();
+            theirsSha = (await runGit(root, ['commit-tree', theirsTree, '-p', baseSha, '-m', 'overlay'], { env })).trim();
         } finally {
             await rm(tmpIndex, { force: true });
         }
 
         // 3-way: ours = HEAD (current main), theirs = overlay-on-base. The
         // merge base is baseSha (an ancestor of theirs and of HEAD's history).
-        const merge = await tryRunGit(root, [
-            'merge-tree', '--write-tree', '--name-only', headSha, theirsSha,
-        ]);
+        const merge = await tryRunGit(root, ['merge-tree', '--write-tree', '--name-only', headSha, theirsSha]);
         if (!merge.ok) {
             // Non-zero exit = conflicts. stdout is: <oid>\n\n<conflicted paths…>
             const out = (merge.stdout ?? '').trim();
             const lines = out.split('\n');
             // Drop the first line (the (unusable) tree oid) and any blank lines.
-            const paths = lines.slice(1).map((l) => l.trim()).filter((l) => l.length > 0);
-            return { ok: false, error: 'overlay_conflict', paths };
+            const paths = lines
+                .slice(1)
+                .map((l) => l.trim())
+                .filter((l) => l.length > 0);
+            return { ok: false, error: 'overlay_conflict', paths, baseSha, headSha };
         }
 
         const mergedTree = merge.stdout.trim().split('\n')[0].trim();
