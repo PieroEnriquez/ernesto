@@ -158,3 +158,25 @@ export type { EventLogInitMiddlewareOpts, ClaimRunInput, ClaimRunResult } from '
 // workers) can register the same handlers without copying glue code.
 export { makeRouteStepHandler } from './handlers/route-step';
 export type { RouteStepHandlerDeps } from './handlers/route-step';
+
+// ─── Convene — ask-in-a-room pause ────────────────────────────────
+// The `convene` step kind posts a typed ask into a room (or a user's
+// inbox room — solo HITL is the one-member degenerate case) and parks
+// the run on the durable signal rail until the rooms-side resolve (or
+// the expire timer) calls `runner.resumeRun`. Room internals stay
+// backend-side behind the narrow `ConvenePort`.
+export {
+    makeConveneStepHandler,
+    parseConveneRoomTarget,
+    DEFAULT_CONVENE_VALUE_SCHEMA,
+    CONVENE_RESUME_ENVELOPE_SCHEMA,
+} from './handlers/convene-step';
+export type {
+    ConvenePort,
+    ConveneAskRequest,
+    ConveneAskReceipt,
+    ConveneProvenance,
+    ConveneRoomTarget,
+    ConveneStepHandlerDeps,
+    ConveneStepResult,
+} from './handlers/convene-step';

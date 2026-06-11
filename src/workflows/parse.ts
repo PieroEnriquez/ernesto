@@ -7,7 +7,7 @@
  */
 
 import { load as yamlLoad, YAMLException } from 'js-yaml';
-import type { WorkflowDeclaration, WorkflowStep, AgentStep, AgentHarness, RouteStep, WorkflowInput, WorkflowOutput } from './types';
+import type { WorkflowDeclaration, WorkflowStep, AgentStep, AgentHarness, RouteStep, ConveneStep, WorkflowInput, WorkflowOutput } from './types';
 
 export interface ParseWorkflowOptions {
     /** Used in error messages. */
@@ -145,7 +145,7 @@ function projectStep(stepId: string, v: unknown, filename: string): WorkflowStep
     const raw = v as Record<string, unknown>;
     const kind = raw.kind;
     if (typeof kind !== 'string') {
-        throw new Error(`${filename}: step "${stepId}" is missing "kind:" ` + `(expected one of call | route | input | agent | group)`);
+        throw new Error(`${filename}: step "${stepId}" is missing "kind:" ` + `(expected one of call | route | input | agent | group | convene)`);
     }
     const base = projectStepBase(raw, stepId, filename);
 
@@ -246,6 +246,34 @@ function projectStep(stepId: string, v: unknown, filename: string): WorkflowStep
                 ...(prompt !== undefined ? { prompt } : {}),
                 ...(raw.subagents !== undefined ? { subagents: projectSubagents(raw.subagents, stepId, filename) } : {}),
                 ...(providerOverride ? { providerOverride } : {}),
+                ...base,
+            };
+            return out;
+        }
+        case 'convene': {
+            // Ask-in-a-room pause. `room` is an explicit room id or
+            // `inbox:<user-ref>` for the solo case; `title` + `brief`
+            // are the plain-language ask surface. The resolution-value
+            // `schema` and `resolvers` gate happen at the rooms resolve
+            // gate — structurally we only require object shape here.
+            const room = requireString(raw, 'room', `${filename}: convene step "${stepId}"`);
+            const title = requireString(raw, 'title', `${filename}: convene step "${stepId}"`);
+            const brief = requireString(raw, 'brief', `${filename}: convene step "${stepId}"`);
+            if (raw.schema !== undefined && (typeof raw.schema !== 'object' || raw.schema === null || Array.isArray(raw.schema))) {
+                throw new Error(`${filename}: convene step "${stepId}".schema must be a JSON Schema object`);
+            }
+            const out: ConveneStep = {
+                kind: 'convene',
+                room,
+                title,
+                brief,
+                ...(raw.schema !== undefined ? { schema: raw.schema as Record<string, unknown> } : {}),
+                ...(raw.resolvers !== undefined ? { resolvers: projectResolvers(raw.resolvers, stepId, filename) } : {}),
+                ...(raw.subject !== undefined ? { subject: requireString(raw, 'subject', `${filename}: convene step "${stepId}"`) } : {}),
+                ...(raw.nudgeAfterSec !== undefined ? { nudgeAfterSec: asInt(raw.nudgeAfterSec, `step "${stepId}".nudgeAfterSec`, filename) } : {}),
+                ...(raw.expireAfterSec !== undefined
+                    ? { expireAfterSec: asInt(raw.expireAfterSec, `step "${stepId}".expireAfterSec`, filename) }
+                    : {}),
                 ...base,
             };
             return out;
@@ -531,6 +559,17 @@ function projectOutput(name: string, v: unknown, filename: string): WorkflowOutp
 }
 
 // ─── primitive helpers ───────────────────────────────────────────────────
+
+/** Convene `resolvers:` — the literal `'any-member'` or an explicit
+ *  user-id list. */
+function projectResolvers(v: unknown, stepId: string, filename: string): 'any-member' | string[] {
+    if (v === 'any-member') return 'any-member';
+    const list = projectStringArray(v, `step "${stepId}".resolvers`, filename);
+    if (list === undefined || list.length === 0) {
+        throw new Error(`${filename}: step "${stepId}".resolvers must be 'any-member' or a non-empty array of user ids`);
+    }
+    return list;
+}
 
 function requireString(obj: Record<string, unknown>, key: string, where: string): string {
     const v = obj[key];

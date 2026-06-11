@@ -37,7 +37,7 @@ export interface WorkflowValidateContext {
 
 // Parser-input kinds. Internal kinds are a subset — the parser
 // normalizes `call` → `route` (alias during the workspace-wide rename).
-const KNOWN_STEP_KINDS = new Set(['call', 'route', 'input', 'agent', 'group']);
+const KNOWN_STEP_KINDS = new Set(['call', 'route', 'input', 'agent', 'group', 'convene']);
 
 export function validateWorkflow(decl: WorkflowDeclaration, ctx: WorkflowValidateContext = {}): WorkflowValidationResult {
     const errors: WorkflowValidationError[] = [];

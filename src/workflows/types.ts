@@ -72,9 +72,9 @@ export interface WorkflowTrigger {
 
 // ─── Step kinds ────────────────────────────────────────────────────────────
 
-export type WorkflowStep = RouteStep | InputStep | AgentStep | GroupStep | DynamicWorkflowStep | MonitorStep;
+export type WorkflowStep = RouteStep | InputStep | AgentStep | GroupStep | DynamicWorkflowStep | MonitorStep | ConveneStep;
 
-export type StepKind = 'route' | 'input' | 'agent' | 'group' | 'dynamic-workflow' | 'monitor';
+export type StepKind = 'route' | 'input' | 'agent' | 'group' | 'dynamic-workflow' | 'monitor' | 'convene';
 
 /**
  * DAG metadata every step may declare. The workflow engine reads
@@ -409,6 +409,60 @@ export interface MonitorStep extends BaseStep {
 /** Type guard. */
 export function isMonitorStep(step: WorkflowStep): step is MonitorStep {
     return step.kind === 'monitor';
+}
+
+/**
+ * Convene step — posts a typed ASK into a room (a group room, or the
+ * target user's inbox room for the solo-HITL case — the one-member
+ * degenerate case rides the same path, zero special-cased code) and
+ * parks the run on `paused_signal` until a member resolves the ask or
+ * it expires. The handler is lib-shipped (`makeConveneStepHandler` in
+ * `workflow-engine/handlers/convene-step.ts`) but room internals stay
+ * backend-side behind the narrow `ConvenePort`: ask creation/dedupe,
+ * the system message + ask frame on the room timeline, nudge/expire
+ * timers, and the rooms-side resolve that calls `runner.resumeRun`.
+ *
+ * On resume the step's output is the typed result
+ * `{ outcome: 'resolved' | 'timeout', value?, resolverUserId?,
+ * boundVersion?, digestDelta? }` — available to later steps via
+ * `${{ steps.<id>.outputs.X }}`.
+ */
+export interface ConveneStep extends BaseStep {
+    kind: 'convene';
+    /** Target room: an explicit room id, or `inbox:<user-ref>` for the
+     *  solo case (the target user's inbox room). Supports `${{ }}`
+     *  template expansion. */
+    room: string;
+    /** Ask headline. Plain language — per the voice rule, room-surface
+     *  text carries no scope ids, route URIs, shas, or internal
+     *  vocabulary. Supports `${{ }}` template expansion. */
+    title: string;
+    /** Ask body — what is being decided and why. Plain language; the
+     *  adapter posts it as a system message alongside the ask frame.
+     *  Supports `${{ }}` template expansion. */
+    brief: string;
+    /** JSON Schema for the resolution value. Default: a one-field
+     *  approve/decline decision object. Enforced at the rooms resolve
+     *  gate (NOT at engine resume — the engine validates only the
+     *  resume envelope). */
+    schema?: Record<string, unknown>;
+    /** Who may resolve the ask: every room member, or an explicit
+     *  user-id list. Default `'any-member'`. */
+    resolvers?: 'any-member' | string[];
+    /** Dedupe subject. The adapter keys create-or-refresh on
+     *  `(workflow, subject)` so a re-dispatched workflow refreshes the
+     *  open ask instead of stacking pings. Supports `${{ }}`. */
+    subject?: string;
+    /** Re-post an ask refresh frame after this many seconds pending. */
+    nudgeAfterSec?: number;
+    /** After this many seconds pending the adapter CAS-expires the ask
+     *  and resumes the run with `outcome: 'timeout'`. */
+    expireAfterSec?: number;
+}
+
+/** Type guard. */
+export function isConveneStep(step: WorkflowStep): step is ConveneStep {
+    return step.kind === 'convene';
 }
 
 // ─── Inputs & outputs ─────────────────────────────────────────────────────
