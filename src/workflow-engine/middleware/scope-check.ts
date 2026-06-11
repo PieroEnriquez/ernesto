@@ -115,11 +115,17 @@ function collectDeclaredScopes(decl: KindDecl, inputs: Record<string, unknown>):
     if (decl.kind === 'route') {
         const s = decl.route.scope;
         if (Array.isArray(s)) return [...s];
-        if (typeof s === 'function') {
-            const resolved = s(inputs);
-            return [...(resolved as Iterable<string>)];
-        }
-        return [];
+        if (typeof s === 'function') return normalizeScope(s(inputs));
+        return normalizeScope(s);
     }
     return decl.declaration.scope ?? [];
+}
+
+/** Coerce a route `scope` value into a scope LIST. A single string is ONE
+ *  scope — never spread into characters (a `scope: () => `${ws}:write`` route
+ *  must check `"foo:write"`, not `["f","o","o",…]`). Null/undefined → no scope. */
+function normalizeScope(s: unknown): string[] {
+    if (typeof s === 'string') return s.length > 0 ? [s] : [];
+    if (Array.isArray(s)) return s.filter((x): x is string => typeof x === 'string');
+    return [];
 }

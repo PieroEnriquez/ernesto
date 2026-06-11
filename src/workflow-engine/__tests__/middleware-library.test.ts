@@ -13,6 +13,8 @@ import { timeoutMiddleware } from '../middleware/timeout';
 import { loggingMiddleware } from '../middleware/logging';
 import type { WorkflowReader, WorkflowDetail } from '../workflow-reader';
 import type { WorkflowDeclaration, WorkflowStep } from '../../workflows/types';
+import { defineRoute } from '../../route/define-route';
+import { z } from 'zod';
 
 function readerOf(decl: WorkflowDeclaration): WorkflowReader {
     const detail: WorkflowDetail = {
@@ -377,6 +379,50 @@ describe('scopeCheckMiddleware admin bypass', () => {
 
     it('still rejects a caller without the bypass scope even when bypass is configured', async () => {
         await expect(runWith(['marketing:read'], ['ernesto:agent-ops'])).rejects.toMatchObject({ code: 'scope_escalation' });
+    });
+});
+
+describe('scopeCheckMiddleware — a dynamic route scope returning a STRING is ONE scope', () => {
+    // A `scope: (input) => `${input.workspace}:write`` route returns a single
+    // RouteScope (the documented DynamicScope shape). It must be checked as the
+    // one scope "foo:write" — never spread into per-character scopes
+    // ["f","o","o",…], the latent bug that surfaced as
+    // `missing: u,n,d,e,f,i,n,e,d,:,w,r,i,t,e`.
+    const dynRoute = defineRoute({
+        uri: 'editor://write',
+        scope: (input: { workspace: string }) => `${input.workspace}:write`,
+        input: z.object({ workspace: z.string() }),
+        output: z.object({ ok: z.boolean() }),
+        handler: async () => ({ ok: true }),
+    });
+
+    async function runWith(callerScopes: string[], workspace: string) {
+        const runner = createRunner();
+        runner.kindRegistry.registerRoute(dynRoute);
+        const { scopeCheckMiddleware } = await import('../middleware/scope-check');
+        runner.use(scopeCheckMiddleware());
+        return runner.dispatch('editor://write', { workspace }, userPrincipal('alice', callerScopes), {});
+    }
+
+    it('admits a caller holding exactly the resolved scope (clears the scope gate)', async () => {
+        // The caller holds the resolved scope, so scope-check must NOT reject;
+        // any downstream execution error is unrelated to the gate under test.
+        const run = await runWith(['payments:write'], 'payments').catch((e) => e);
+        expect((run as { code?: string })?.code).not.toBe('scope_escalation');
+    });
+
+    it('rejects with the WHOLE scope as the single missing entry, not characters', async () => {
+        await expect(runWith(['payments:read'], 'payments')).rejects.toMatchObject({
+            code: 'scope_escalation',
+            missing: ['payments:write'],
+        });
+    });
+
+    it('holding the individual characters does NOT satisfy the scope', async () => {
+        await expect(runWith([...'payments:write'], 'payments')).rejects.toMatchObject({
+            code: 'scope_escalation',
+            missing: ['payments:write'],
+        });
     });
 });
 
