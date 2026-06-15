@@ -173,10 +173,10 @@ steps:
     brief: B
     workbench:
 `;
-        expect(() => parseWorkflowYaml(base + '      workspaces: [a]\n', { filename: 'w.yaml' }))
-            .toThrow(/workbench\.verb must be one of/);
-        expect(() => parseWorkflowYaml(base + '      verb: approve\n', { filename: 'w.yaml' }))
-            .toThrow(/workbench\.workspaces must be a non-empty array/);
+        expect(() => parseWorkflowYaml(base + '      workspaces: [a]\n', { filename: 'w.yaml' })).toThrow(/workbench\.verb must be one of/);
+        expect(() => parseWorkflowYaml(base + '      verb: approve\n', { filename: 'w.yaml' })).toThrow(
+            /workbench\.workspaces must be a non-empty array/,
+        );
     });
 
     it('parses route, input, agent, subworkflow step kinds', () => {

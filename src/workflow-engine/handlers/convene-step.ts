@@ -252,9 +252,7 @@ export function makeConveneStepHandler(deps: ConveneStepHandlerDeps): StepKindHa
             executionScopes,
             ...(step.nudgeAfterSec !== undefined ? { nudgeAfterSec: step.nudgeAfterSec } : {}),
             ...(step.expireAfterSec !== undefined ? { expireAfterSec: step.expireAfterSec } : {}),
-            ...(step.workbench !== undefined
-                ? { workbench: { ...step.workbench, runId: step.workbench.runId ?? ctx.runId } }
-                : {}),
+            ...(step.workbench !== undefined ? { workbench: { ...step.workbench, runId: step.workbench.runId ?? ctx.runId } } : {}),
         };
 
         let receipt: ConveneAskReceipt;

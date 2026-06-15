@@ -1164,7 +1164,10 @@ export function lintAttachmentsFile(filepath: string, text: string): LintError[]
         code: INVALID_ATTACHMENTS_YAML,
         path: filepath,
         workspace,
-        message: issue.entryIndex === undefined ? `File ${filepath} is not a valid attachments index: ${issue.message}` : `File ${filepath} entry ${issue.entryIndex}: ${issue.message}`,
+        message:
+            issue.entryIndex === undefined
+                ? `File ${filepath} is not a valid attachments index: ${issue.message}`
+                : `File ${filepath} entry ${issue.entryIndex}: ${issue.message}`,
     }));
 }
 

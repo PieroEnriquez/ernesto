@@ -44,7 +44,15 @@ export type {
 } from './workdir';
 
 // ─── Lint (workspace settle gate) ────────────────────────────────────────
-export { lintWorkspace, makeLintWorkspace, lintWorkflowFile, lintAttachmentsFile, UNREGISTERED_EXTRACTION_SOURCE, INVALID_ATTACHMENTS_YAML, RESERVED_SYSTEM_WORKSPACES } from './lint';
+export {
+    lintWorkspace,
+    makeLintWorkspace,
+    lintWorkflowFile,
+    lintAttachmentsFile,
+    UNREGISTERED_EXTRACTION_SOURCE,
+    INVALID_ATTACHMENTS_YAML,
+    RESERVED_SYSTEM_WORKSPACES,
+} from './lint';
 export type { LintPrincipal } from './lint';
 
 // ─── Workspace boundary resolution (FS-derived identity → location) ──────

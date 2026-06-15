@@ -376,10 +376,7 @@ describe('sandboxBindMiddleware', () => {
             observedWorkdirRoot = ctx.workdirRoot;
             observedHooks = ctx.annotations.sandboxHooks;
             // A backend might mark the kind as fail-closed for sandbox.
-            failClosedMarker =
-                ctx.annotations.sandboxRequired ??
-                ctx.annotations.sandboxFailClosed ??
-                ctx.annotations.failClosed;
+            failClosedMarker = ctx.annotations.sandboxRequired ?? ctx.annotations.sandboxFailClosed ?? ctx.annotations.failClosed;
             return { kind: 'completed', output: {} };
         });
         runner.registerWorkflowReader(readerOf(DECL));
@@ -501,9 +498,7 @@ describe('toolSurfaceComposeMiddleware', () => {
 
         await runner.dispatch('wf-dag', {}, userPrincipal('u', []), {});
         expect(compose).toHaveBeenCalledTimes(1);
-        expect(compose).toHaveBeenCalledWith(
-            expect.objectContaining({ mcpServers: ['ernesto'] }),
-        );
+        expect(compose).toHaveBeenCalledWith(expect.objectContaining({ mcpServers: ['ernesto'] }));
     });
 
     it('skips composition when main step has no mcpServers', async () => {

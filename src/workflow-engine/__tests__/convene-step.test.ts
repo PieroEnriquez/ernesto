@@ -235,12 +235,12 @@ describe('convene step handler', () => {
         const run = await runner.dispatch('wf-convene', {}, userPrincipal('alice', []), {});
         const pause = (await store.getRunState(run.runId))!.resume!.paused[0]!;
 
-        await expect(
-            runner.resumeRun({ runId: run.runId, promptId: pause.promptId, value: { value: 1 } }),
-        ).rejects.toThrow(/HITL value invalid/);
-        await expect(
-            runner.resumeRun({ runId: run.runId, promptId: pause.promptId, value: { outcome: 'withdrawn?' } }),
-        ).rejects.toThrow(/HITL value invalid/);
+        await expect(runner.resumeRun({ runId: run.runId, promptId: pause.promptId, value: { value: 1 } })).rejects.toThrow(
+            /HITL value invalid/,
+        );
+        await expect(runner.resumeRun({ runId: run.runId, promptId: pause.promptId, value: { outcome: 'withdrawn?' } })).rejects.toThrow(
+            /HITL value invalid/,
+        );
         expect((await store.getRunState(run.runId))?.status).toBe('paused');
     });
 

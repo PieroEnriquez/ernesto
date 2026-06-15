@@ -7,7 +7,17 @@
  */
 
 import { load as yamlLoad, YAMLException } from 'js-yaml';
-import type { WorkflowDeclaration, WorkflowStep, AgentStep, AgentHarness, RouteStep, ConveneStep, WorkbenchRef, WorkflowInput, WorkflowOutput } from './types';
+import type {
+    WorkflowDeclaration,
+    WorkflowStep,
+    AgentStep,
+    AgentHarness,
+    RouteStep,
+    ConveneStep,
+    WorkbenchRef,
+    WorkflowInput,
+    WorkflowOutput,
+} from './types';
 
 export interface ParseWorkflowOptions {
     /** Used in error messages. */
@@ -145,7 +155,9 @@ function projectStep(stepId: string, v: unknown, filename: string): WorkflowStep
     const raw = v as Record<string, unknown>;
     const kind = raw.kind;
     if (typeof kind !== 'string') {
-        throw new Error(`${filename}: step "${stepId}" is missing "kind:" ` + `(expected one of call | route | input | agent | group | convene)`);
+        throw new Error(
+            `${filename}: step "${stepId}" is missing "kind:" ` + `(expected one of call | route | input | agent | group | convene)`,
+        );
     }
     const base = projectStepBase(raw, stepId, filename);
 
@@ -270,13 +282,13 @@ function projectStep(stepId: string, v: unknown, filename: string): WorkflowStep
                 ...(raw.schema !== undefined ? { schema: raw.schema as Record<string, unknown> } : {}),
                 ...(raw.resolvers !== undefined ? { resolvers: projectResolvers(raw.resolvers, stepId, filename) } : {}),
                 ...(raw.subject !== undefined ? { subject: requireString(raw, 'subject', `${filename}: convene step "${stepId}"`) } : {}),
-                ...(raw.nudgeAfterSec !== undefined ? { nudgeAfterSec: asInt(raw.nudgeAfterSec, `step "${stepId}".nudgeAfterSec`, filename) } : {}),
+                ...(raw.nudgeAfterSec !== undefined
+                    ? { nudgeAfterSec: asInt(raw.nudgeAfterSec, `step "${stepId}".nudgeAfterSec`, filename) }
+                    : {}),
                 ...(raw.expireAfterSec !== undefined
                     ? { expireAfterSec: asInt(raw.expireAfterSec, `step "${stepId}".expireAfterSec`, filename) }
                     : {}),
-                ...(raw.workbench !== undefined
-                    ? { workbench: projectWorkbench(raw.workbench, stepId, filename) }
-                    : {}),
+                ...(raw.workbench !== undefined ? { workbench: projectWorkbench(raw.workbench, stepId, filename) } : {}),
                 ...base,
             };
             return out;
@@ -597,7 +609,9 @@ function projectWorkbench(v: unknown, stepId: string, filename: string): Workben
     if (raw.previewKind !== undefined) {
         const pk = raw.previewKind;
         if (typeof pk !== 'string' || !WORKBENCH_PREVIEW_KINDS.has(pk)) {
-            throw new Error(`${filename}: ${where}.previewKind must be one of site | markdown | json | none | edition | form | workflow-yaml`);
+            throw new Error(
+                `${filename}: ${where}.previewKind must be one of site | markdown | json | none | edition | form | workflow-yaml`,
+            );
         }
         out.previewKind = pk as WorkbenchRef['previewKind'];
     }
@@ -644,7 +658,8 @@ function projectWorkbench(v: unknown, stepId: string, filename: string): Workben
             }
             const il = cm.inline as Record<string, unknown>;
             commit.inline = {};
-            if (il.definitionYaml !== undefined) commit.inline.definitionYaml = asString(il.definitionYaml, `${where}.commit.inline.definitionYaml`);
+            if (il.definitionYaml !== undefined)
+                commit.inline.definitionYaml = asString(il.definitionYaml, `${where}.commit.inline.definitionYaml`);
         }
         out.commit = commit;
     }

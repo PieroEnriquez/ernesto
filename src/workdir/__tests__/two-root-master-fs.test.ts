@@ -29,8 +29,7 @@ let generatedRoot = '';
 // mirrors GENERATED_PATH_RE: extracted/, attached/, .derived-from-sha — but NOT
 // attachments.yaml (a tracked git file), `_results` (ResultsStore-owned), or
 // authored files.
-const isGenerated = (rel: string) =>
-    /^workspaces\/(?:[^/]+\/)*(?:extracted\/.+|attached\/.+|\.derived-from-sha)$/.test(rel);
+const isGenerated = (rel: string) => /^workspaces\/(?:[^/]+\/)*(?:extracted\/.+|attached\/.+|\.derived-from-sha)$/.test(rel);
 
 async function write(base: string, rel: string, content: string): Promise<void> {
     const abs = path.join(base, rel);

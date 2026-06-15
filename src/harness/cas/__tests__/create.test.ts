@@ -280,8 +280,7 @@ describe('casCreateAgent tool-allowlist enforcement (negative)', () => {
         //   (b) the write-capable tools are explicitly denied.
         const allowlistForwarded = JSON.stringify(call.options.tools) === JSON.stringify(['Read']);
         const deniesWrites =
-            !!call.options.disallowedTools &&
-            ['Write', 'Edit', 'Bash'].every((t) => call.options.disallowedTools!.includes(t));
+            !!call.options.disallowedTools && ['Write', 'Edit', 'Bash'].every((t) => call.options.disallowedTools!.includes(t));
         expect(allowlistForwarded || deniesWrites).toBe(true);
     });
 
@@ -299,7 +298,10 @@ describe('casCreateAgent tool-allowlist enforcement (negative)', () => {
                     systemPrompt: 'be terse',
                     model: 'claude-haiku-4-5',
                     maxTurns: 5,
-                    tools: [{ kind: 'builtin', name: 'Read' }, { kind: 'mcp', serverName: 'ernesto' }],
+                    tools: [
+                        { kind: 'builtin', name: 'Read' },
+                        { kind: 'mcp', serverName: 'ernesto' },
+                    ],
                 },
                 { agentId: 'tools-4' },
             ),

@@ -313,7 +313,11 @@ describe('lintWorkspace (scope-less)', () => {
     it('rejects a cross-workspace move whose destination is outside declared scope', async () => {
         // `finance` is a real committed boundary, but the settle declares only
         // ['hr'] — so the move's destination resolves to a workspace not in scope.
-        await seedWorkspace(root, 'finance', VALID_HR.replace(/name: hr/, 'name: finance').replace(/admin: hr-admin/, 'admin: finance-admin'));
+        await seedWorkspace(
+            root,
+            'finance',
+            VALID_HR.replace(/name: hr/, 'name: finance').replace(/admin: hr-admin/, 'admin: finance-admin'),
+        );
         await writeStagedFile(root, 'workspaces/hr/note.md', '# n\n');
         await commitAll(root, 'seed finance + hr note');
         // Move workspaces/hr/note.md -> workspaces/finance/note.md.
@@ -322,9 +326,7 @@ describe('lintWorkspace (scope-less)', () => {
         const diff = diffDelete('workspaces/hr/note.md', '# n\n') + diffAdd('workspaces/finance/note.md', '# n\n');
         const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
         const failed = expectErrors(result);
-        expect(
-            failed.errors.some((e) => e.code === 'out_of_scope_path' && e.path === 'workspaces/finance/note.md'),
-        ).toBe(true);
+        expect(failed.errors.some((e) => e.code === 'out_of_scope_path' && e.path === 'workspaces/finance/note.md')).toBe(true);
     });
 
     // ── NEGATIVE: leaf-RENAMING WORKSPACE.md move does NOT satisfy the carve-out ─
@@ -336,13 +338,10 @@ describe('lintWorkspace (scope-less)', () => {
     // leaf-changing rename.
     it('still flags forbidden_workspace_md_delete when a WORKSPACE.md move RENAMES the leaf', async () => {
         const diff =
-            diffDelete('workspaces/cs-scheduler/WORKSPACE.md', VALID_HR) +
-            diffAdd('workspaces/cs/scheduler/WORKSPACE.md', VALID_HR);
+            diffDelete('workspaces/cs-scheduler/WORKSPACE.md', VALID_HR) + diffAdd('workspaces/cs/scheduler/WORKSPACE.md', VALID_HR);
         const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
         const failed = expectErrors(result);
-        expect(
-            failed.errors.some((e) => e.code === 'forbidden_workspace_md_delete' && e.workspace === 'cs-scheduler'),
-        ).toBe(true);
+        expect(failed.errors.some((e) => e.code === 'forbidden_workspace_md_delete' && e.workspace === 'cs-scheduler')).toBe(true);
     });
 
     // ── NEGATIVE: prose edit cannot ride along on a valid unarchive flip ───────
@@ -361,8 +360,7 @@ describe('lintWorkspace (scope-less)', () => {
         await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', after);
         // ...BUNDLED with a prose edit in the same (HEAD-archived) workspace.
         await writeStagedFile(root, 'workspaces/hr/note.md', '# smuggled\n');
-        const diff =
-            diffModify('workspaces/hr/WORKSPACE.md', before, after) + diffAdd('workspaces/hr/note.md', '# smuggled\n');
+        const diff = diffModify('workspaces/hr/WORKSPACE.md', before, after) + diffAdd('workspaces/hr/note.md', '# smuggled\n');
         const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
         const failed = expectErrors(result);
         expect(failed.errors.some((e) => e.code === 'archived_workspace_edit' && e.workspace === 'hr')).toBe(true);
