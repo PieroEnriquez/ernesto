@@ -152,12 +152,14 @@ steps:
 `;
         const decl = parseWorkflowYaml(yaml);
         const wb = (decl.steps.approve as { workbench?: Record<string, unknown> }).workbench;
+        // paths + preview.path are normalized to the canonical workspace-relative
+        // form at parse time (the full-tree drift is collapsed to leaf-relative).
         expect(wb).toEqual({
             workspaces: ['this-week'],
             verb: 'approve',
-            paths: ['workspaces/sites/this-week/data/latest.json'],
+            paths: ['data/latest.json'],
             previewKind: 'site',
-            preview: { site: 'this-week', path: 'workspaces/sites/this-week/data/latest.json' },
+            preview: { site: 'this-week', path: 'data/latest.json' },
         });
     });
 

@@ -589,6 +589,44 @@ function projectResolvers(v: unknown, stepId: string, filename: string): 'any-me
 const WORKBENCH_VERBS = new Set(['approve', 'settle', 'create', 'configure']);
 const WORKBENCH_PREVIEW_KINDS = new Set(['site', 'markdown', 'json', 'none', 'edition', 'form', 'workflow-yaml']);
 
+/**
+ * Canonical WORKBENCH path form = WORKSPACE-RELATIVE. A workbench path identifies
+ * a draft file RELATIVE to its deepest declared workspace boundary (the LAST
+ * entry of `workspaces`, which lists parent..leaf). Some authored workflows (the
+ * this-week demo) drifted to full `workspaces/<…>/<leaf>/...` tree paths; we
+ * normalize BOTH forms to the one canonical shape at the parse/convene boundary
+ * so every consumer (FE `preview.path ?? paths[0]`, settle, diff) sees one form.
+ *   - trim + drop a leading '/'; reject '..' anywhere (no traversal off-boundary).
+ *   - `workspaces/`-prefixed → strip up to AND INCLUDING the deepest declared
+ *     leaf segment; reject if the leaf is absent or nothing remains (root, not a file).
+ *   - otherwise already workspace-relative → keep verbatim.
+ */
+function normalizeWorkbenchTreePath(p: string, workspaces: string[], where: string, filename: string): string {
+    const trimmed = p.trim().replace(/^\/+/, '');
+    if (trimmed === '') {
+        throw new Error(`${filename}: ${where} must be a non-empty workspace-relative path`);
+    }
+    const segs = trimmed.split('/');
+    if (segs.some((s) => s === '..')) {
+        throw new Error(`${filename}: ${where} "${p}" must not contain '..' (paths are confined to the workspace)`);
+    }
+    if (segs[0] !== 'workspaces') {
+        return trimmed;
+    }
+    const leaf = workspaces[workspaces.length - 1]!;
+    const leafIdx = segs.lastIndexOf(leaf);
+    if (leafIdx === -1) {
+        throw new Error(
+            `${filename}: ${where} "${p}" does not lie under workspace "${leaf}" (declared workspaces: ${workspaces.join(', ')})`,
+        );
+    }
+    const rel = segs.slice(leafIdx + 1).join('/');
+    if (rel === '') {
+        throw new Error(`${filename}: ${where} "${p}" is the workspace root, not a file`);
+    }
+    return rel;
+}
+
 function projectWorkbench(v: unknown, stepId: string, filename: string): WorkbenchRef {
     const where = `convene step "${stepId}".workbench`;
     if (typeof v !== 'object' || v === null || Array.isArray(v)) {
@@ -605,7 +643,10 @@ function projectWorkbench(v: unknown, stepId: string, filename: string): Workben
     }
     const out: WorkbenchRef = { workspaces, verb: verb as WorkbenchRef['verb'] };
     const paths = projectStringArray(raw.paths, `${where}.paths`, filename);
-    if (paths !== undefined) out.paths = paths;
+    if (paths !== undefined) {
+        // Normalize to the canonical workspace-relative form (+ confinement assert).
+        out.paths = paths.map((p, i) => normalizeWorkbenchTreePath(p, workspaces, `${where}.paths[${i}]`, filename));
+    }
     if (raw.previewKind !== undefined) {
         const pk = raw.previewKind;
         if (typeof pk !== 'string' || !WORKBENCH_PREVIEW_KINDS.has(pk)) {
@@ -622,7 +663,16 @@ function projectWorkbench(v: unknown, stepId: string, filename: string): Workben
         const pv = raw.preview as Record<string, unknown>;
         const preview: NonNullable<WorkbenchRef['preview']> = {};
         if (pv.site !== undefined) preview.site = asString(pv.site, `${where}.preview.site`);
-        if (pv.path !== undefined) preview.path = asString(pv.path, `${where}.preview.path`);
+        if (pv.path !== undefined) {
+            // preview.path normalizes in lockstep with paths[] so the FE's
+            // `preview.path ?? paths[0]` primaryPath stays coherent.
+            preview.path = normalizeWorkbenchTreePath(
+                asString(pv.path, `${where}.preview.path`),
+                workspaces,
+                `${where}.preview.path`,
+                filename,
+            );
+        }
         if (pv.configKind !== undefined) {
             if (pv.configKind !== 'extractions') {
                 throw new Error(`${filename}: ${where}.preview.configKind must be 'extractions'`);
