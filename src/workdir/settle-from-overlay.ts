@@ -38,8 +38,12 @@ export interface SettleFromOverlayInput {
     message: string;
     /** The durable per-user content-overlay to settle. */
     patch: WorkspacePatch;
-    /** Master-FS revision the overlay was reconciled against. Must exist in the
-     *  repo (it is the merge base for the 3-way). Defaults to `patch.baseSha`. */
+    /** Master-FS revision the overlay was reconciled against — the GLOBAL merge
+     *  base for the 3-way. Must exist in the repo. Defaults to `patch.baseSha`.
+     *  NOTE: per-file bases live in `patch.files[path].base` and are consumed by
+     *  the PRE-settle reconcile (PatchStore.reconcileToMasterHead), which advances
+     *  this global base to HEAD on a clean reconcile and feeds settle an already
+     *  byte-clean patch — so settle here intentionally uses this single base. */
     baseSha?: string;
     lint: LintFn;
     pushToMain?: PushToMainFn;

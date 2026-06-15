@@ -59,14 +59,24 @@ export interface FsReader {
     stat(rel: string): Promise<{ isFile(): boolean; isDirectory(): boolean }>;
 }
 
-/** A single overlaid file: full content, or a tombstone hiding the lower layer. */
-export type PatchEntry = { content: string } | { deleted: true };
+/**
+ * A single overlaid file: full content, or a tombstone hiding the lower layer.
+ *
+ * `base?` is the PER-FILE merge base: the master-FS git rev this entry's content
+ * was authored against (stamped at capture as the master HEAD then). Reconcile
+ * 3-ways each file against ITS OWN base, so a file the user edited against the
+ * current tree applies cleanly even when an unrelated concurrent settle advanced
+ * the global base — no manufactured conflicts. Absent ⇒ fall back to the global
+ * {@link WorkspacePatch.baseSha} (legacy entries, pre-per-file-base).
+ */
+export type PatchEntry = { content: string; base?: string } | { deleted: true; base?: string };
 
 /**
- * The durable per-user content-overlay (PROJECT.md §2). `baseSha` records the
- * master-FS revision the overlay was last reconciled against (used by settle's
- * 3-way; the read view does not need it). `files` maps tree-relative POSIX
- * paths to full content or a deletion tombstone.
+ * The durable per-user content-overlay (PROJECT.md §2). `baseSha` is the GLOBAL
+ * fallback base — the master-FS revision the overlay was last fully reconciled
+ * against; a file with its own `files[path].base` uses that instead (used by
+ * settle's 3-way / reconcile; the read view needs neither). `files` maps
+ * tree-relative POSIX paths to full content or a deletion tombstone.
  */
 export interface WorkspacePatch {
     baseSha: string;
