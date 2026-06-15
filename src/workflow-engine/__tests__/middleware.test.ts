@@ -300,6 +300,51 @@ describe('scopeCheckMiddleware', () => {
         expect(ok.status).toBe('completed');
     });
 
+    it('child dispatch declaring a scope the original caller lacks is rejected — no MD-driven escalation (no admin bypass)', async () => {
+        // Simulates a child invocation (subagent/subworkflow). The runner
+        // forwards the caller's scope set UNCHANGED to children, so a child
+        // kind that declares a scope the ORIGINAL caller lacks must still be
+        // rejected — the managed dispatch cannot escalate above the caller's
+        // own scopes, regardless of dispatch depth. No adminBypassScopes
+        // configured, so the strict intersection is the only gate.
+        const runner = createRunner();
+        runner.registerStepKind('route', async () => ({
+            kind: 'completed',
+            output: {},
+        }));
+        // The "child" kind a parent step might dispatch into. It declares a
+        // scope (payments:write) that the original caller (marketing:read only)
+        // does not hold.
+        const childDecl: WorkflowDeclaration = {
+            name: 'child-wf',
+            description: 'subagent/subworkflow invoked under the caller',
+            version: 1,
+            scope: ['payments:write'],
+            steps: { s1: { kind: 'route', uri: 'x' } as WorkflowStep },
+        };
+        runner.registerWorkflowReader(readerOf(childDecl));
+        runner.kindRegistry.registerWorkflow(childDecl);
+        // No adminBypassScopes — the strict intersection must apply.
+        runner.use(scopeCheckMiddleware());
+
+        // The original caller is a user principal holding ONLY marketing:read,
+        // forwarded unchanged to the child dispatch.
+        const caller = userPrincipal('orig-caller', ['marketing:read']);
+
+        const err = await runner.dispatch('child-wf', {}, caller, {}).then(
+            () => {
+                throw new Error('expected dispatch to reject with ScopeEscalationError');
+            },
+            (e) => e,
+        );
+        expect(err).toBeInstanceOf(ScopeEscalationError);
+        expect((err as ScopeEscalationError).code).toBe('scope_escalation');
+        // Exactly the declared-but-not-held scope is reported missing — the
+        // caller's marketing:read does not satisfy payments:write, and there is
+        // no escalation path that would silently grant it.
+        expect([...(err as ScopeEscalationError).missing]).toEqual(['payments:write']);
+    });
+
     it('kind with no declared scope passes unconditionally', async () => {
         const runner = createRunner();
         runner.registerStepKind('route', async () => ({

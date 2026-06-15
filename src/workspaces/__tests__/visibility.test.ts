@@ -68,6 +68,35 @@ describe('computeWorkspaceVisibility (real FS, depth-aware)', () => {
         expect(pricing?.dir).toBe('workspaces/product/pricing');
     });
 
+    it('denies a path owned by NO boundary (out-of-tree / bare path), not defaulted-open', async () => {
+        // Principal with NO scopes — but the point is attribution, not the ACL:
+        // a path under no boundary must be unattributable and therefore denied.
+        const vis = await computeWorkspaceVisibility(root, scopes(), { isAdmin: false });
+
+        // Out-of-tree: a file outside `workspaces/` entirely.
+        expect(workspaceForPath(vis, 'README.md')).toBe(null);
+        expect(canReadPath(vis, 'README.md')).toBe(false);
+
+        // A bare path whose dir ('workspaces/ghost') carries no WORKSPACE.md →
+        // boundaryForPath finds no owner → null → denied (not the parent's gate,
+        // not defaulted-open).
+        expect(workspaceForPath(vis, 'workspaces/ghost/x.md')).toBe(null);
+        expect(canReadPath(vis, 'workspaces/ghost/x.md')).toBe(false);
+
+        // `workspaces/` itself is not a boundary.
+        expect(workspaceForPath(vis, 'workspaces/index.md')).toBe(null);
+        expect(canReadPath(vis, 'workspaces/index.md')).toBe(false);
+    });
+
+    it('admin bypass does NOT defaulted-open an out-of-tree path (attribution is independent of ACL)', async () => {
+        // isAdmin floods readableNames, but attribution still yields null for a
+        // path under no boundary, so the read is still denied.
+        const vis = await computeWorkspaceVisibility(root, scopes(), { isAdmin: true });
+        expect(workspaceForPath(vis, 'README.md')).toBe(null);
+        expect(canReadPath(vis, 'README.md')).toBe(false);
+        expect(canReadPath(vis, 'workspaces/ghost/x.md')).toBe(false);
+    });
+
     it('falls back to _ernesto when there are no boundaries on disk', async () => {
         const empty = await mkdtemp(path.join(tmpdir(), 'visibility-empty-'));
         try {

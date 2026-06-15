@@ -242,6 +242,132 @@ describe('lintWorkspace (scope-less)', () => {
         expect(failed.errors.some((e) => e.code === 'forbidden_workspace_name')).toBe(true);
     });
 
+    // ── NEGATIVE: workspace-name 40-char length cap ({0,39} quantifier) ───────
+    //
+    // The existing positive test above only exercises the *case* rule (uppercase
+    // 'BadName'); it never touches the LENGTH boundary. WORKSPACE_NAME_REGEX is
+    // /^[a-z][a-z0-9-]{0,39}$/ → 1 leading + up to 39 tail = 40 chars inclusive.
+    // We pin both sides of the off-by-one: 41 chars must be rejected, 40 must
+    // pass. This catches a future widening of the cap OR an off-by-one in the
+    // {0,39} quantifier.
+    it('rejects a 41-char new-workspace leaf name (over the {0,39} length cap)', async () => {
+        const name = 'a'.repeat(41);
+        const body = ['---', `name: ${name}`, 'description: x', `admin: ${name}-admin`, '---'].join('\n');
+        await writeStagedFile(root, `workspaces/${name}/WORKSPACE.md`, body);
+        const diff = diffAdd(`workspaces/${name}/WORKSPACE.md`, body);
+        const result = await lintWorkspace({ diff, workspaces: [name], workingTreeRoot: root });
+        const failed = expectErrors(result);
+        expect(failed.errors.some((e) => e.code === 'forbidden_workspace_name' && e.workspace === name)).toBe(true);
+    });
+
+    it('accepts a 40-char new-workspace leaf name (the cap is inclusive at 40)', async () => {
+        const name = 'a'.repeat(40);
+        const body = ['---', `name: ${name}`, 'description: x', `admin: ${name}-admin`, '---'].join('\n');
+        await writeStagedFile(root, `workspaces/${name}/WORKSPACE.md`, body);
+        const diff = diffAdd(`workspaces/${name}/WORKSPACE.md`, body);
+        const result = await lintWorkspace({ diff, workspaces: [name], workingTreeRoot: root });
+        // The boundary value must NOT trip forbidden_workspace_name. (Other
+        // unrelated codes are irrelevant; pin only the name rule.)
+        if (!result.ok) {
+            expect((result as FailedLint).errors.every((e) => e.code !== 'forbidden_workspace_name')).toBe(true);
+        } else {
+            expect(result).toEqual({ ok: true });
+        }
+    });
+
+    // ── NEGATIVE: 1 MiB file cap is strict `>` (boundary inclusive at the cap) ─
+    //
+    // The existing flagCase only tests the OVER-cap case (1 MiB + 1). The cap
+    // boundary itself is unpinned. A file of EXACTLY MAX_FILE_BYTES must PASS
+    // (the guard is `st.size > MAX_FILE_BYTES`), and +1 byte must flag. This
+    // pins the strict `>` so a future `>=` (fail-CLOSED) regression or a relaxed
+    // cap is caught.
+    it('accepts a file of exactly 1 MiB (the cap is strict `>`, inclusive at MAX_FILE_BYTES)', async () => {
+        const exact = 'x'.repeat(1024 * 1024);
+        await writeStagedFile(root, 'workspaces/hr/exact.txt', exact);
+        const diff = diffAdd('workspaces/hr/exact.txt', '');
+        const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
+        if (!result.ok) {
+            expect((result as FailedLint).errors.some((e) => e.code === 'file_too_large')).toBe(false);
+        } else {
+            expect(result).toEqual({ ok: true });
+        }
+    });
+
+    it('flags file_too_large at exactly 1 MiB + 1 byte (companion to the boundary)', async () => {
+        const over = 'x'.repeat(1024 * 1024 + 1);
+        await writeStagedFile(root, 'workspaces/hr/over.txt', over);
+        const diff = diffAdd('workspaces/hr/over.txt', '');
+        const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
+        const failed = expectErrors(result);
+        expect(failed.errors.some((e) => e.code === 'file_too_large' && e.path === 'workspaces/hr/over.txt')).toBe(true);
+    });
+
+    // ── NEGATIVE: cross-workspace move into UNDECLARED scope is rejected ───────
+    //
+    // The existing flagCase tests the ALLOW side (same-leaf WORKSPACE.md
+    // relocation). The REJECT side — moving content into a workspace NOT in the
+    // declared set — is untested. The relocation carve-out is ONLY for a
+    // same-leaf WORKSPACE.md re-create; moving a plain file into an undeclared
+    // boundary must still raise out_of_scope_path for the destination.
+    it('rejects a cross-workspace move whose destination is outside declared scope', async () => {
+        // `finance` is a real committed boundary, but the settle declares only
+        // ['hr'] — so the move's destination resolves to a workspace not in scope.
+        await seedWorkspace(root, 'finance', VALID_HR.replace(/name: hr/, 'name: finance').replace(/admin: hr-admin/, 'admin: finance-admin'));
+        await writeStagedFile(root, 'workspaces/hr/note.md', '# n\n');
+        await commitAll(root, 'seed finance + hr note');
+        // Move workspaces/hr/note.md -> workspaces/finance/note.md.
+        await rm(path.join(root, 'workspaces', 'hr', 'note.md'));
+        await writeStagedFile(root, 'workspaces/finance/note.md', '# n\n');
+        const diff = diffDelete('workspaces/hr/note.md', '# n\n') + diffAdd('workspaces/finance/note.md', '# n\n');
+        const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
+        const failed = expectErrors(result);
+        expect(
+            failed.errors.some((e) => e.code === 'out_of_scope_path' && e.path === 'workspaces/finance/note.md'),
+        ).toBe(true);
+    });
+
+    // ── NEGATIVE: leaf-RENAMING WORKSPACE.md move does NOT satisfy the carve-out ─
+    //
+    // The relocation carve-out keys on the SAME leaf name being re-created. A
+    // move that RENAMES the leaf (cs-scheduler -> scheduler) orphans the old
+    // contract: forbidden_workspace_md_delete must STILL fire for 'cs-scheduler'.
+    // This guards lint-workspace.ts:557-576 against over-granting on a
+    // leaf-changing rename.
+    it('still flags forbidden_workspace_md_delete when a WORKSPACE.md move RENAMES the leaf', async () => {
+        const diff =
+            diffDelete('workspaces/cs-scheduler/WORKSPACE.md', VALID_HR) +
+            diffAdd('workspaces/cs/scheduler/WORKSPACE.md', VALID_HR);
+        const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
+        const failed = expectErrors(result);
+        expect(
+            failed.errors.some((e) => e.code === 'forbidden_workspace_md_delete' && e.workspace === 'cs-scheduler'),
+        ).toBe(true);
+    });
+
+    // ── NEGATIVE: prose edit cannot ride along on a valid unarchive flip ───────
+    //
+    // The existing :245/:278 tests cover (a) prose write to an archived ws and
+    // (b) WORKSPACE.md edit without unarchive. The uncovered case: a diff that
+    // BOTH flips archived:true->false AND edits a prose file in the same
+    // archived workspace. The unarchive carve-out requires `onlyWorkspaceMd`, so
+    // a bundled prose edit must NOT be smuggled in under the unarchive flip.
+    it('blocks a prose edit bundled with a valid unarchive flip (carve-out requires WORKSPACE.md-only)', async () => {
+        const before = ['---', 'name: hr', 'description: HR', 'admin: hr-admin', 'archived: true', '---', ''].join('\n');
+        const after = ['---', 'name: hr', 'description: HR', 'admin: hr-admin', 'archived: false', '---', ''].join('\n');
+        await seedWorkspace(root, 'hr', before);
+        await commitAll(root, 'archived seed');
+        // Valid unarchive flip on WORKSPACE.md...
+        await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', after);
+        // ...BUNDLED with a prose edit in the same (HEAD-archived) workspace.
+        await writeStagedFile(root, 'workspaces/hr/note.md', '# smuggled\n');
+        const diff =
+            diffModify('workspaces/hr/WORKSPACE.md', before, after) + diffAdd('workspaces/hr/note.md', '# smuggled\n');
+        const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
+        const failed = expectErrors(result);
+        expect(failed.errors.some((e) => e.code === 'archived_workspace_edit' && e.workspace === 'hr')).toBe(true);
+    });
+
     it('flags archived_workspace_edit on writes to an archived workspace', async () => {
         const archived = ['---', 'name: hr', 'description: HR', 'admin: hr-admin', 'archived: true', '---'].join('\n');
         await seedWorkspace(root, 'hr', archived);

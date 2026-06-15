@@ -30,7 +30,11 @@ describe('buildStageAddArgs — gitignored generated paths', () => {
         await writeFile(path.join(ws, 'extracted', 'a.md'), 'gen\n');
         await writeFile(path.join(ws, '.derived-from-sha'), 'deadbeef\n');
         // generated content NOT gitignored (still pathspec-excluded)
-        await writeFile(path.join(ws, 'attachments.yaml'), 'k: v\n');
+        await mkdir(path.join(ws, 'attached'), { recursive: true });
+        await writeFile(path.join(ws, 'attached', 'doc.bin'), 'bytes\n');
+        // attachments.yaml is a tracked git file (authored as a pending draft
+        // edit) — staged like any prose file, never excluded.
+        await writeFile(path.join(ws, 'attachments.yaml'), '[]\n');
         // the .gitignore the master-fs untrack introduced
         await writeFile(path.join(root, '.gitignore'), '**/extracted/\n**/_results/\n.derived-from-sha\n');
     });
@@ -47,7 +51,9 @@ describe('buildStageAddArgs — gitignored generated paths', () => {
         expect(a).not.toContain(':(exclude)workspaces/hr/extracted');
         expect(a).not.toContain(':(exclude)workspaces/hr/.derived-from-sha');
         // not gitignored → exclude kept (still must stay out of the index)
-        expect(a).toContain(':(exclude)workspaces/hr/attachments.yaml');
+        expect(a).toContain(':(exclude)workspaces/hr/attached');
+        // attachments.yaml is author intent — never excluded
+        expect(a).not.toContain('attachments.yaml');
         // the workspace itself is always staged
         expect(args![0]).toBe('add');
         expect(a).toContain('workspaces/hr');
@@ -61,10 +67,12 @@ describe('buildStageAddArgs — gitignored generated paths', () => {
 
         const staged = (await runGit(root, ['diff', '--cached', '--name-only'])).trim().split('\n');
         expect(staged).toContain('workspaces/hr/WORKSPACE.md');
+        // attachments.yaml is author intent — it IS staged
+        expect(staged).toContain('workspaces/hr/attachments.yaml');
         // none of the generated paths leaked into the index
         expect(staged).not.toContain('workspaces/hr/extracted/a.md');
         expect(staged).not.toContain('workspaces/hr/.derived-from-sha');
-        expect(staged).not.toContain('workspaces/hr/attachments.yaml');
+        expect(staged).not.toContain('workspaces/hr/attached/doc.bin');
     });
 
     it('keeps the exclude (and does not error) when a generated dir is absent', async () => {

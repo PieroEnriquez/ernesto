@@ -179,6 +179,34 @@ describe('convene step handler', () => {
         expect(downstreamParams).toEqual({ outcome: 'resolved', who: 'bob' });
     });
 
+    it('passes the workbench descriptor through to the port, defaulting runId to the run', async () => {
+        const decl = conveneDecl({
+            kind: 'convene',
+            room: 'inbox:clement@bitrefill.com',
+            title: 'Publish This Week?',
+            brief: 'Review the staged edition.',
+            workbench: {
+                workspaces: ['this-week'],
+                paths: ['workspaces/sites/this-week/data/latest.json'],
+                verb: 'approve',
+                previewKind: 'site',
+                preview: { site: 'this-week', path: 'workspaces/sites/this-week/data/latest.json' },
+            },
+        });
+        const { runner, requests } = setup(decl);
+        const run = await runner.dispatch('wf-convene', {}, userPrincipal('alice', ['rooms:read']), {});
+
+        expect(requests).toHaveLength(1);
+        const wb = requests[0]!.workbench;
+        expect(wb).toBeDefined();
+        expect(wb!.workspaces).toEqual(['this-week']);
+        expect(wb!.verb).toBe('approve');
+        expect(wb!.previewKind).toBe('site');
+        expect(wb!.paths).toEqual(['workspaces/sites/this-week/data/latest.json']);
+        // The engine fills runId from the run when the author omits it.
+        expect(wb!.runId).toBe(run.runId);
+    });
+
     it('timeout: the expire path resumes with outcome "timeout" and the run completes', async () => {
         const decl = conveneDecl({
             kind: 'convene',

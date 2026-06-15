@@ -44,7 +44,7 @@ export type {
 } from './workdir';
 
 // ─── Lint (workspace settle gate) ────────────────────────────────────────
-export { lintWorkspace, makeLintWorkspace, lintWorkflowFile, UNREGISTERED_EXTRACTION_SOURCE, RESERVED_SYSTEM_WORKSPACES } from './lint';
+export { lintWorkspace, makeLintWorkspace, lintWorkflowFile, lintAttachmentsFile, UNREGISTERED_EXTRACTION_SOURCE, INVALID_ATTACHMENTS_YAML, RESERVED_SYSTEM_WORKSPACES } from './lint';
 export type { LintPrincipal } from './lint';
 
 // ─── Workspace boundary resolution (FS-derived identity → location) ──────
@@ -57,6 +57,19 @@ export type { WorkspaceFrontmatter } from './workspaces/access';
 export { validateTreeRelPath } from './workspaces/path';
 export { computeWorkspaceVisibility, workspaceForPath, canReadPath, readableBoundaries, boundaryDirs } from './workspaces/visibility';
 export type { WorkspaceVisibility } from './workspaces/visibility';
+
+// ─── Workspace attachments index (the attachments.yaml contract) ─────────
+export {
+    ATTACHMENTS_YAML,
+    SHA256_HEX_RE,
+    validateAttachmentsYaml,
+    serializeAttachmentsYaml,
+    isSafeAttachmentName,
+    collisionSuffixedName,
+    upsertAttachmentEntry,
+    removeAttachmentEntry,
+} from './workspaces/attachments';
+export type { AttachmentEntry, AttachmentsYamlIssue } from './workspaces/attachments';
 
 // ─── Workspace overlay VIEW (read side of the content-overlay model) ─────
 export { makeOverlayView, emptyPatch } from './workspaces/overlay';

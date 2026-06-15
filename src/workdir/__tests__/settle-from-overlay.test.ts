@@ -125,6 +125,117 @@ describe('settleFromOverlay — server-side 3-way reconcile', () => {
         expect((await runGit(root, ['rev-parse', 'HEAD'])).trim()).toBe(headBefore);
     });
 
+    it('by-reference selection: a 1-path selection of a 2-file patch commits ONLY that path', async () => {
+        const workdir = buildWorkdir();
+        const patch: WorkspacePatch = {
+            baseSha,
+            files: {
+                'workspaces/hr/keep.md': { content: 'commit me\n' },
+                'workspaces/hr/scratch.md': { content: 'leave me\n' },
+            },
+        };
+
+        let seenDiff = '';
+        const captureLint: LintFn = async (input) => {
+            seenDiff = input.diff;
+            return { ok: true };
+        };
+
+        const r = await settleFromOverlay(workdir, {
+            workspaces: ['hr'],
+            message: 'settle only keep.md',
+            patch,
+            lint: captureLint,
+            files: ['workspaces/hr/keep.md'],
+        });
+
+        expect(r.ok).toBe(true);
+        if (r.ok) {
+            // committedPaths is ground truth: only the selected path.
+            expect(r.committedPaths).toEqual(['workspaces/hr/keep.md']);
+        }
+
+        // Lint gated on the selected subset only.
+        expect(seenDiff).toContain('workspaces/hr/keep.md');
+        expect(seenDiff).not.toContain('workspaces/hr/scratch.md');
+
+        // The committed tree has the selected file; the unselected one never landed.
+        const tree = await runGit(root, ['ls-tree', '-r', '--name-only', 'HEAD']);
+        expect(tree).toContain('workspaces/hr/keep.md');
+        expect(tree).not.toContain('workspaces/hr/scratch.md');
+    });
+
+    it('omitted selection preserves whole-workspace publish (both files land)', async () => {
+        const workdir = buildWorkdir();
+        const patch: WorkspacePatch = {
+            baseSha,
+            files: {
+                'workspaces/hr/a.md': { content: 'a\n' },
+                'workspaces/hr/b.md': { content: 'b\n' },
+            },
+        };
+
+        const r = await settleFromOverlay(workdir, {
+            workspaces: ['hr'],
+            message: 'publish all',
+            patch,
+            lint: allowAllLint,
+            // files omitted ⇒ today's behavior
+        });
+
+        expect(r.ok).toBe(true);
+        if (r.ok) {
+            expect([...r.committedPaths].sort()).toEqual(['workspaces/hr/a.md', 'workspaces/hr/b.md']);
+        }
+        const tree = await runGit(root, ['ls-tree', '-r', '--name-only', 'HEAD']);
+        expect(tree).toContain('workspaces/hr/a.md');
+        expect(tree).toContain('workspaces/hr/b.md');
+    });
+
+    it('selecting a path ABSENT from the patch matches nothing → empty_selection, no commit', async () => {
+        const workdir = buildWorkdir();
+        const headBefore = (await runGit(root, ['rev-parse', 'HEAD'])).trim();
+        const patch: WorkspacePatch = {
+            baseSha,
+            files: { 'workspaces/hr/present.md': { content: 'here\n' } },
+        };
+
+        const r = await settleFromOverlay(workdir, {
+            workspaces: ['hr'],
+            message: 'select a ghost',
+            patch,
+            lint: allowAllLint,
+            files: ['workspaces/hr/not-in-draft.md'],
+        });
+
+        expect(r).toEqual({ ok: false, error: 'patch_rejected', reason: 'empty_selection' });
+        // Nothing landed; the present draft entry is untouched.
+        expect((await runGit(root, ['rev-parse', 'HEAD'])).trim()).toBe(headBefore);
+    });
+
+    it('a selection partly out of scope still commits ONLY the in-scope+selected subset', async () => {
+        // Selection can never WIDEN: an out-of-scope element is simply not in the
+        // in-scope draft, so it falls away and only the in-scope selected path lands.
+        const workdir = buildWorkdir();
+        const patch: WorkspacePatch = {
+            baseSha,
+            files: { 'workspaces/hr/keep.md': { content: 'k\n' } },
+        };
+
+        const r = await settleFromOverlay(workdir, {
+            workspaces: ['hr'],
+            message: 'mixed selection',
+            patch,
+            lint: allowAllLint,
+            files: ['workspaces/hr/keep.md', 'workspaces/other/x.md'],
+        });
+
+        expect(r.ok).toBe(true);
+        if (r.ok) {
+            expect(r.committedPaths).toEqual(['workspaces/hr/keep.md']);
+        }
+    });
+
     it('rejects an empty patch', async () => {
         const workdir = buildWorkdir();
         const r = await settleFromOverlay(workdir, {

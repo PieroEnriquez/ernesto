@@ -79,22 +79,22 @@ describe('buildSettlePatch', () => {
         expect(r.patch).not.toContain('attached body');
     });
 
-    it('excludes the master-fs single-file overlays (attachments.yaml, .derived-from-sha)', async () => {
-        // Regression: the laptop-patch exclusion set must match the worktree
-        // settle gate. attachments.yaml and .derived-from-sha are master-fs
-        // mirrors and must never ride along in a laptop-transport patch a
-        // worktree settle would have stripped.
+    it('carries attachments.yaml but excludes the .derived-from-sha overlay', async () => {
+        // attachments.yaml is a tracked git file (attach/detach author it as a
+        // pending edit of the calling session), so the laptop-patch staging
+        // must carry it — matching the worktree settle gate. .derived-from-sha
+        // stays a master-fs mirror and must never ride along.
         const { root } = await makeCloneWithWorkspaces();
 
         await fsp.writeFile(join(root, 'workspaces', 'alpha', 'WORKSPACE.md'), '---\nname: alpha\n---\nreal edit\n');
-        await fsp.writeFile(join(root, 'workspaces', 'alpha', 'attachments.yaml'), 'attachments:\n  - id: leaked\n');
+        await fsp.writeFile(join(root, 'workspaces', 'alpha', 'attachments.yaml'), '- name: playbook.pdf\n');
         await fsp.writeFile(join(root, 'workspaces', 'alpha', '.derived-from-sha'), 'deadbeef\n');
 
         const r = await buildSettlePatch(root, ['alpha']);
         expect(r.patch).toContain('workspaces/alpha/WORKSPACE.md');
         expect(r.patch).toContain('real edit');
-        expect(r.patch).not.toContain('attachments.yaml');
-        expect(r.patch).not.toContain('leaked');
+        expect(r.patch).toContain('workspaces/alpha/attachments.yaml');
+        expect(r.patch).toContain('playbook.pdf');
         expect(r.patch).not.toContain('.derived-from-sha');
         expect(r.patch).not.toContain('deadbeef');
     });

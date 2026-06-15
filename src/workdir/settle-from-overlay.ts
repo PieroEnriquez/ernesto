@@ -43,6 +43,14 @@ export interface SettleFromOverlayInput {
     lint: LintFn;
     pushToMain?: PushToMainFn;
     trailers?: Readonly<Record<string, string>>;
+    /** By-reference selection of draft paths to publish (tree-relative POSIX).
+     *  AND-ed with the workspace scope — can only SHRINK the committed set, never
+     *  widen it (`workspaces[]` stays the access boundary). Literal-membership
+     *  only; no globs. Omitted (or empty) ⇒ publish-all in scope (today's
+     *  behavior). The `['*']` publish-all sentinel is normalized to "omitted" by
+     *  the CALLER (each backend surface) BEFORE calling this function, so the lib
+     *  filter stays pure set-membership and never special-cases `"*"`. */
+    files?: ReadonlyArray<string>;
 }
 
 export type SettleFromOverlayResult =
@@ -51,6 +59,11 @@ export type SettleFromOverlayResult =
      *  3-way ran against — carried so a conflict is diagnosable (genuine
      *  two-sided edit vs a drifted/stale base) without re-deriving either. */
     | { ok: false; error: 'overlay_conflict'; paths: ReadonlyArray<string>; baseSha: string; headSha: string }
+    /** `reason` is one of: `empty_patch` (no draft entry in the declared
+     *  `workspaces[]`), `empty_selection` (a non-empty `files` selection matched
+     *  nothing in scope — distinct from `empty_patch` so the caller can tell
+     *  "your files matched nothing" from "you have no draft here"), or
+     *  `unknown_base_sha:<sha>` (the merge base does not exist in the repo). */
     | { ok: false; error: 'patch_rejected'; reason: string };
 
 export async function settleFromOverlay(workdir: Workdir, input: SettleFromOverlayInput): Promise<SettleFromOverlayResult> {
@@ -68,9 +81,20 @@ export async function settleFromOverlay(workdir: Workdir, input: SettleFromOverl
         // core uses, so apply-scope and commit-scope can never drift.)
         const scopedPaths = await resolveScopedPaths(root, input.workspaces);
         const inScope = (p: string): boolean => scopedPaths.some((s) => p === s || p.startsWith(`${s}/`));
-        const fileEntries = Object.entries(input.patch.files).filter(([p]) => inScope(p));
+        // By-reference selection: AND the optional `files` set AFTER the
+        // workspace scope so it can only SHRINK the committed set — the same
+        // chokepoint owns apply-scope, lint-scope, and commit-scope, so they can
+        // never drift. `sel === null` (omitted/empty) preserves exact current
+        // whole-workspace behavior. Literal membership only (no glob).
+        const sel = input.files && input.files.length > 0 ? new Set(input.files) : null;
+        const inSelection = (p: string): boolean => sel === null || sel.has(p);
+        const fileEntries = Object.entries(input.patch.files).filter(([p]) => inScope(p) && inSelection(p));
         if (fileEntries.length === 0) {
-            return { ok: false, error: 'patch_rejected', reason: 'empty_patch' };
+            // `empty_selection` = a non-empty `files` selection intersected the
+            // in-scope draft to nothing; `empty_patch` = there is no draft in the
+            // declared workspaces at all. Distinguished so the caller can guide
+            // the agent (widen the selection vs. nothing to settle here).
+            return { ok: false, error: 'patch_rejected', reason: sel ? 'empty_selection' : 'empty_patch' };
         }
 
         // The merge base must exist in this repo.
@@ -125,11 +149,13 @@ export async function settleFromOverlay(workdir: Workdir, input: SettleFromOverl
 
         const mergedTree = merge.stdout.trim().split('\n')[0].trim();
 
-        // Materialize the merged tree into the workdir's real index + worktree,
-        // then stage. read-tree -m -u updates the worktree to match; the
-        // overlay's changes are now staged for the shared lint+commit core.
+        // Materialize the merged tree into the workdir's real index + worktree.
+        // read-tree -m -u sets the index to the merged tree AND updates the
+        // worktree to match — the overlay's changes are already staged for the
+        // shared lint+commit core. No `add` follows: an `add -A` here would
+        // re-stage untracked worktree leftovers (e.g. `attached/` hard links)
+        // into the commit.
         await runGit(root, ['read-tree', '-m', '-u', mergedTree]);
-        await runGit(root, ['add', '-A']);
 
         return runSettleCore(workdir, {
             workspaces: input.workspaces,

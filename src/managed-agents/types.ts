@@ -149,4 +149,16 @@ export interface CompiledAgent {
     mcpServers: string[];
     outputFormat?: JsonSchemaOutputFormat;
     disallowedTools?: string[];
+    /**
+     * Built-in tool allowlist, already lowered to the SDK's
+     * `Options.tools` shape (a flat `string[]` of builtin tool names,
+     * e.g. `['Read', 'Glob', 'Grep']`). When present this RESTRICTS the
+     * agent's tool surface to exactly these names — Write/Edit/Bash are
+     * unreachable unless listed. Carried from `AgentDefinition.tools`
+     * through `coerceToCompiledAgent`, which fails closed on any tool
+     * spec that can't be expressed as an SDK builtin allowlist (a `fn`
+     * or `mcp` spec) rather than silently dropping the restriction.
+     * Absent ≡ no allowlist (the SDK's full default surface applies).
+     */
+    tools?: string[];
 }

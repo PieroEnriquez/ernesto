@@ -28,7 +28,7 @@ import type { LintFn, PushToMainFn, SettleResult } from './settle';
  * and must never enter the git index. settle excludes them from staging via
  * git pathspec. NOTE: some of these are ALSO `.gitignore`d in the workspaces
  * repo (the master-fs untrack: `extracted/`, `_results/`, `.derived-from-sha`),
- * others are not (`attached/`, `attachments.yaml`). `buildStageAddArgs` filters
+ * others are not (`attached/`). `buildStageAddArgs` filters
  * the exclude pathspecs against `git check-ignore` because `git add -- <ws>
  * :(exclude)<p>` FAILS ("paths are ignored, use -f") when `<p>` is an existing,
  * gitignored path — even though it is only being excluded. git already skips
@@ -57,30 +57,23 @@ export const GENERATED_SUBDIRS = ['extracted', 'attached', '_results'] as const;
 
 /**
  * Per-workspace single-file overlays mirrored from master-fs. Like
- * `GENERATED_SUBDIRS` but for individual files. `attachments.yaml` is
- * authored only by `_ernesto://attach` and `_ernesto://detach`, which
- * write atomically to master-fs; the workdir copy is a hard link mirrored
- * by `ensureMasterFsOverlays` at host boot and `remirrorFile`
- * mid-run. Settle must not stage it — the bytes the agent might see
- * in git status are master-fs state, not author intent.
- *
- * The target state has `attachments.yaml` living in git (workdir-authored,
- * settled normally). The route still writes the yaml to master-fs today, so
- * the exclusion stays until the route flip lands; otherwise sibling-run
- * attaches would leak via the overlay.
+ * `GENERATED_SUBDIRS` but for individual files.
  *
  * `.derived-from-sha` is the per-workspace freshness sentinel written by
  * the derive worker into master-fs only (the `DERIVED_FROM_SHA_FILE`
  * marker; the derive worker runs on the in-process transport). It is
- * master-fs-canonical, must
- * not enter git, and was historically leaking in via `git add` because
- * the exclusion list omitted it — every refresh-from-main then conflicted
- * on every workspace as soon as the derive worker bumped the marker for
- * a workspace touched by any settle. Listing it here keeps future settles
- * clean; cleanup of the existing tracked copies is a one-shot `git rm`
- * elsewhere.
+ * master-fs-canonical, must not enter git, and was historically leaking
+ * in via `git add` because the exclusion list omitted it — every
+ * refresh-from-main then conflicted on every workspace as soon as the
+ * derive worker bumped the marker for a workspace touched by any settle.
+ * Listing it here keeps future settles clean; cleanup of the existing
+ * tracked copies is a one-shot `git rm` elsewhere.
+ *
+ * `attachments.yaml` is deliberately NOT in this list: it lives in git
+ * like any prose file — attach/detach author it as a pending draft edit
+ * of the calling session, and settle stages and commits it normally.
  */
-export const GENERATED_FILES = ['attachments.yaml', '.derived-from-sha'] as const;
+export const GENERATED_FILES = ['.derived-from-sha'] as const;
 
 /** Tree-relative paths the lint diff is scoped to, resolved nesting-aware:
  *  each declared leaf maps to BOTH its conventional `workspaces/<leaf>` path
@@ -164,7 +157,7 @@ async function gitIgnoredSubset(root: string, candidates: ReadonlyArray<string>)
 /**
  * Build the `git add -- …` argument list that stages each path minus its
  * master-fs overlays. `extracted/`/`attached/`/`_results/` (subdirs) and
- * `attachments.yaml` + `.derived-from-sha` (files) are generated/master-fs
+ * `.derived-from-sha` (file) are generated/master-fs
  * mirrors that must never enter the git index. We exclude them via pathspec —
  * EXCEPT for those git already `.gitignore`s: naming an existing gitignored
  * path in a pathspec (even an `:(exclude)` one) makes `git add` fail with "the
@@ -176,10 +169,9 @@ async function gitIgnoredSubset(root: string, candidates: ReadonlyArray<string>)
  * when there is nothing to stage.
  *
  * Single source of truth for the exclusion set so the worktree, laptop-patch,
- * and overlay settle paths can never drift (a missing exclusion here once let
- * `attachments.yaml` ride along in laptop-transport patches a worktree settle
- * would have stripped). `root` is the repo whose `.gitignore`/index the filter
- * is evaluated against.
+ * and overlay settle paths can never drift on which generated paths get
+ * stripped. `root` is the repo whose `.gitignore`/index the filter is
+ * evaluated against.
  */
 export async function buildStageAddArgs(root: string, stagePaths: ReadonlyArray<string>): Promise<string[] | null> {
     if (stagePaths.length === 0) return null;

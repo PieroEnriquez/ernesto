@@ -130,6 +130,55 @@ version: 1
         expect(() => parseWorkflowYaml(bad)).toThrow(/"steps" is required/);
     });
 
+    it('projects a convene step workbench descriptor (review surface)', () => {
+        const yaml = `name: w
+description: convene with a workbench
+version: 1
+steps:
+  approve:
+    kind: convene
+    room: "inbox:clement@bitrefill.com"
+    title: "Publish?"
+    brief: "Review it."
+    workbench:
+      workspaces: [this-week]
+      paths:
+        - "workspaces/sites/this-week/data/latest.json"
+      verb: approve
+      previewKind: site
+      preview:
+        site: this-week
+        path: "workspaces/sites/this-week/data/latest.json"
+`;
+        const decl = parseWorkflowYaml(yaml);
+        const wb = (decl.steps.approve as { workbench?: Record<string, unknown> }).workbench;
+        expect(wb).toEqual({
+            workspaces: ['this-week'],
+            verb: 'approve',
+            paths: ['workspaces/sites/this-week/data/latest.json'],
+            previewKind: 'site',
+            preview: { site: 'this-week', path: 'workspaces/sites/this-week/data/latest.json' },
+        });
+    });
+
+    it('rejects a convene workbench with no verb or empty workspaces', () => {
+        const base = `name: w
+description: bad workbench
+version: 1
+steps:
+  approve:
+    kind: convene
+    room: "inbox:x"
+    title: T
+    brief: B
+    workbench:
+`;
+        expect(() => parseWorkflowYaml(base + '      workspaces: [a]\n', { filename: 'w.yaml' }))
+            .toThrow(/workbench\.verb must be one of/);
+        expect(() => parseWorkflowYaml(base + '      verb: approve\n', { filename: 'w.yaml' }))
+            .toThrow(/workbench\.workspaces must be a non-empty array/);
+    });
+
     it('parses route, input, agent, subworkflow step kinds', () => {
         const yaml = `name: multi
 description: All step kinds.

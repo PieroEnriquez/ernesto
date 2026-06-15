@@ -78,13 +78,22 @@ describe('settleFromWorktree', () => {
         expect(status).toContain('?? workspaces/hr/WORKSPACE.md');
     });
 
-    it('excludes attachments.yaml from staging — master-fs overlay, not author intent', async () => {
+    it('stages and commits attachments.yaml — a pending edit like any prose file', async () => {
         const workdir = buildWorkdir();
         await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# hr\n'));
-        // Simulate an attach-time hardlink: a yaml file in the workdir that
-        // mirrors master-fs. Settle must treat it the same way it treats
-        // extracted/ and attached/ — invisible to staging.
-        await workdir.fs.writeFile('workspaces/hr/attachments.yaml', enc('- name: x\n'));
+        // attachments.yaml is a tracked git file: attach/detach author it as a
+        // pending edit of the calling session, and settle stages, lints, and
+        // commits it exactly like prose.
+        const yaml = [
+            '- name: doc.pdf',
+            `  sha256: ${'a'.repeat(64)}`,
+            '  bytes: 4',
+            '  mimeType: application/pdf',
+            "  attachedAt: '2026-06-11T00:00:00Z'",
+            '  attachedBy: u1',
+            '',
+        ].join('\n');
+        await workdir.fs.writeFile('workspaces/hr/attachments.yaml', enc(yaml));
 
         let seen: { diff: string } | null = null;
         const captureLint: LintFn = async (input) => {
@@ -92,15 +101,18 @@ describe('settleFromWorktree', () => {
             return { ok: true };
         };
 
-        await settleFromWorktree(workdir, {
+        const r = await settleFromWorktree(workdir, {
             workspaces: ['hr'],
             message: 'add hr',
             lint: captureLint,
         });
 
+        expect(r.ok).toBe(true);
         expect(seen).not.toBeNull();
         expect(seen!.diff).toContain('workspaces/hr/WORKSPACE.md');
-        expect(seen!.diff).not.toContain('attachments.yaml');
+        expect(seen!.diff).toContain('workspaces/hr/attachments.yaml');
+        const tree = await runGit(tmpRoot, ['ls-tree', '-r', '--name-only', 'HEAD']);
+        expect(tree).toContain('workspaces/hr/attachments.yaml');
     });
 
     it('excludes _results/ archives from staging — transient route-result scratch, never settled', async () => {

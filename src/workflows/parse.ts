@@ -7,7 +7,7 @@
  */
 
 import { load as yamlLoad, YAMLException } from 'js-yaml';
-import type { WorkflowDeclaration, WorkflowStep, AgentStep, AgentHarness, RouteStep, ConveneStep, WorkflowInput, WorkflowOutput } from './types';
+import type { WorkflowDeclaration, WorkflowStep, AgentStep, AgentHarness, RouteStep, ConveneStep, WorkbenchRef, WorkflowInput, WorkflowOutput } from './types';
 
 export interface ParseWorkflowOptions {
     /** Used in error messages. */
@@ -273,6 +273,9 @@ function projectStep(stepId: string, v: unknown, filename: string): WorkflowStep
                 ...(raw.nudgeAfterSec !== undefined ? { nudgeAfterSec: asInt(raw.nudgeAfterSec, `step "${stepId}".nudgeAfterSec`, filename) } : {}),
                 ...(raw.expireAfterSec !== undefined
                     ? { expireAfterSec: asInt(raw.expireAfterSec, `step "${stepId}".expireAfterSec`, filename) }
+                    : {}),
+                ...(raw.workbench !== undefined
+                    ? { workbench: projectWorkbench(raw.workbench, stepId, filename) }
                     : {}),
                 ...base,
             };
@@ -569,6 +572,83 @@ function projectResolvers(v: unknown, stepId: string, filename: string): 'any-me
         throw new Error(`${filename}: step "${stepId}".resolvers must be 'any-member' or a non-empty array of user ids`);
     }
     return list;
+}
+
+const WORKBENCH_VERBS = new Set(['approve', 'settle', 'create', 'configure']);
+const WORKBENCH_PREVIEW_KINDS = new Set(['site', 'markdown', 'json', 'none', 'edition', 'form', 'workflow-yaml']);
+
+function projectWorkbench(v: unknown, stepId: string, filename: string): WorkbenchRef {
+    const where = `convene step "${stepId}".workbench`;
+    if (typeof v !== 'object' || v === null || Array.isArray(v)) {
+        throw new Error(`${filename}: ${where} must be an object`);
+    }
+    const raw = v as Record<string, unknown>;
+    const workspaces = projectStringArray(raw.workspaces, `${where}.workspaces`, filename);
+    if (workspaces === undefined || workspaces.length === 0) {
+        throw new Error(`${filename}: ${where}.workspaces must be a non-empty array of workspace leaf names`);
+    }
+    const verb = raw.verb;
+    if (typeof verb !== 'string' || !WORKBENCH_VERBS.has(verb)) {
+        throw new Error(`${filename}: ${where}.verb must be one of approve | settle | create | configure`);
+    }
+    const out: WorkbenchRef = { workspaces, verb: verb as WorkbenchRef['verb'] };
+    const paths = projectStringArray(raw.paths, `${where}.paths`, filename);
+    if (paths !== undefined) out.paths = paths;
+    if (raw.previewKind !== undefined) {
+        const pk = raw.previewKind;
+        if (typeof pk !== 'string' || !WORKBENCH_PREVIEW_KINDS.has(pk)) {
+            throw new Error(`${filename}: ${where}.previewKind must be one of site | markdown | json | none | edition | form | workflow-yaml`);
+        }
+        out.previewKind = pk as WorkbenchRef['previewKind'];
+    }
+    if (raw.preview !== undefined) {
+        if (typeof raw.preview !== 'object' || raw.preview === null || Array.isArray(raw.preview)) {
+            throw new Error(`${filename}: ${where}.preview must be an object`);
+        }
+        const pv = raw.preview as Record<string, unknown>;
+        const preview: NonNullable<WorkbenchRef['preview']> = {};
+        if (pv.site !== undefined) preview.site = asString(pv.site, `${where}.preview.site`);
+        if (pv.path !== undefined) preview.path = asString(pv.path, `${where}.preview.path`);
+        if (pv.configKind !== undefined) {
+            if (pv.configKind !== 'extractions') {
+                throw new Error(`${filename}: ${where}.preview.configKind must be 'extractions'`);
+            }
+            preview.configKind = pv.configKind;
+        }
+        out.preview = preview;
+    }
+    if (raw.runId !== undefined) out.runId = asString(raw.runId, `${where}.runId`);
+    if (raw.open !== undefined) {
+        if (raw.open !== 'ask' && raw.open !== 'standalone') {
+            throw new Error(`${filename}: ${where}.open must be 'ask' or 'standalone'`);
+        }
+        out.open = raw.open;
+    }
+    if (raw.commit !== undefined) {
+        if (typeof raw.commit !== 'object' || raw.commit === null || Array.isArray(raw.commit)) {
+            throw new Error(`${filename}: ${where}.commit must be an object`);
+        }
+        const cm = raw.commit as Record<string, unknown>;
+        const commit: NonNullable<WorkbenchRef['commit']> = {};
+        if (cm.slug !== undefined) commit.slug = asString(cm.slug, `${where}.commit.slug`);
+        if (cm.requestedBy !== undefined) commit.requestedBy = asString(cm.requestedBy, `${where}.commit.requestedBy`);
+        if (cm.inputs !== undefined) {
+            if (typeof cm.inputs !== 'object' || cm.inputs === null || Array.isArray(cm.inputs)) {
+                throw new Error(`${filename}: ${where}.commit.inputs must be an object`);
+            }
+            commit.inputs = cm.inputs as Record<string, unknown>;
+        }
+        if (cm.inline !== undefined) {
+            if (typeof cm.inline !== 'object' || cm.inline === null || Array.isArray(cm.inline)) {
+                throw new Error(`${filename}: ${where}.commit.inline must be an object`);
+            }
+            const il = cm.inline as Record<string, unknown>;
+            commit.inline = {};
+            if (il.definitionYaml !== undefined) commit.inline.definitionYaml = asString(il.definitionYaml, `${where}.commit.inline.definitionYaml`);
+        }
+        out.commit = commit;
+    }
+    return out;
 }
 
 function requireString(obj: Record<string, unknown>, key: string, where: string): string {

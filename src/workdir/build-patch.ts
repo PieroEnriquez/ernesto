@@ -3,7 +3,7 @@ import { resolveWorkspaceStagePaths, buildStageAddArgs } from './settle-core';
 
 /**
  * Stage + diff a unified patch for the named workspaces, with the master-fs
- * overlays (`extracted/`, `attached/`, `attachments.yaml`, `.derived-from-sha`)
+ * overlays (`extracted/`, `attached/`, `_results/`, `.derived-from-sha`)
  * excluded via pathspec.
  *
  * This is the patch shape the laptop transport sends across the wire to

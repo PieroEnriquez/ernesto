@@ -30,7 +30,7 @@ import { randomBytes } from 'crypto';
 import { Workdir } from './types';
 import { runGit } from './run-git';
 import { SettleResult, LintFn, PushToMainFn } from './settle';
-import { runSettleCore, GENERATED_SUBDIRS } from './settle-core';
+import { runSettleCore, resolveWorkspaceStagePaths, GENERATED_SUBDIRS } from './settle-core';
 
 export interface SettleFromPatchInput {
     workspaces: ReadonlyArray<string>;
@@ -91,18 +91,26 @@ export async function settleFromPatch(workdir: Workdir, input: SettleFromPatchIn
             //
             // `git checkout HEAD -- <path>` rewrites the file from the
             // committed blob — breaking the hard link (new inode), giving us
-            // the same byte sequence the laptop authored against.
-            // Generated subtrees (`extracted/`, `attached/`) are skipped: the
-            // laptop's patch never touches those (`:(exclude)` pathspecs in
-            // the laptop's settle), and they aren't tracked in git anyway.
-            const checkoutArgs = ['checkout', 'HEAD', '--'];
-            for (const ws of input.workspaces) {
-                checkoutArgs.push(`workspaces/${ws}`);
-                for (const sub of GENERATED_SUBDIRS) {
-                    checkoutArgs.push(`:(exclude)workspaces/${ws}/${sub}`);
-                }
-            }
+            // the same byte sequence the laptop authored against. A tracked
+            // `attachments.yaml` restored here is the correct pre-image too:
+            // the laptop's patch is authored against the git blob.
+            //
+            // Workspaces resolve to their CURRENT boundary dirs (a nested
+            // `hr/recruiting` lives at `workspaces/hr/recruiting`, not
+            // `workspaces/recruiting`) via the same resolution the patch
+            // builder uses, so the restore covers exactly what the patch
+            // touches. Generated subtrees are skipped: the laptop's patch
+            // never carries those (`:(exclude)` pathspecs in the laptop's
+            // settle), and they aren't tracked in git anyway.
             try {
+                const { stagePaths } = await resolveWorkspaceStagePaths(root, input.workspaces);
+                const checkoutArgs = ['checkout', 'HEAD', '--'];
+                for (const p of stagePaths) {
+                    checkoutArgs.push(p);
+                    for (const sub of GENERATED_SUBDIRS) {
+                        checkoutArgs.push(`:(exclude)${p}/${sub}`);
+                    }
+                }
                 await runGit(root, checkoutArgs);
             } catch {
                 /* fall through; apply will surface the real error */

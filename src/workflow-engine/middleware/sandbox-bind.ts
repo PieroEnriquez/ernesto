@@ -24,6 +24,47 @@
 
 import type { DispatchMiddleware, DispatchPreContext } from '../middleware';
 
+/**
+ * Thrown when a kind's policy requested `tools.native: 'sandboxed'`
+ * but no `workdirRoot` was allocated (workspace-allocator absent /
+ * mis-wired, or `cwd` not `workspace-workdir`). The sandbox PreToolUse
+ * path-guard hooks cannot be installed, so confining native
+ * Read/Write/Edit/Glob/Grep to a workdir is impossible.
+ *
+ * DOCTRINE: a restriction the engine can't enforce must FAIL CLOSED —
+ * refuse, never silently grant. Mirrors `scope-check`'s
+ * `ScopeEscalationError`: thrown from the `before` hook, caught by the
+ * runner, surfaced to the caller as a refusal rather than letting the
+ * agent step run native tools unsandboxed against the host FS.
+ */
+/** Annotation key for the fail-closed refusal marker. Mirrors the
+ *  per-middleware annotation convention used by workspace-allocator /
+ *  tool-surface-compose. A step handler reaching a non-throwing path
+ *  can read this to refuse running with unsandboxed native tools. */
+export const SANDBOX_REFUSAL_KEY = 'sandboxRequired';
+
+/** Shape of the fail-closed refusal marker written to annotations. */
+export interface SandboxRefusal {
+    code: 'sandbox_unbindable';
+    kindUri: string;
+    reason: string;
+}
+
+export class SandboxBindError extends Error {
+    readonly code = 'sandbox_unbindable';
+    readonly kindUri: string;
+    constructor(kindUri: string) {
+        super(
+            `kind "${kindUri}" requested sandboxed native tools (tools.native: 'sandboxed') ` +
+                `but no workdirRoot was allocated — the sandbox PreToolUse path-guard hooks ` +
+                `cannot be installed, so native Read/Write/Edit/Glob/Grep would run UNSANDBOXED ` +
+                `against the host filesystem. Refusing (fail-closed).`,
+        );
+        this.name = 'SandboxBindError';
+        this.kindUri = kindUri;
+    }
+}
+
 /** Backend-supplied hook descriptor. The shape is intentionally
  *  loose — the lib doesn't depend on the Anthropic SDK's hook types.
  *  The agent step handler casts at the boundary. */
@@ -50,11 +91,27 @@ export function sandboxBindMiddleware(opts: SandboxBindMiddlewareOpts): Dispatch
             // Only bind when the kind opted into sandboxed native tools.
             if (native !== 'sandboxed') return ctx;
             // Workdir must be present — that's the workspace-allocator's
-            // job. If absent, the kind misconfigured the policy
-            // (sandboxed without workspace-workdir); fail-fast at boot
-            // when the workflow loads, OR pass through here and let
-            // the handler error.
-            if (!ctx.workdirRoot) return ctx;
+            // job. The kind's policy explicitly requested confinement
+            // (native === 'sandboxed'); if no workdirRoot was allocated
+            // we CANNOT install the PreToolUse path-guard hooks. Silently
+            // returning here would let the agent step run native tools
+            // entirely UNSANDBOXED against the host FS — a fail-OPEN.
+            //
+            // DOCTRINE: a restriction that cannot be honored must FAIL
+            // CLOSED. We set the documented fail-closed marker (so any
+            // step handler reached on a non-throwing path still refuses
+            // to proceed with unsandboxed native tools) AND raise a typed
+            // refusal — mirroring scope-check's `ScopeEscalationError`,
+            // which the runner surfaces as an aborted/errored dispatch so
+            // the agent step never runs unconfined against the host FS.
+            if (!ctx.workdirRoot) {
+                ctx.annotations[SANDBOX_REFUSAL_KEY] = {
+                    code: 'sandbox_unbindable',
+                    kindUri: ctx.decl?.uri ?? String(ctx.kind),
+                    reason: 'sandboxed native tools requested but no workdirRoot allocated; refusing to run UNSANDBOXED',
+                } satisfies SandboxRefusal;
+                throw new SandboxBindError(ctx.decl?.uri ?? String(ctx.kind));
+            }
 
             ctx.annotations[annotationKey] = opts.binder.build(ctx.workdirRoot, ctx);
             return ctx;

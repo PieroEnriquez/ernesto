@@ -112,6 +112,11 @@ export function makeRouteStepHandler(deps: RouteStepHandlerDeps): StepKindHandle
             user: ctx.principal.email ? { id: ctx.principal.userId, email: ctx.principal.email } : { id: ctx.principal.userId },
             scopes: ctx.principal.scopes,
             log: deps.log,
+            // Thread the engine's run id into the route context so route
+            // handlers can attest WHICH run invoked them (`RouteContext.runId`
+            // existed but was never populated on this path — enrichment-cards'
+            // `by.runId` reads it as the authoritative, engine-attested value).
+            ...(ctx.runId ? { runId: ctx.runId } : {}),
             ...(ctx.workdirRoot ? { workdirRoot: ctx.workdirRoot } : {}),
             ...(emitComponent ? { emitComponent } : {}),
         } as RouteContext;

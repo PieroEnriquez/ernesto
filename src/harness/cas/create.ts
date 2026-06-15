@@ -23,7 +23,7 @@ import { randomUUID } from 'crypto';
 import type { McpServerConfig, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import { compileAgent } from '../../managed-agents/compile-agent';
 import type { AgentContext, CompiledAgent, Transport } from '../../managed-agents/types';
-import type { AgentDefinition, AgentHandle, RunHandle, SendOptions, UserMessage } from '../types';
+import type { AgentDefinition, AgentHandle, RunHandle, SendOptions, ToolSpec, UserMessage } from '../types';
 import { compileAgentToSdkOptions, type SdkHooks } from './compile';
 import { casSendWithOptions } from './send';
 
@@ -122,7 +122,11 @@ export async function casCreateAgent(def: AgentDefinition, opts: CasCreateOption
         persistTranscript: opts.persistTranscript,
         resumeTranscript: opts.resumeTranscript,
         forkTranscript: opts.forkTranscript,
-        tools: opts.tools,
+        // The compiled allowlist (lowered from `def.tools`) is the
+        // native enforcement path and wins; `opts.tools` is the
+        // pre-lowered CAS-private fallback for callers that pass the SDK
+        // shape directly.
+        tools: compiled.tools ?? opts.tools,
         defaultDisallowedTools: opts.defaultDisallowedTools,
     });
 
@@ -164,8 +168,21 @@ export async function casCreateAgent(def: AgentDefinition, opts: CasCreateOption
  * Pass-through criteria: `model` is a string and the def has no
  * `tools[]` / `subagents` (those require post-step-1 fn-tool / subagent
  * wiring not yet plumbed through CAS).
+ *
+ * When a def DOES declare `tools[]`, the allowlist is lowered to the
+ * SDK's `Options.tools` shape (a flat `string[]` of builtin names) and
+ * carried onto the `CompiledAgent` so the surface is actually
+ * RESTRICTED. The lowering fails closed: any tool spec that can't be an
+ * SDK builtin allowlist entry (a `fn`/`mcp` spec) THROWS rather than
+ * silently dropping the restriction — declaring a restriction the
+ * engine can't enforce must refuse.
  */
 function coerceToCompiledAgent(def: AgentDefinition, opts: CasCreateOptions): CompiledAgent {
+    // Lower the declared allowlist first. Fails closed on any
+    // unenforceable spec, so an untranslatable restriction never reaches
+    // either branch as a silently-dropped allowlist.
+    const toolAllowlist = toBuiltinAllowlist(def.tools);
+
     // Pass-through only when the caller hasn't asked for transport
     // composition. When `opts.transport` is set we must run
     // `compileAgent` so the platform body (`_ernesto/WORKSPACE.md` +
@@ -186,6 +203,7 @@ function coerceToCompiledAgent(def: AgentDefinition, opts: CasCreateOptions): Co
             mcpServers: def.mcpServers ?? [],
             outputFormat: def.outputFormat,
             disallowedTools: def.disallowedTools,
+            ...(toolAllowlist ? { tools: toolAllowlist } : {}),
         };
     }
 
@@ -196,7 +214,7 @@ function coerceToCompiledAgent(def: AgentDefinition, opts: CasCreateOptions): Co
         transport: opts.transport,
     };
 
-    return compileAgent(
+    const compiled = compileAgent(
         {
             id: opts.agentId ?? 'agent',
             name: opts.agentId ?? 'agent',
@@ -210,4 +228,34 @@ function coerceToCompiledAgent(def: AgentDefinition, opts: CasCreateOptions): Co
         },
         ctx,
     );
+
+    // `compileAgent`'s input (`AgentDeclaration`) carries no `tools`, so
+    // it can't forward the allowlist itself — attach the lowered
+    // allowlist onto its result so the restriction survives this branch.
+    return toolAllowlist ? { ...compiled, tools: toolAllowlist } : compiled;
+}
+
+/**
+ * Lower an `AgentDefinition.tools` allowlist (`ToolSpec[]`) to the SDK's
+ * `Options.tools` shape — a flat `string[]` of builtin tool names.
+ *
+ * FAIL CLOSED: only `kind: 'builtin'` specs are expressible as an SDK
+ * builtin allowlist. A `fn` or `mcp` spec cannot be honored as a
+ * tool-surface restriction here, so we THROW rather than drop it — a
+ * restriction the engine can't enforce must refuse, never silently
+ * grant. Returns `undefined` when no allowlist is declared (no
+ * restriction; the SDK default surface applies).
+ */
+function toBuiltinAllowlist(tools: ToolSpec[] | undefined): string[] | undefined {
+    if (tools === undefined || tools.length === 0) return undefined;
+    return tools.map((t) => {
+        if (t.kind !== 'builtin') {
+            throw new Error(
+                `casCreateAgent: cannot enforce a tools allowlist containing a non-builtin spec ` +
+                    `(kind '${t.kind}'). The SDK's Options.tools is a builtin-name allowlist only; ` +
+                    `an unsupported/unenforceable tools restriction must fail closed rather than be dropped.`,
+            );
+        }
+        return t.name;
+    });
 }

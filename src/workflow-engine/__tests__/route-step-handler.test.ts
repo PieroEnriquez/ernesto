@@ -50,6 +50,56 @@ describe('makeRouteStepHandler', () => {
         expect(result).toEqual({ kind: 'completed', output: { rows: ['select 1'] } });
     });
 
+    it('threads ctx.runId into the route context (engine-attested run identity)', async () => {
+        let seenRunId: string | undefined;
+        const runIdRoute = defineRoute({
+            uri: 'cards://put-probe',
+            scope: 'ws:read',
+            input: z.object({}),
+            output: z.object({ ok: z.literal(true) }),
+            handler: async (_input, routeCtx) => {
+                seenRunId = routeCtx.runId;
+                return { ok: true as const };
+            },
+        });
+        const kindRegistry = new KindRegistry();
+        kindRegistry.registerRoute(runIdRoute);
+        const handler = makeRouteStepHandler({
+            kindRegistry,
+            log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        });
+        const result = await handler(
+            { kind: 'route', uri: 'cards://put-probe', params: {} } as RouteStep,
+            makeCtx({ runId: 'run-attested-42' }),
+        );
+        expect(result.kind).toBe('completed');
+        expect(seenRunId).toBe('run-attested-42');
+    });
+
+    it('a route handler invoked through the REAL engine receives ctx.runId === the run id the engine stored', async () => {
+        let seenRunId: string | undefined;
+        const runner = createRunner();
+        runner.registerStepKind(
+            'route',
+            makeRouteStepHandler({ kindRegistry: runner.kindRegistry, log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }),
+        );
+        runner.kindRegistry.registerRoute(
+            defineRoute({
+                uri: 'cards://real-runid',
+                scope: 'ws:read',
+                input: z.object({}),
+                output: z.object({ ok: z.literal(true) }),
+                handler: async (_input, routeCtx) => {
+                    seenRunId = routeCtx.runId;
+                    return { ok: true as const };
+                },
+            }),
+        );
+        const run = await runner.dispatch('cards://real-runid', {}, userPrincipal('u-1', ['ws:read']), { transport: 'in-process' });
+        expect(run.status).toBe('completed');
+        expect(seenRunId).toBe(run.runId);
+    });
+
     it('returns uri_not_found when the URI is not in the registry', async () => {
         const kindRegistry = new KindRegistry();
         const handler = makeRouteStepHandler({

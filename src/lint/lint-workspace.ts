@@ -17,16 +17,26 @@
  *   forbidden_workspace_name      — new workspaces match
  *                                   `^[a-z][a-z0-9-]{0,39}$`. Reserved
  *                                   `_`-prefix: only `_ernesto` allowed.
- *   forbidden_generated_path      — `workspaces/{w}/{extracted,attached}/`
- *                                   is master-fs-mirrored at host boot;
- *                                   agents must not commit changes to it.
+ *   forbidden_generated_path      — generated subdirectories
+ *                                   (`extracted/`, `attached/`, `_results/`)
+ *                                   and generated files (`.derived-from-sha`)
+ *                                   under a workspace boundary are
+ *                                   platform-owned; agents must not commit
+ *                                   changes to them.
  *   forbidden_workspace_md_delete — `WORKSPACE.md` is the contract; never
  *                                   delete it.
  *   archived_workspace_edit       — workspaces with `archived: true` only
  *                                   accept the unarchive flip.
  *   file_too_large                — any file > 1 MiB → fail.
+ *   binary_file                   — every committed file must be plain
+ *                                   UTF-8 text; binaries are attached via
+ *                                   `_ernesto://attach`, never committed.
  *   merge_markers                 — leftover git conflict markers from a
  *                                   stash pop or rebase.
+ *   invalid_attachments_yaml      — a workspace's `attachments.yaml` must
+ *                                   parse and pass the structural validation
+ *                                   in `workspaces/attachments`. Deleting
+ *                                   the file is allowed.
  *   invalid_nav_frontmatter       — a content file's navigation frontmatter
  *                                   has a wrong-typed `section` (must be a
  *                                   non-empty string), `order` (must be a
@@ -65,10 +75,13 @@
  */
 
 import { readFile, stat } from 'fs/promises';
+import { isUtf8 } from 'buffer';
 import * as path from 'path';
 import yaml from 'js-yaml';
 import type { LintFn, LintError } from '../workdir/settle';
 import { runGit } from '../workdir/run-git';
+import { GENERATED_SUBDIRS, GENERATED_FILES } from '../workdir/settle-core';
+import { validateAttachmentsYaml, ATTACHMENTS_YAML } from '../workspaces/attachments';
 import {
     parseWorkspaceFrontmatter,
     canRead as canReadFm,
@@ -87,7 +100,13 @@ import { AGENT_OPS_SCOPE } from '../shared/scope';
  *  alerting) can reference the key without stringly-typed duplicates. */
 export const UNREGISTERED_EXTRACTION_SOURCE = 'unregistered_extraction_source';
 
-const GENERATED_SUBDIRS = ['extracted', 'attached'] as const;
+/** Lint error key emitted when a workspace's `attachments.yaml` fails the
+ *  structural validation in `workspaces/attachments` (rule
+ *  `invalid_attachments_yaml`). Exported so other consumers (callers wiring
+ *  `bypass`, integration tests, alerting) can reference the key without
+ *  stringly-typed duplicates. */
+export const INVALID_ATTACHMENTS_YAML = 'invalid_attachments_yaml';
+
 const MAX_FILE_BYTES = 1024 * 1024;
 const WORKSPACE_NAME_REGEX = /^[a-z][a-z0-9-]{0,39}$/;
 const ERNESTO_WORKSPACE = '_ernesto';
@@ -494,12 +513,14 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
             if (p === r.dir) return '';
             return p.startsWith(r.dir + '/') ? p.slice(r.dir.length + 1) : p;
         };
-        // `extracted/`/`attached/` (and the `attachments.yaml` overlay) sit
-        // directly under a boundary — at any depth, relative to that boundary.
+        // Generated subdirs sit directly under a boundary — at any depth,
+        // relative to that boundary. Generated files match by basename. Both
+        // lists are the settle staging excludes (settle-core); the lint and
+        // the stage pathspecs stay in sync by importing the same constants.
         const isGenerated = (p: string): boolean => {
             const rel = relToBoundary(p);
             if ((GENERATED_SUBDIRS as readonly string[]).some((s) => rel === s || rel.startsWith(s + '/'))) return true;
-            return rel === 'attachments.yaml';
+            return (GENERATED_FILES as readonly string[]).includes(path.posix.basename(rel));
         };
         // A markdown content file the viewer renders in its curated nav: any
         // `.md`/`.mdx` under the resolved workspace that is NOT the WORKSPACE.md
@@ -526,11 +547,12 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
             }
         }
 
-        // forbidden_generated_path — `extracted/` and `attached/` are
-        // master-fs mirrors placed at host boot and must never enter the
-        // git index. The lib's settleFromWorktree already excludes them via
-        // pathspec, but the lint catches any path that slipped past (e.g.
-        // a settleFromPatch with a hand-crafted diff).
+        // forbidden_generated_path — generated subdirs are platform-owned
+        // mirrors and generated files are derive-worker outputs; neither may
+        // enter the git index. The lib's settleFromWorktree already excludes
+        // them via pathspec, but the lint catches any path that slipped past
+        // (e.g. a settleFromPatch with a hand-crafted diff — `apply --index`
+        // ignores .gitignore for new files).
         if (!isBypassed('forbidden_generated_path')) {
             for (const p of touchedPaths) {
                 if (isGenerated(p)) {
@@ -538,7 +560,7 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
                         code: 'forbidden_generated_path',
                         workspace: refOf(p)?.name,
                         path: p,
-                        message: `Path ${p} is under a generated subdirectory (extracted/, attached/) and cannot be edited by hand`,
+                        message: `Path ${p} is a generated path (${GENERATED_SUBDIRS.map((s) => `${s}/`).join(', ')} or ${GENERATED_FILES.join(', ')}) and cannot be edited by hand`,
                     });
                 }
             }
@@ -731,7 +753,27 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
             }
         }
 
-        // file_too_large + merge_markers (one pass per file)
+        // invalid_attachments_yaml — a workspace's attachments index must
+        // parse and validate structurally (workspaces/attachments is the one
+        // schema every reader/writer shares). Reads post-stage from disk,
+        // nesting-aware. Deleting the file is allowed — a workspace may drop
+        // its index (the GC sweep reclaims the bytes after grace).
+        for (const e of entries) {
+            if (e.isDelete) continue;
+            const p = e.toPath;
+            if (!p) continue;
+            if (relToBoundary(p) !== ATTACHMENTS_YAML) continue;
+            try {
+                const text = await readFile(path.join(workingTreeRoot, p), 'utf8');
+                for (const ae of lintAttachmentsFile(p, text)) {
+                    errors.push({ ...ae, workspace: refOf(p)?.name });
+                }
+            } catch {
+                // best-effort
+            }
+        }
+
+        // file_too_large + binary_file + merge_markers (one read per file)
         for (const e of entries) {
             if (e.isDelete) continue;
             const p = e.toPath;
@@ -749,8 +791,19 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
                     });
                     continue;
                 }
-                const content = await readFile(abs, 'utf8');
-                if (hasConflictMarkers(content)) {
+                const buf = await readFile(abs);
+                // The explicit NUL check is required: NUL is valid UTF-8, so
+                // `isUtf8` alone would wave through most real binaries.
+                if (buf.includes(0) || !isUtf8(buf)) {
+                    errors.push({
+                        code: 'binary_file',
+                        path: p,
+                        workspace: refOf(p)?.name,
+                        message: `File ${p} is not plain UTF-8 text; binaries must be attached via _ernesto://attach, never committed`,
+                    });
+                    continue;
+                }
+                if (hasConflictMarkers(buf.toString('utf8'))) {
                     errors.push({
                         code: 'merge_markers',
                         path: p,
@@ -1091,6 +1144,28 @@ export async function lintWorkflowFile(filepath: string, text: string, ctx: Work
             },
         ];
     }
+}
+
+/**
+ * Lint a single `attachments.yaml` body — the standalone counterpart to
+ * `lintWorkflowFile` for the attachments index. Returns the collected
+ * `LintError[]` (empty on success), one `invalid_attachments_yaml` error per
+ * structural issue `validateAttachmentsYaml` reports. Never throws.
+ *
+ * Like `lintWorkflowFile`, the caller picks the files; the `workspace`
+ * attribution here is the flat first segment (no working-tree boundary scan
+ * is available standalone) — `lintWorkspace`'s diff loop re-attributes
+ * nesting-aware.
+ */
+export function lintAttachmentsFile(filepath: string, text: string): LintError[] {
+    const workspace = workspaceOf(filepath);
+    const { issues } = validateAttachmentsYaml(text);
+    return issues.map((issue) => ({
+        code: INVALID_ATTACHMENTS_YAML,
+        path: filepath,
+        workspace,
+        message: issue.entryIndex === undefined ? `File ${filepath} is not a valid attachments index: ${issue.message}` : `File ${filepath} entry ${issue.entryIndex}: ${issue.message}`,
+    }));
 }
 
 function workflowErrorToLintError(e: WorkflowValidationError, filepath: string, workspace: string | undefined): LintError {

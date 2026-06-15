@@ -427,6 +427,62 @@ export function isMonitorStep(step: WorkflowStep): step is MonitorStep {
  * boundVersion?, digestDelta? }` — available to later steps via
  * `${{ steps.<id>.outputs.X }}`.
  */
+/**
+ * A WORKBENCH descriptor — the interactive review/edit/create surface a
+ * thread entry summons. It lets a human SEE the staged draft an ask is
+ * about, REFINE it (edit a file manually or re-prompt the agent), and
+ * COMMIT it. The thread timeline renders it inline; the SAME descriptor
+ * is intended to back "your change", "edit a document", and the "new X"
+ * launchables — one surface, parameterized by what draft is in play and
+ * what committing means.
+ *
+ * THREAD-NATIVE: an ask is one entry on a thread; the workbench is that
+ * entry's interactive surface, bound to a draft (workspaces + paths at a
+ * CAS base) and a commit verb. Strings support `${{ }}` interpolation
+ * (the engine deep-walks the step), so `paths` may reference prior step
+ * outputs, e.g. `data/${{ steps.compose.week }}.json`.
+ */
+export interface WorkbenchRef {
+    /** Workspaces whose draft is under review (leaf names). */
+    workspaces: string[];
+    /** Specific draft paths staged for review (workspace-relative tree
+     *  paths). Empty ⇒ the whole workspace draft. */
+    paths?: string[];
+    /** What COMMITTING this surface means. `approve` resolves the ask so
+     *  the parked run resumes (publish gated on the decision); `settle`
+     *  publishes a plain draft; `create` first-settles a new boundary;
+     *  `configure` lands a config change. For every verb !== 'approve'
+     *  the COMMIT is AGENTIC — it dispatches `commit` (a workflow whose
+     *  agent settles), never a direct human settle. */
+    verb: 'approve' | 'settle' | 'create' | 'configure';
+    /** Which Preview lens renders the artifact. The lens registry keys on
+     *  this; `edition` is the daily/weekly brief card, `form` a structured
+     *  config form, `workflow-yaml` a workflow definition. */
+    previewKind?: 'site' | 'markdown' | 'json' | 'none' | 'edition' | 'form' | 'workflow-yaml';
+    /** Preview coordinates. For `previewKind: 'site'`, the site leaf +
+     *  data path the renderer reads; for `form`, which config the form is
+     *  bound to (e.g. a workspace's `extractions:` block). */
+    preview?: { site?: string; path?: string; configKind?: 'extractions' };
+    /** The run that staged this draft — the refine channel re-dispatches
+     *  against the same conductor / run. */
+    runId?: string;
+    /** How this surface was summoned: from a parked convene ask, or opened
+     *  STANDALONE by a user action (a launchable / "edit this doc" / "new
+     *  X"). Default `'ask'` keeps convene-borne workbenches unchanged. */
+    open?: 'ask' | 'standalone';
+    /** For verb !== 'approve': the AGENTIC-COMMIT workflow to dispatch —
+     *  either a settled `slug` (run-workflow, granted authority, e.g. a
+     *  first-settle needing admin scope) or an `inline` definition
+     *  (run-workflow-inline, caller authority, e.g. settling the caller's
+     *  own draft). The human never settles; this workflow's agent does. */
+    commit?: {
+        slug?: string;
+        inputs?: Record<string, unknown>;
+        inline?: { definitionYaml?: string };
+        requestedBy?: string;
+    };
+}
+
 export interface ConveneStep extends BaseStep {
     kind: 'convene';
     /** Target room: an explicit room id, or `inbox:<user-ref>` for the
@@ -458,6 +514,10 @@ export interface ConveneStep extends BaseStep {
     /** After this many seconds pending the adapter CAS-expires the ask
      *  and resumes the run with `outcome: 'timeout'`. */
     expireAfterSec?: number;
+    /** Optional interactive review/edit surface this ask summons — the
+     *  thread renders it inline so the resolver can SEE and REFINE the
+     *  staged draft before committing. See {@link WorkbenchRef}. */
+    workbench?: WorkbenchRef;
 }
 
 /** Type guard. */

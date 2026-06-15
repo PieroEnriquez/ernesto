@@ -39,7 +39,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import type { ConveneStep } from '../../workflows/types';
+import type { ConveneStep, WorkbenchRef } from '../../workflows/types';
 import type { StepKindHandler, EngineLogger } from '../types/handler';
 
 /** Caller-fault tags the port may throw (`Error('<tag>: <detail>')`).
@@ -139,6 +139,12 @@ export interface ConveneAskRequest {
      *  `{ outcome: 'timeout' }` after this many seconds pending
      *  (adapter-owned timer). */
     expireAfterSec?: number;
+    /** Optional interactive review/edit surface this ask summons — the
+     *  thread renders it inline (see {@link WorkbenchRef}). The adapter
+     *  persists it on the ask row and projects it onto the wire frame so
+     *  every reader (timeline, Today, Run page) can show + refine the
+     *  staged draft. The engine sets `runId` if the author omitted it. */
+    workbench?: WorkbenchRef;
 }
 
 /** What the adapter returns once the ask exists (created or
@@ -246,6 +252,9 @@ export function makeConveneStepHandler(deps: ConveneStepHandlerDeps): StepKindHa
             executionScopes,
             ...(step.nudgeAfterSec !== undefined ? { nudgeAfterSec: step.nudgeAfterSec } : {}),
             ...(step.expireAfterSec !== undefined ? { expireAfterSec: step.expireAfterSec } : {}),
+            ...(step.workbench !== undefined
+                ? { workbench: { ...step.workbench, runId: step.workbench.runId ?? ctx.runId } }
+                : {}),
         };
 
         let receipt: ConveneAskReceipt;

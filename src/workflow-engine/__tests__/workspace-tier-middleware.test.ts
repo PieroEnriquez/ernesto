@@ -133,6 +133,38 @@ describe('workspaceAllocatorMiddleware', () => {
         expect(observed).toBe('/tmp/fresh-child-workdir');
     });
 
+    it('NEGATIVE: a WORKFLOW/agent child NEVER inherits the parent workdir — must allocate its own (subagent FS isolation)', async () => {
+        // boundary: workspace-allocator-subagent-isolation
+        // The route-only inherit carve-out (workspace-allocator.ts:83) must
+        // NOT leak to WORKFLOW/agent kinds. A child agent that silently reused
+        // the parent's `opts.context.workdirRoot` could Read straight into the
+        // parent's filesystem (cross-agent FS escape). Assert the secure
+        // outcome directly: the step's observed workdirRoot is NOT the parent
+        // path, AND a fresh workdir was allocated. We do NOT mock the
+        // middleware — the real workspaceAllocatorMiddleware decides.
+        const PARENT = '/tmp/parent-agent-workdir';
+        const runner = createRunner();
+        const allocate = vi.fn(async () => ({ workdirRoot: '/tmp/fresh-child-workdir' }));
+        let observed: string | undefined;
+        runner.registerStepKind('route', async (_step, ctx) => {
+            observed = ctx.workdirRoot;
+            return { kind: 'completed', output: {} };
+        });
+        runner.registerWorkflowReader(readerOf(DECL));
+        runner.kindRegistry.registerWorkflow(DECL, { cwd: 'workspace-workdir' });
+        runner.use(workspaceAllocatorMiddleware({ allocate }));
+
+        const run = await runner.dispatch('wf', {}, userPrincipal('u', []), {
+            context: { workdirRoot: PARENT },
+        });
+        expect(run.status).toBe('completed');
+        // The child must never read into the parent's workdir by inheritance.
+        expect(observed).not.toBe(PARENT);
+        // The isolation must come from a real fresh allocation, not a skip.
+        expect(allocate).toHaveBeenCalledTimes(1);
+        expect(observed).toBe('/tmp/fresh-child-workdir');
+    });
+
     it('skips allocation when policy.cwd is ephemeral or none', async () => {
         const runner = createRunner();
         const allocate = vi.fn();
@@ -284,7 +316,7 @@ describe('sandboxBindMiddleware', () => {
         expect(build).not.toHaveBeenCalled();
     });
 
-    it('skips binding when workdir is absent (kind policy misconfigured)', async () => {
+    it('FAILS CLOSED when workdir is absent (sandbox requested but unbindable) — never silently skips', async () => {
         const runner = createRunner();
         const build = vi.fn();
         runner.registerStepKind('route', async () => ({
@@ -293,14 +325,96 @@ describe('sandboxBindMiddleware', () => {
         }));
         runner.registerWorkflowReader(readerOf(DECL));
         runner.kindRegistry.registerWorkflow(DECL, {
-            // sandboxed but no workspace-workdir — misconfiguration;
-            // binder skips, kind handler will surface the issue.
+            // sandboxed native tools requested but NO workspace-workdir cwd
+            // → no workdirRoot will be allocated. The PreToolUse path-guard
+            // hooks cannot be installed; per fail-closed doctrine the
+            // middleware must REFUSE, not silently pass through and let the
+            // agent run native tools unsandboxed.
             tools: { native: 'sandboxed' },
         });
         runner.use(sandboxBindMiddleware({ binder: { build } }));
 
-        await runner.dispatch('wf', {}, userPrincipal('u', []), {});
+        await expect(runner.dispatch('wf', {}, userPrincipal('u', []), {})).rejects.toMatchObject({
+            code: 'sandbox_unbindable',
+        });
+        // Never built hooks against a missing workdir, and never silently
+        // installed nothing while permitting the step to run.
         expect(build).not.toHaveBeenCalled();
+    });
+
+    // boundary: sandbox-bind-sandboxed-without-workdir
+    //
+    // A kind that opted into `tools.native: 'sandboxed'` but has NO allocated
+    // workdir (no workspace-allocator wired) is a SECURITY misconfiguration,
+    // not a benign no-op. sandbox-bind.ts:57 does `if (!ctx.workdirRoot) return
+    // ctx;` — so no PreToolUse path-guard hooks are installed AND no error is
+    // raised. The agent step then runs the harness with NATIVE Read/Write/Edit/
+    // Glob/Grep entirely UNSANDBOXED (full host filesystem), while the policy
+    // explicitly requested confinement. The absence of a guard for a
+    // sandbox-requested kind is a fail-open, not a silent no-op.
+    //
+    // Secure behavior (asserted in the body): the sandbox requirement must NOT
+    // be silently dropped. Either the dispatch surfaces a refusal
+    // (run.status === 'errored') with no hooks installed, OR a fail-closed
+    // marker annotation is set so the agent step can refuse to proceed with
+    // unsandboxed native tools. Today neither happens (run completes,
+    // sandboxHooks undefined, workdirRoot undefined, step ran) => this is a
+    // confirmed fail-open, landed skipped to keep the shared suite green.
+    //
+    // We use the REAL createRunner + real sandboxBindMiddleware with NO
+    // allocator (mirroring a kind whose workspace-allocator was never wired) —
+    // the middleware under test is never mocked.
+    it('FAIL-OPEN: sandbox-bind silently no-ops when native:sandboxed but workdir missing — agent runs UNsandboxed — unskip when fixed', async () => {
+        const runner = createRunner();
+        const build = vi.fn((workdirRoot: string) => `hooks-for-${workdirRoot}`);
+        let stepRan = false;
+        let observedWorkdirRoot: string | undefined = 'UNSET' as unknown as string;
+        let observedHooks: unknown = 'UNSET';
+        let failClosedMarker: unknown;
+        runner.registerStepKind('route', async (_step, ctx) => {
+            stepRan = true;
+            observedWorkdirRoot = ctx.workdirRoot;
+            observedHooks = ctx.annotations.sandboxHooks;
+            // A backend might mark the kind as fail-closed for sandbox.
+            failClosedMarker =
+                ctx.annotations.sandboxRequired ??
+                ctx.annotations.sandboxFailClosed ??
+                ctx.annotations.failClosed;
+            return { kind: 'completed', output: {} };
+        });
+        runner.registerWorkflowReader(readerOf(DECL));
+        // sandboxed native tools requested, but NO workspace-workdir cwd and
+        // (below) NO allocator middleware wired → no workdirRoot will exist.
+        runner.kindRegistry.registerWorkflow(DECL, {
+            tools: { native: 'sandboxed' },
+        });
+        runner.use(sandboxBindMiddleware({ binder: { build } }));
+
+        // The fail-closed fix raises a typed refusal from the `before` hook
+        // (mirroring scope-check's ScopeEscalationError), which the runner
+        // surfaces as an aborted dispatch — the documented native enforcement
+        // path. Capture it as an errored run, exactly as a caller / queue
+        // wrapper observes it, so the secure assertion below can read
+        // `run.status`.
+        const run = await runner
+            .dispatch('wf', {}, userPrincipal('u', []), {})
+            .catch((err) => ({ status: 'errored' as const, error: err }));
+
+        // SECURE assertion: the agent step must NOT proceed with unsandboxed
+        // native tools. The requirement is honored iff EITHER the dispatch
+        // failed closed, OR a fail-closed marker was surfaced to the step.
+        const failedClosed = run.status === 'errored';
+        const markerSet = failClosedMarker !== undefined;
+        expect(failedClosed || markerSet).toBe(true);
+
+        // And it must never have silently installed nothing while still letting
+        // an agent step run against the host FS with no workdir confinement:
+        if (stepRan) {
+            // If the step ran at all, hooks must have been bound to a workdir.
+            expect(observedHooks).not.toBeUndefined();
+            expect(observedWorkdirRoot).not.toBeUndefined();
+            expect(build).toHaveBeenCalled();
+        }
     });
 });
 
@@ -345,6 +459,51 @@ describe('toolSurfaceComposeMiddleware', () => {
             }),
         );
         expect(teardownCalled).toBe(1);
+    });
+
+    it('composes for DAG workflows whose agent step is not named main (union across steps)', async () => {
+        const runner = createRunner();
+        const compose = vi.fn(async () => ({
+            mcpServers: { ernesto: { cmd: 'ernesto-mcp' } },
+        }));
+        // The explain-settle / create-site shape: author-named agent step
+        // (`write`) + a route leaf (`store`) — no step named `main`.
+        const wf: WorkflowDeclaration = {
+            name: 'wf-dag',
+            description: 'd',
+            version: 1,
+            steps: {
+                write: {
+                    kind: 'agent',
+                    model: 'm',
+                    systemPrompt: 'sp',
+                    prompt: 'p',
+                    mcpServers: ['ernesto'],
+                } as any,
+                store: {
+                    kind: 'call',
+                    depends: ['write'],
+                    uri: 'x://y',
+                } as any,
+            },
+        };
+        runner.registerStepKind('agent', async () => ({
+            kind: 'completed',
+            output: {},
+        }));
+        runner.registerStepKind('call', async () => ({
+            kind: 'completed',
+            output: {},
+        }));
+        runner.registerWorkflowReader(readerOf(wf));
+        runner.kindRegistry.registerWorkflow(wf);
+        runner.use(toolSurfaceComposeMiddleware({ composer: { compose } }));
+
+        await runner.dispatch('wf-dag', {}, userPrincipal('u', []), {});
+        expect(compose).toHaveBeenCalledTimes(1);
+        expect(compose).toHaveBeenCalledWith(
+            expect.objectContaining({ mcpServers: ['ernesto'] }),
+        );
     });
 
     it('skips composition when main step has no mcpServers', async () => {

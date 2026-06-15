@@ -213,6 +213,138 @@ describe('OverlayView — merged-view visibility (scope gate over the overlay)',
     });
 });
 
+describe('OverlayView — NEGATIVE: an unreadable WORKSPACE.md fails CLOSED', () => {
+    // A lower layer where one boundary's WORKSPACE.md exists (stat/readdir see
+    // it, so the dir IS a boundary) but readFile REJECTS for that one path —
+    // modeling a contract that cannot be read (corrupt blob, deletion tombstone
+    // over the contract while sibling patch files keep the dir alive, transient
+    // I/O error). The secure property under test (overlay.ts:239-244): an
+    // unreadable contract is NEVER granted by default — it is excluded from
+    // readableNames. We do NOT mock computeVisibility / canRead (the enforcer);
+    // we drive the REAL view with a reader that decouples stat from readFile.
+    function unreadableContractFs(files: Record<string, string>, unreadablePath: string): FsReader {
+        const base = makeMemoryFs(files);
+        return {
+            async readFile(rel) {
+                if (rel === unreadablePath) {
+                    throw new Error(`EIO: cannot read contract ${rel}`);
+                }
+                return base.readFile(rel);
+            },
+            readdir: (rel) => base.readdir(rel),
+            stat: (rel) => base.stat(rel),
+        };
+    }
+
+    it('excludes a boundary whose WORKSPACE.md read throws (not readable-by-default)', async () => {
+        const lower = unreadableContractFs(
+            {
+                // public, fully readable — the control
+                'workspaces/product/WORKSPACE.md': '---\nname: product\n---\n',
+                // boundary exists (stat sees the .md) but its contract is unreadable
+                'workspaces/vault/WORKSPACE.md': '---\nname: vault\n---\n',
+                'workspaces/vault/secret.md': 'classified\n',
+            },
+            'workspaces/vault/WORKSPACE.md',
+        );
+        const view = makeOverlayView(lower, emptyPatch('base'));
+
+        // The dir is still SEEN as a boundary (its WORKSPACE.md exists via stat)…
+        const boundaryNames = (await view.scanBoundaries()).map((b) => b.name).sort();
+        expect(boundaryNames).toEqual(['product', 'vault']);
+
+        // …yet because its contract cannot be READ, it must be excluded — even
+        // for a principal carrying NO scopes and admin=false.
+        const vis = await view.computeVisibility(scopes(), { isAdmin: false });
+        expect(vis.readableNames.has('vault')).toBe(false); // FAIL-CLOSED
+        expect(vis.readableNames.has('product')).toBe(true); // control: public stays readable
+
+        // And it is not silently granted to a scope-bearing-but-irrelevant caller.
+        const withOther = await view.computeVisibility(scopes('hr:read', 'cs:read'), { isAdmin: false });
+        expect(withOther.readableNames.has('vault')).toBe(false);
+    });
+
+    it('an unreadable contract kept alive by a sibling patch file is still fail-closed', async () => {
+        // Concretely model the brief's tombstone case: the contract is deletion-
+        // tombstoned by the patch (so readFile rejects) while a SECOND patch file
+        // under the same dir keeps it a live boundary in the merged view.
+        const lower = makeMemoryFs({
+            'workspaces/product/WORKSPACE.md': '---\nname: product\n---\n',
+            'workspaces/vault/WORKSPACE.md': '---\nname: vault\n---\n',
+        });
+        const patch: WorkspacePatch = {
+            baseSha: 'base',
+            files: {
+                'workspaces/vault/WORKSPACE.md': { deleted: true }, // contract unreadable
+                'workspaces/vault/notes.md': { content: 'keeps the dir alive\n' },
+            },
+        };
+        const view = makeOverlayView(lower, patch);
+
+        // The patch tombstones the contract: it no longer exists in the merged
+        // view, so the dir is NOT a boundary and 'vault' is simply absent — which
+        // is itself fail-closed (never readable-by-default).
+        const vis = await view.computeVisibility(scopes(), { isAdmin: false });
+        expect(vis.readableNames.has('vault')).toBe(false);
+        expect(vis.readableNames.has('product')).toBe(true);
+    });
+});
+
+describe('OverlayView — NEGATIVE: scanBoundaries prunes generated mirrors', () => {
+    // PRUNE_DIRS (overlay.ts:37) must never be descended into. A WORKSPACE.md
+    // placed under a generated mirror (extracted/) must NOT be promoted to a
+    // boundary in the merged overlay view, and a restricted contract buried
+    // there must NOT leak into readableNames. We exercise the REAL scanner.
+    const lower = makeMemoryFs({
+        'workspaces/hr/WORKSPACE.md': '---\nname: hr\n---\n',
+        'workspaces/hr/handbook.md': 'lower handbook\n',
+    });
+
+    it('a WORKSPACE.md under extracted/ is not a boundary and not readable', async () => {
+        const patch: WorkspacePatch = {
+            baseSha: 'base',
+            files: {
+                // a restricted contract buried in a generated mirror
+                'workspaces/hr/extracted/buried/WORKSPACE.md': {
+                    content: '---\nname: buried\nread: secret:read\n---\n',
+                },
+            },
+        };
+        const view = makeOverlayView(lower, patch);
+
+        const boundaries = await view.scanBoundaries();
+        expect(boundaries.some((b) => b.name === 'buried')).toBe(false);
+        // sanity: the legit boundary above the mirror is still found
+        expect(boundaries.some((b) => b.name === 'hr')).toBe(true);
+
+        const vis = await view.computeVisibility(scopes(), { isAdmin: false });
+        expect(vis.readableNames.has('buried')).toBe(false);
+
+        // Even carrying the very scope the buried contract names, it must not
+        // become readable — it was never a boundary at all.
+        const withScope = await view.computeVisibility(scopes('secret:read'), { isAdmin: false });
+        expect(withScope.readableNames.has('buried')).toBe(false);
+    });
+
+    it('a top-level WORKSPACE.md under each PRUNE_DIR is never a boundary', async () => {
+        // Cover every prune subtree at the workspaces/<x>/<prune>/ depth.
+        const patch: WorkspacePatch = {
+            baseSha: 'base',
+            files: {
+                'workspaces/hr/extracted/a/WORKSPACE.md': { content: '---\nname: a\n---\n' },
+                'workspaces/hr/attached/b/WORKSPACE.md': { content: '---\nname: b\n---\n' },
+                'workspaces/hr/_results/c/WORKSPACE.md': { content: '---\nname: c\n---\n' },
+                'workspaces/hr/archive/d/WORKSPACE.md': { content: '---\nname: d\n---\n' },
+                'workspaces/hr/node_modules/e/WORKSPACE.md': { content: '---\nname: e\n---\n' },
+            },
+        };
+        const view = makeOverlayView(lower, patch);
+        const names = (await view.scanBoundaries()).map((b) => b.name).sort();
+        // Only the legit hr boundary survives; every buried one is pruned.
+        expect(names).toEqual(['hr']);
+    });
+});
+
 describe('emptyPatch — the read-only / clean-main principal', () => {
     it('an empty patch is a pure pass-through to the lower layer', async () => {
         const lower = makeMemoryFs({ 'workspaces/hr/WORKSPACE.md': '---\nname: hr\n---\n' });

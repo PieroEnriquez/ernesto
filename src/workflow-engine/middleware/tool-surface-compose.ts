@@ -1,6 +1,7 @@
 /**
  * `toolSurfaceComposeMiddleware` — build per-dispatch MCP server
- * surfaces from `kind.declaration.main.mcpServers`.
+ * surfaces from the union of `mcpServers` across the declaration's
+ * steps (any step, not just `main` — DAG workflows name their own).
  *
  * Replaces the ad-hoc `buildTierAMcpServers` /
  * `createErnestoMcpServer(serviceContext)` patterns that lived
@@ -99,12 +100,16 @@ export function toolSurfaceComposeMiddleware(opts: ToolSurfaceComposeMiddlewareO
     return {
         name: 'tool-surface-compose',
         async before(ctx: DispatchPreContext): Promise<DispatchPreContext> {
-            // The kind's mcpServers list lives in the declaration's
-            // main step (for agent kinds). For route kinds the lib's
-            // built-in adapter (route→single-step workflow) doesn't
-            // carry an mcpServers list; the middleware skips.
-            const main = ctx.decl?.kind === 'workflow' ? ctx.decl.declaration.steps.main : undefined;
-            const mcpServers = readMcpServersFromMainStep(main);
+            // The mcpServers list is the union across ALL steps — like
+            // mergeWorkflowPolicyDefaults, the predicate is "any step",
+            // not "main": composed-turns DAG workflows carry author-
+            // chosen step names (`write`, `scaffold`, …), and a
+            // main-only read silently composed NO servers for them.
+            // For route kinds the lib's built-in adapter
+            // (route→single-step workflow) doesn't carry an mcpServers
+            // list; the middleware skips.
+            const steps = ctx.decl?.kind === 'workflow' ? ctx.decl.declaration.steps : undefined;
+            const mcpServers = readMcpServersFromSteps(steps);
             if (!mcpServers || mcpServers.length === 0) return ctx;
 
             const conversationId =
@@ -145,11 +150,21 @@ export function toolSurfaceComposeMiddleware(opts: ToolSurfaceComposeMiddlewareO
     };
 }
 
-/** Best-effort read of `mcpServers` from a step. Lib's WorkflowStep
- *  union has it on `AgentStep`; other step kinds don't define it. */
-function readMcpServersFromMainStep(step: unknown): ReadonlyArray<string> | undefined {
-    if (!step || typeof step !== 'object') return undefined;
-    const m = (step as { mcpServers?: unknown }).mcpServers;
-    if (!Array.isArray(m)) return undefined;
-    return m.filter((s): s is string => typeof s === 'string');
+/** Best-effort union of `mcpServers` across all steps, deduped in
+ *  declaration order. Lib's WorkflowStep union has it on `AgentStep`;
+ *  other step kinds don't define it. The composition is per-dispatch,
+ *  not per-step, so a union is the correct surface for DAG workflows
+ *  whose agent steps declare servers under author-chosen names. */
+function readMcpServersFromSteps(steps: unknown): ReadonlyArray<string> | undefined {
+    if (!steps || typeof steps !== 'object') return undefined;
+    const out: string[] = [];
+    for (const step of Object.values(steps)) {
+        if (!step || typeof step !== 'object') continue;
+        const m = (step as { mcpServers?: unknown }).mcpServers;
+        if (!Array.isArray(m)) continue;
+        for (const s of m) {
+            if (typeof s === 'string' && !out.includes(s)) out.push(s);
+        }
+    }
+    return out.length > 0 ? out : undefined;
 }

@@ -26,10 +26,11 @@ let masterFsRoot = '';
 let generatedRoot = '';
 
 // The backend passes this matcher (lib can't import backend volume-paths). It
-// mirrors GENERATED_PATH_RE: extracted/, attached/, attachments.yaml,
-// .derived-from-sha — but NOT `_results` (ResultsStore-owned) or authored files.
+// mirrors GENERATED_PATH_RE: extracted/, attached/, .derived-from-sha — but NOT
+// attachments.yaml (a tracked git file), `_results` (ResultsStore-owned), or
+// authored files.
 const isGenerated = (rel: string) =>
-    /^workspaces\/(?:[^/]+\/)*(?:extracted\/.+|attached\/.+|attachments\.yaml|\.derived-from-sha)$/.test(rel);
+    /^workspaces\/(?:[^/]+\/)*(?:extracted\/.+|attached\/.+|\.derived-from-sha)$/.test(rel);
 
 async function write(base: string, rel: string, content: string): Promise<void> {
     const abs = path.join(base, rel);

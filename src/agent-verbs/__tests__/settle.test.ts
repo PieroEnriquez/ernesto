@@ -50,7 +50,7 @@ describe('handleSettle', () => {
         };
     }
 
-    it('happy path: derives workspaces, pushes, fires onSettleSuccess', async () => {
+    it('happy path: derives workspaces from selected files, pushes, fires onSettleSuccess', async () => {
         const workdir = buildWorkdir();
         await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# hr\n'));
 
@@ -58,7 +58,7 @@ describe('handleSettle', () => {
         const onFailure = vi.fn(async () => {});
         const ctx = makeCtx({ hooks: { onSettleSuccess: onSuccess, onSettleFailure: onFailure } });
 
-        const r = await handleSettle(workdir, { message: 'add hr' }, ctx);
+        const r = await handleSettle(workdir, { message: 'add hr', files: ['workspaces/hr/WORKSPACE.md'] }, ctx);
 
         expect(r.ok).toBe(true);
         if (!r.ok) return;
@@ -71,7 +71,7 @@ describe('handleSettle', () => {
         expect(onFailure).not.toHaveBeenCalled();
     });
 
-    it('derives multiple workspaces from a multi-workspace diff', async () => {
+    it('derives multiple workspaces from a multi-workspace selection', async () => {
         const workdir = buildWorkdir();
         await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# hr\n'));
         await workdir.fs.writeFile('workspaces/cs/WORKSPACE.md', enc('# cs\n'));
@@ -79,43 +79,53 @@ describe('handleSettle', () => {
         const onSuccess = vi.fn(async () => {});
         const ctx = makeCtx({ hooks: { onSettleSuccess: onSuccess } });
 
-        const r = await handleSettle(workdir, { message: 'add hr + cs' }, ctx);
+        const r = await handleSettle(
+            workdir,
+            { message: 'add hr + cs', files: ['workspaces/hr/WORKSPACE.md', 'workspaces/cs/WORKSPACE.md'] },
+            ctx,
+        );
         expect(r.ok).toBe(true);
         expect(onSuccess.mock.calls[0][0]).toEqual(['cs', 'hr']); // sorted
     });
 
-    it('ignores attachments.yaml + extracted/ + attached/ when deriving workspaces', async () => {
+    it('derives the workspace for a selected attachments.yaml change; still ignores attached/', async () => {
         const workdir = buildWorkdir();
-        // The agent only edited hr. _tmp has a master-fs overlay
-        // (attachments.yaml from _ernesto://attach) and _ernesto has
-        // an empty `attached/` dir from the mirror — neither is author
-        // intent and neither should pull those workspaces into the
-        // settle set.
+        // attachments.yaml is now a tracked, draftable file — author intent — so
+        // a selected yaml DOES pull its workspace into the settle set. The
+        // `attached/` byte mirror stays invisible: never author intent, so even
+        // when named in the selection it contributes no workspace.
         await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# hr\n'));
-        await workdir.fs.writeFile('workspaces/_tmp/attachments.yaml', enc('- name: x\n'));
+        await workdir.fs.writeFile('workspaces/_tmp/attachments.yaml', enc('[]\n'));
         await workdir.fs.writeFile('workspaces/_ernesto/attached/note.txt', enc('y\n'));
 
         const onSuccess = vi.fn(async () => {});
         const ctx = makeCtx({ hooks: { onSettleSuccess: onSuccess } });
 
-        const r = await handleSettle(workdir, { message: 'edit hr' }, ctx);
+        const r = await handleSettle(
+            workdir,
+            {
+                message: 'edit hr',
+                files: ['workspaces/hr/WORKSPACE.md', 'workspaces/_tmp/attachments.yaml', 'workspaces/_ernesto/attached/note.txt'],
+            },
+            ctx,
+        );
         expect(r.ok).toBe(true);
-        expect(onSuccess.mock.calls[0][0]).toEqual(['hr']);
+        expect(onSuccess.mock.calls[0][0]).toEqual(['_tmp', 'hr']); // sorted
     });
 
-    it('ignores out-of-workspace changes when deriving workspaces', async () => {
+    it('a selection of only out-of-workspace paths is refused (selection_required)', async () => {
         const workdir = buildWorkdir();
         await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# hr\n'));
-        // A non-workspace file change is invisible to settle's workspace
-        // derivation. Settle only touches `workspaces/<name>/...`.
-        await workdir.fs.writeFile('README.md', enc('readme\n'));
 
         const onSuccess = vi.fn(async () => {});
         const ctx = makeCtx({ hooks: { onSettleSuccess: onSuccess } });
 
-        const r = await handleSettle(workdir, { message: 'add hr' }, ctx);
-        expect(r.ok).toBe(true);
-        expect(onSuccess.mock.calls[0][0]).toEqual(['hr']);
+        // README.md is not under workspaces/<name>/ — settle only touches those.
+        const r = await handleSettle(workdir, { message: 'add readme', files: ['README.md'] }, ctx);
+        expect(r.ok).toBe(false);
+        if (r.ok) return;
+        expect(r.error).toBe('selection_required');
+        expect(onSuccess).not.toHaveBeenCalled();
     });
 
     it('lint failure → returns lint_failed, fires onSettleFailure with workspaces + errors', async () => {
@@ -130,7 +140,7 @@ describe('handleSettle', () => {
             hooks: { onSettleSuccess: onSuccess, onSettleFailure: onFailure },
         });
 
-        const r = await handleSettle(workdir, { message: 'add hr' }, ctx);
+        const r = await handleSettle(workdir, { message: 'add hr', files: ['workspaces/hr/WORKSPACE.md'] }, ctx);
 
         expect(r).toEqual({ ok: false, error: 'lint_failed', errors });
         expect(onSuccess).not.toHaveBeenCalled();
@@ -152,7 +162,7 @@ describe('handleSettle', () => {
         const onFailure = vi.fn(async () => {});
         const ctx = makeCtx({ pushToMain: pushFails, hooks: { onSettleFailure: onFailure } });
 
-        const r = await handleSettle(workdir, { message: 'add hr' }, ctx);
+        const r = await handleSettle(workdir, { message: 'add hr', files: ['workspaces/hr/WORKSPACE.md'] }, ctx);
         expect(r.ok).toBe(false);
         if (r.ok) return;
         expect(r.error).toBe('fast_forward_required');
@@ -170,7 +180,7 @@ describe('handleSettle', () => {
         });
         const ctx = makeCtx({ log, hooks: { onSettleSuccess: onSuccess } });
 
-        const r = await handleSettle(workdir, { message: 'add hr' }, ctx);
+        const r = await handleSettle(workdir, { message: 'add hr', files: ['workspaces/hr/WORKSPACE.md'] }, ctx);
         expect(r.ok).toBe(true);
         expect(log.warn).toHaveBeenCalledWith('onSettleSuccess hook failed', expect.objectContaining({ errorMessage: 'audit redis down' }));
     });
@@ -189,7 +199,7 @@ describe('handleSettle', () => {
             hooks: { onSettleFailure: onFailure },
         });
 
-        const r = await handleSettle(workdir, { message: 'add hr' }, ctx);
+        const r = await handleSettle(workdir, { message: 'add hr', files: ['workspaces/hr/WORKSPACE.md'] }, ctx);
         expect(r.ok).toBe(false);
         expect(log.warn).toHaveBeenCalledWith('onSettleFailure hook failed', expect.objectContaining({ errorMessage: 'audit redis down' }));
     });
@@ -209,27 +219,42 @@ describe('handleSettle', () => {
         await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# hr\n'));
 
         const longMsg = 'x'.repeat(501);
-        const r = await handleSettle(workdir, { message: longMsg }, makeCtx());
+        const r = await handleSettle(workdir, { message: longMsg, files: ['workspaces/hr/WORKSPACE.md'] }, makeCtx());
         expect(r.ok).toBe(false);
         if (r.ok) return;
         expect(r.error).toBe('invalid_input');
     });
 
-    it('nothing to settle → returns lint_failed with nothing_to_settle code', async () => {
+    it('absent files → selection_required, lists the current draft paths, no settle', async () => {
         const workdir = buildWorkdir();
-        // No working-tree changes at all.
+        // The agent has a draft (edited hr) but called settle with no selection.
+        await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# hr\n'));
 
+        const onSuccess = vi.fn(async () => {});
         const onFailure = vi.fn(async () => {});
-        const ctx = makeCtx({ hooks: { onSettleFailure: onFailure } });
+        const ctx = makeCtx({ hooks: { onSettleSuccess: onSuccess, onSettleFailure: onFailure } });
 
-        const r = await handleSettle(workdir, { message: 'noop' }, ctx);
+        const r = await handleSettle(workdir, { message: 'noop' } as any, ctx);
         expect(r.ok).toBe(false);
         if (r.ok) return;
-        expect(r.error).toBe('lint_failed');
-        if (r.error !== 'lint_failed') return;
-        expect(r.errors[0].code).toBe('nothing_to_settle');
-        expect(onFailure).toHaveBeenCalledTimes(1);
-        expect(onFailure.mock.calls[0][0]).toEqual([]);
+        expect(r.error).toBe('selection_required');
+        if (r.error !== 'selection_required') return;
+        // The refusal lists the agent's actual draft so it can re-select.
+        expect(r.draft).toContain('workspaces/hr/WORKSPACE.md');
+        expect(r.message).toContain('choose which files to publish');
+        // No settle happened, and the failure hook is NOT fired for a refusal.
+        expect(onSuccess).not.toHaveBeenCalled();
+        expect(onFailure).not.toHaveBeenCalled();
+    });
+
+    it('empty files array → selection_required', async () => {
+        const workdir = buildWorkdir();
+        await workdir.fs.writeFile('workspaces/hr/WORKSPACE.md', enc('# hr\n'));
+
+        const r = await handleSettle(workdir, { message: 'noop', files: [] }, makeCtx());
+        expect(r.ok).toBe(false);
+        if (r.ok) return;
+        expect(r.error).toBe('selection_required');
     });
 
     it('fast_forward_required → fetches origin/main, rebases, retries push once and succeeds', async () => {
@@ -281,7 +306,7 @@ describe('handleSettle', () => {
                 hooks: { onSettleSuccess: onSuccess },
             });
 
-            const r = await handleSettle(workdir, { message: 'add hr' }, ctx);
+            const r = await handleSettle(workdir, { message: 'add hr', files: ['workspaces/hr/WORKSPACE.md'] }, ctx);
 
             expect(r.ok).toBe(true);
             if (!r.ok) return;
@@ -305,7 +330,7 @@ describe('handleSettle', () => {
             trailers: { 'Workdir-Id': 'wd1', User: 'u@b.com', Transport: 'in-process' },
         });
 
-        const r = await handleSettle(workdir, { message: 'add hr' }, ctx);
+        const r = await handleSettle(workdir, { message: 'add hr', files: ['workspaces/hr/WORKSPACE.md'] }, ctx);
         expect(r.ok).toBe(true);
         const log = await runGit(tmpRoot, ['log', '-1', '--format=%B']);
         expect(log).toContain('Workdir-Id: wd1');

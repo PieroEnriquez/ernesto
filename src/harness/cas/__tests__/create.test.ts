@@ -189,6 +189,157 @@ describe('casCreateAgent (gap-2)', () => {
     });
 });
 
+// ─────────────────────────────────────────────────────────────────────────
+// NEGATIVE TESTS — agent built-in tool allowlist / deny-list enforcement.
+//
+// A "read-only" workflow step declares `tools:[Read,Glob,Grep]` (or the
+// structural AgentDefinition.tools = [{kind:'builtin',name:'Read'}]). That
+// allowlist MUST become the SDK Options.tools whitelist so Write/Edit/Bash
+// are not reachable. These assert the restriction RESTRICTS, against the REAL
+// casCreateAgent + coerceToCompiledAgent + compileAgentToSdkOptions pipeline
+// (only the SDK `query()` itself is mocked — the enforcer under test is real).
+// ─────────────────────────────────────────────────────────────────────────
+describe('casCreateAgent tool-allowlist enforcement (negative)', () => {
+    beforeEach(() => {
+        querySpy.mockReset();
+    });
+
+    // boundary: agent-tools-allowlist-dropped
+    // An agent step's def.tools allowlist (here passed as the SDK-shaped
+    // CasCreateOptions.tools string[]) MUST reach Options.tools so the
+    // forbidden tools are absent. Today casCreateAgent DOES forward
+    // opts.tools (compile.ts L107), so this one is expected to HOLD — it is
+    // the regression net for the one allowlist path that works.
+    it('forwards the declared CasCreateOptions.tools allowlist to Options.tools (Write/Edit/Bash absent)', async () => {
+        querySpy.mockReturnValue(makeAsyncIterable([{ type: 'result', subtype: 'success', result: 'ok' }]));
+
+        const agent = await casCreateAgent(
+            { systemPrompt: 'be terse', model: 'claude-haiku-4-5', maxTurns: 5 },
+            { agentId: 'tools-1', tools: ['Read', 'Glob', 'Grep'] },
+        );
+        await (await agent.send('hi')).wait();
+
+        const call = querySpy.mock.calls[0][0] as { options: { tools?: string[] } };
+        expect(call.options.tools).toEqual(['Read', 'Glob', 'Grep']);
+        expect(call.options.tools).not.toContain('Write');
+        expect(call.options.tools).not.toContain('Edit');
+        expect(call.options.tools).not.toContain('Bash');
+    });
+
+    // boundary: agent-tools-allowlist-dropped (the actual documented gap)
+    // When the allowlist is declared on the AgentDefinition itself
+    // (def.tools = [{kind:'builtin',name:'Read'},...]) — the way a workflow
+    // step declares "read-only" — coerceToCompiledAgent drops it on BOTH
+    // branches (CompiledAgent has no `tools` field), and compileAgentToSdkOptions
+    // only honors ctx.tools (never set from def). So Options.tools is undefined
+    // and the agent silently gets the full default tool surface incl. Write/Edit/Bash.
+    it('FAIL-OPEN: agent def.tools allowlist dropped — read-only step actually has Write/Edit/Bash — unskip when fixed', async () => {
+        querySpy.mockReturnValue(makeAsyncIterable([{ type: 'result', subtype: 'success', result: 'ok' }]));
+
+        const agent = await casCreateAgent(
+            {
+                systemPrompt: 'be terse',
+                model: 'claude-haiku-4-5',
+                maxTurns: 5,
+                tools: [
+                    { kind: 'builtin', name: 'Read' },
+                    { kind: 'builtin', name: 'Glob' },
+                    { kind: 'builtin', name: 'Grep' },
+                ],
+            },
+            { agentId: 'tools-2' },
+        );
+        await (await agent.send('hi')).wait();
+
+        const call = querySpy.mock.calls[0][0] as { options: { tools?: string[] } };
+        // The declared allowlist must reach the SDK …
+        expect(call.options.tools).toEqual(['Read', 'Glob', 'Grep']);
+        // … and the write-capable tools must be absent.
+        expect(call.options.tools).not.toContain('Write');
+        expect(call.options.tools).not.toContain('Edit');
+        expect(call.options.tools).not.toContain('Bash');
+    });
+
+    // boundary: cas-tools-allowlist-dropped
+    // Same gap, asserted at the "no Write/Edit/Bash reachable" level with the
+    // either/or escape (allowlist forwarded OR unlisted tools denied).
+    it('FAIL-OPEN: CAS drops AgentDefinition.tools allowlist — read-only step gets full Write/Edit/Bash — unskip when fixed', async () => {
+        querySpy.mockReturnValue(makeAsyncIterable([{ type: 'result', subtype: 'success', result: 'ok' }]));
+
+        const agent = await casCreateAgent(
+            { systemPrompt: 'be terse', model: 'claude-haiku-4-5', maxTurns: 5, tools: [{ kind: 'builtin', name: 'Read' }] },
+            { agentId: 'tools-3' },
+        );
+        await (await agent.send('hi')).wait();
+
+        const call = querySpy.mock.calls[0][0] as {
+            options: { tools?: string[]; disallowedTools?: string[] };
+        };
+        // The declared restriction must be honored one of two ways:
+        //   (a) the allowlist is forwarded verbatim, or
+        //   (b) the write-capable tools are explicitly denied.
+        const allowlistForwarded = JSON.stringify(call.options.tools) === JSON.stringify(['Read']);
+        const deniesWrites =
+            !!call.options.disallowedTools &&
+            ['Write', 'Edit', 'Bash'].every((t) => call.options.disallowedTools!.includes(t));
+        expect(allowlistForwarded || deniesWrites).toBe(true);
+    });
+
+    // boundary: cas-tools-unenforceable-fail-closed
+    // Declaring a restriction the harness cannot enforce must fail CLOSED
+    // (throw), not silently resolve a fully-tooled agent.
+    it('FAIL-OPEN: CAS coerceToCompiledAgent silently discards an unenforceable tools restriction instead of throwing — unskip when fixed', async () => {
+        // An `mcp`/`fn` tool spec is NOT expressible as the SDK's builtin
+        // `Options.tools` allowlist — the engine cannot enforce it as a
+        // tool-surface restriction, so it must fail CLOSED (throw) rather
+        // than silently resolve a fully-tooled agent.
+        await expect(
+            casCreateAgent(
+                {
+                    systemPrompt: 'be terse',
+                    model: 'claude-haiku-4-5',
+                    maxTurns: 5,
+                    tools: [{ kind: 'builtin', name: 'Read' }, { kind: 'mcp', serverName: 'ernesto' }],
+                },
+                { agentId: 'tools-4' },
+            ),
+        ).rejects.toThrow(/tools|unsupported|cannot enforce/i);
+    });
+
+    // boundary: cas-disallowed-tools-denied (expected to HOLD)
+    // The one tool restriction CAS DOES honor: an explicit disallowedTools
+    // deny-list must reach Options.disallowedTools.
+    it('forwards AgentDefinition.disallowedTools deny-list to Options.disallowedTools', async () => {
+        querySpy.mockReturnValue(makeAsyncIterable([{ type: 'result', subtype: 'success', result: 'ok' }]));
+
+        const agent = await casCreateAgent(
+            { systemPrompt: 'be terse', model: 'claude-haiku-4-5', maxTurns: 5, disallowedTools: ['Bash', 'Write'] },
+            { agentId: 'tools-5' },
+        );
+        await (await agent.send('hi')).wait();
+
+        const call = querySpy.mock.calls[0][0] as { options: { disallowedTools?: string[] } };
+        expect(call.options.disallowedTools).toContain('Bash');
+        expect(call.options.disallowedTools).toContain('Write');
+    });
+
+    // boundary: cas-disallowed-tools-denied — defaultDisallowedTools fallback
+    // With def.disallowedTools undefined but opts.defaultDisallowedTools set,
+    // the fallback deny-list must reach the SDK surface.
+    it('applies defaultDisallowedTools fallback when def.disallowedTools is unset', async () => {
+        querySpy.mockReturnValue(makeAsyncIterable([{ type: 'result', subtype: 'success', result: 'ok' }]));
+
+        const agent = await casCreateAgent(
+            { systemPrompt: 'be terse', model: 'claude-haiku-4-5', maxTurns: 5 },
+            { agentId: 'tools-6', defaultDisallowedTools: ['Bash'] },
+        );
+        await (await agent.send('hi')).wait();
+
+        const call = querySpy.mock.calls[0][0] as { options: { disallowedTools?: string[] } };
+        expect(call.options.disallowedTools).toContain('Bash');
+    });
+});
+
 // A1 regression: the GENERIC Harness.createAgent route (what the in-process
 // transport actually uses) must forward per-call options — notably the sandbox
 // `hooks` — to the SDK. This route previously hand-re-listed fields and silently

@@ -134,8 +134,8 @@ export { idempotencyDedupMiddleware, IdempotencyConflictError } from './middlewa
 export type { IdempotencyDedupOpts } from './middleware/idempotency-dedup';
 export { workspaceAllocatorMiddleware } from './middleware/workspace-allocator';
 export type { WorkspaceAllocator, WorkspaceAllocation, WorkspaceAllocatorMiddlewareOpts } from './middleware/workspace-allocator';
-export { sandboxBindMiddleware } from './middleware/sandbox-bind';
-export type { SandboxBinder, SandboxHooks, SandboxBindMiddlewareOpts } from './middleware/sandbox-bind';
+export { sandboxBindMiddleware, SandboxBindError, SANDBOX_REFUSAL_KEY } from './middleware/sandbox-bind';
+export type { SandboxBinder, SandboxHooks, SandboxBindMiddlewareOpts, SandboxRefusal } from './middleware/sandbox-bind';
 export {
     toolSurfaceComposeMiddleware,
     TOOL_SURFACE_ANNOTATIONS,
@@ -180,3 +180,6 @@ export type {
     ConveneStepHandlerDeps,
     ConveneStepResult,
 } from './handlers/convene-step';
+// The workbench descriptor an ask carries to summon a review/edit/create
+// surface on the thread — the backend persists + wires it onto the ask.
+export type { WorkbenchRef } from '../workflows/types';
