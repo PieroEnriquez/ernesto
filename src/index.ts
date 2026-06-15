@@ -56,7 +56,7 @@ export {
 export type { LintPrincipal } from './lint';
 
 // ─── Workspace boundary resolution (FS-derived identity → location) ──────
-export { scanWorkspaceBoundaries, boundaryForName, boundaryForPath } from './workspaces/boundaries';
+export { scanWorkspaceBoundaries, boundaryForName, boundaryForPath, boundariesFromPatchPaths } from './workspaces/boundaries';
 export type { WorkspaceBoundary } from './workspaces/boundaries';
 
 // ─── Workspace access model (single source of truth) ─────────────────────
