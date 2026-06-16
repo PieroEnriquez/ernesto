@@ -107,6 +107,16 @@ export const UNREGISTERED_EXTRACTION_SOURCE = 'unregistered_extraction_source';
  *  stringly-typed duplicates. */
 export const INVALID_ATTACHMENTS_YAML = 'invalid_attachments_yaml';
 
+/** Lint error key emitted when a managed-agent `.md` declares a `trigger:`
+ *  in frontmatter. A trigger is a *workflow* concept (`WorkflowTrigger`):
+ *  the managed-agent compile path (`compileManagedAgentMdToWorkflow`) never
+ *  projects it onto the compiled declaration, so the cron reconciler never
+ *  sees it and the schedule silently never fires. The fix is a cron
+ *  *workflow* (`trigger.cron`) whose agent step `ref`s the managed agent.
+ *  Exported so callers/tests can reference the key without stringly-typed
+ *  duplicates. */
+export const TRIGGER_IGNORED_ON_MANAGED_AGENT = 'trigger_ignored_on_managed_agent';
+
 const MAX_FILE_BYTES = 1024 * 1024;
 const WORKSPACE_NAME_REGEX = /^[a-z][a-z0-9-]{0,39}$/;
 const ERNESTO_WORKSPACE = '_ernesto';
@@ -753,6 +763,30 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
             }
         }
 
+        // trigger_ignored_on_managed_agent — a managed-agent `.md` cannot
+        // carry a cron. `compileManagedAgentMdToWorkflow` never projects
+        // `trigger:`, so the reconciler never registers it and the schedule
+        // silently never fires. Surface it as an authoring error; the fix is
+        // a cron workflow (`trigger.cron`) whose agent step `ref`s the agent.
+        for (const e of entries) {
+            if (e.isDelete) continue;
+            const p = e.toPath;
+            if (!p) continue;
+            if (!isManagedAgentPath(p)) continue;
+            try {
+                const abs = path.join(workingTreeRoot, p);
+                const text = await readFile(abs, 'utf8');
+                const md = parseManagedAgentMd(text, {
+                    slug: p.replace(/^.*\//, '').replace(/\.md$/, ''),
+                    workspace: refOf(p)?.name ?? '',
+                });
+                const triggerErr = managedAgentTriggerError(md.frontMatter, p, refOf(p)?.name);
+                if (triggerErr) errors.push(triggerErr);
+            } catch {
+                // best-effort: unrelated parse concerns are out of scope here.
+            }
+        }
+
         // invalid_attachments_yaml — a workspace's attachments index must
         // parse and validate structurally (workspaces/attachments is the one
         // schema every reader/writer shares). Reads post-stage from disk,
@@ -1099,6 +1133,28 @@ export function makeLintWorkspace(principal: LintPrincipal, options: MakeLintWor
  * `compileManagedAgentMdToWorkflow` before validation, so the same
  * `workflow_*` codes fire on both forms.
  */
+/** Build the `trigger_ignored_on_managed_agent` lint error for a parsed
+ *  managed-agent `.md`'s frontmatter, or `null` when it declares no
+ *  `trigger:`. Shared by the `workflows/<slug>.md` shorthand path (in
+ *  `lintWorkflowFile`) and the `managed-agents/<slug>.md` pass (in
+ *  `lintWorkspace`), so both locations emit the identical error. */
+function managedAgentTriggerError(
+    frontMatter: Record<string, unknown>,
+    filepath: string,
+    workspace: string | undefined,
+): LintError | null {
+    if (frontMatter.trigger === undefined) return null;
+    return {
+        code: TRIGGER_IGNORED_ON_MANAGED_AGENT,
+        path: filepath,
+        workspace,
+        message:
+            `managed-agent '${filepath}' declares a 'trigger:' in frontmatter, but a trigger is a workflow concept — ` +
+            `the managed-agent compile path drops it, so the cron would never register and the schedule never fires. ` +
+            `Move the schedule to a cron workflow ('trigger.cron') whose agent step 'ref's this agent.`,
+    };
+}
+
 export async function lintWorkflowFile(filepath: string, text: string, ctx: WorkflowValidateContext = {}): Promise<LintError[]> {
     const base = filepath.replace(/^.*\//, '');
     const stem = /^(.+?)(?:\.workflow)?\.(yaml|yml|md)$/.exec(base)?.[1];
@@ -1106,6 +1162,7 @@ export async function lintWorkflowFile(filepath: string, text: string, ctx: Work
 
     try {
         let decl;
+        const extra: LintError[] = [];
         if (base.endsWith('.md')) {
             // Treat as managed-agent shorthand.
             const slug = stem ?? 'unknown';
@@ -1113,6 +1170,11 @@ export async function lintWorkflowFile(filepath: string, text: string, ctx: Work
                 slug,
                 workspace: workspace ?? '',
             });
+            // A `trigger:` on a managed-agent .md is silently dropped by the
+            // compile path (it's a workflow-only concept) — surface it as an
+            // authoring error instead of letting the cron vanish.
+            const triggerErr = managedAgentTriggerError(md.frontMatter, filepath, workspace);
+            if (triggerErr) extra.push(triggerErr);
             // Files with `extends:` chains can't be full-compiled at
             // lint time — `toAgentDeclaration` (called transitively
             // by compileManagedAgentMdToWorkflow) refuses to operate
@@ -1122,7 +1184,7 @@ export async function lintWorkflowFile(filepath: string, text: string, ctx: Work
             // frontmatter is well-formed; the body is preserved
             // verbatim; the extends target is a registry concern.
             if (md.frontMatter.extends !== undefined) {
-                return [];
+                return extra;
             }
             decl = compileManagedAgentMdToWorkflow(md);
         } else {
@@ -1133,7 +1195,7 @@ export async function lintWorkflowFile(filepath: string, text: string, ctx: Work
             filename: ctx.filename ?? filepath,
         };
         const result = validateWorkflow(decl, effectiveCtx);
-        return result.errors.map((e) => workflowErrorToLintError(e, filepath, workspace));
+        return [...extra, ...result.errors.map((e) => workflowErrorToLintError(e, filepath, workspace))];
     } catch (e) {
         return [
             {
@@ -1196,4 +1258,12 @@ export function isWorkflowPath(p: string): boolean {
     // merges its fields into the declaration the .workflow.js provides.
     if (p.endsWith('.workflow.meta.yaml')) return false;
     return /^workspaces\/[^/]+\/workflows\/[^/]+\.(yaml|yml|md)$/.test(p);
+}
+
+/** Test whether a path is a managed-agent declaration:
+ *  `workspaces/<w>/managed-agents/<slug>.md` (a direct child of a
+ *  `managed-agents/` dir, at any workspace nesting depth). Exported so the
+ *  settle-time loop and tests share one predicate. */
+export function isManagedAgentPath(p: string): boolean {
+    return /^workspaces\/.+\/managed-agents\/[^/]+\.md$/.test(p);
 }
