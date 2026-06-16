@@ -20,5 +20,10 @@
         "noEmit": true
         // "allowImportingTsExtensions": true
     },
-    "include": ["src", "example"]
+    "include": ["src", "example"],
+    "exclude": [
+        "src/**/__tests__/**",
+        "src/**/*.test.ts",
+        "src/**/*.adapter.ts"
+    ]
 }

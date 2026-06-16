@@ -9,15 +9,79 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc",
-    "format": "prettier --check ./src ./example",
-    "build": "rollup -c rollup.config.js",
-    "example": "DEBUG=ernesto:* tsx --env-file .env --watch example/index.ts"
+    "format": "prettier --check ./src",
+    "build": "rollup -c rollup.config.js"
   },
   "type": "module",
   "exports": {
     ".": {
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./dashboards": {
+      "types": "./dist/dashboards/index.d.ts",
+      "import": "./dist/dashboards/index.js",
+      "require": "./dist/dashboards/index.cjs"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js",
+      "require": "./dist/testing/index.cjs"
+    },
+    "./harness": {
+      "types": "./dist/harness/index.d.ts",
+      "import": "./dist/harness/index.js",
+      "require": "./dist/harness/index.cjs"
+    },
+    "./harness/cas": {
+      "types": "./dist/harness/cas/index.d.ts",
+      "import": "./dist/harness/cas/index.js",
+      "require": "./dist/harness/cas/index.cjs"
+    },
+    "./harness/cursor": {
+      "types": "./dist/harness/cursor/index.d.ts",
+      "import": "./dist/harness/cursor/index.js",
+      "require": "./dist/harness/cursor/index.cjs"
+    },
+    "./harness/fragua-pi": {
+      "types": "./dist/harness/fragua-pi/index.d.ts",
+      "import": "./dist/harness/fragua-pi/index.js",
+      "require": "./dist/harness/fragua-pi/index.cjs"
+    },
+    "./harness/remote-vm": {
+      "types": "./dist/harness/remote-vm/index.d.ts",
+      "import": "./dist/harness/remote-vm/index.js",
+      "require": "./dist/harness/remote-vm/index.cjs"
+    },
+    "./harness/mock": {
+      "types": "./dist/harness/mock/index.d.ts",
+      "import": "./dist/harness/mock/index.js",
+      "require": "./dist/harness/mock/index.cjs"
+    },
+    "./workflows": {
+      "types": "./dist/workflows/index.d.ts",
+      "import": "./dist/workflows/index.js",
+      "require": "./dist/workflows/index.cjs"
+    },
+    "./workflow-engine": {
+      "types": "./dist/workflow-engine/index.d.ts",
+      "import": "./dist/workflow-engine/index.js",
+      "require": "./dist/workflow-engine/index.cjs"
+    },
+    "./components": {
+      "types": "./dist/components/index.d.ts",
+      "import": "./dist/components/index.js",
+      "require": "./dist/components/index.cjs"
+    },
+    "./ui-tools": {
+      "types": "./dist/ui-tools/index.d.ts",
+      "import": "./dist/ui-tools/index.js",
+      "require": "./dist/ui-tools/index.cjs"
+    },
+    "./route": {
+      "types": "./dist/route/index.d.ts",
+      "import": "./dist/route/index.js",
+      "require": "./dist/route/index.cjs"
     }
   },
   "contributors": [
@@ -39,11 +103,17 @@
   "license": "ISC",
   "packageManager": "pnpm@10.22.0",
   "devDependencies": {
-    "@modelcontextprotocol/sdk": "^1.24.3",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.156",
+    "@cursor/sdk": "1.0.13",
+    "@mariozechner/pi-agent-core": "^0.73.1",
+    "@mariozechner/pi-ai": "^0.73.1",
+    "@modelcontextprotocol/sdk": "^1.25.2",
     "@rollup/plugin-typescript": "^12.3.0",
     "@types/debug": "^4.1.12",
     "@types/express": "^5.0.5",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^24.10.1",
+    "@types/picomatch": "^4.0.3",
     "mcp-oauth-server": "^0.0.2",
     "prettier": "^3.7.3",
     "rollup": "^4.55.1",
@@ -53,12 +123,42 @@
     "vitest": "^4.0.14"
   },
   "peerDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "*",
+    "@cursor/sdk": "^1.0.0",
+    "@mariozechner/pi-agent-core": "^0.73.0",
+    "@mariozechner/pi-ai": "^0.73.0",
     "@modelcontextprotocol/sdk": "^1.23.0",
-    "typesense": "^2.1.0",
     "zod": "^4.1"
+  },
+  "peerDependenciesMeta": {
+    "@anthropic-ai/claude-agent-sdk": {
+      "optional": true
+    },
+    "@cursor/sdk": {
+      "optional": true
+    },
+    "@mariozechner/pi-agent-core": {
+      "optional": true
+    },
+    "@mariozechner/pi-ai": {
+      "optional": true
+    }
   },
   "dependencies": {
     "@toon-format/toon": "^2.1.0",
-    "debug": "^4"
+    "debug": "^4",
+    "js-yaml": "^4.1.0",
+    "picomatch": "^4.0.4"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "sqlite3",
+      "esbuild",
+      "@google/genai",
+      "protobufjs"
+    ],
+    "overrides": {
+      "sqlite3": "^6.0.1"
+    }
   }
 }
