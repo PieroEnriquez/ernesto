@@ -18,6 +18,10 @@ jobs:
                   cache: pnpm
             - name: Installing dependencies
               run: pnpm install --frozen-lockfile
+            # The workdir grep front-end shells out to the `rg` binary; the
+            # integration tests need it on PATH.
+            - name: Install ripgrep
+              run: sudo apt-get update && sudo apt-get install -y ripgrep
             - name: Test
               run: pnpm test --passWithNoTests
             - name: Typecheck

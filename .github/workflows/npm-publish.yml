@@ -20,6 +20,10 @@ jobs:
                   cache: pnpm
                   registry-url: 'https://registry.npmjs.org'
             - run: pnpm install --frozen-lockfile
+            # The workdir grep front-end shells out to the `rg` binary; the
+            # integration tests need it on PATH.
+            - name: Install ripgrep
+              run: sudo apt-get update && sudo apt-get install -y ripgrep
             - run: pnpm test --passWithNoTests
             - run: pnpm typecheck
             - run: pnpm format
