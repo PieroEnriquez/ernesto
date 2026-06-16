@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { writeFile } from 'fs/promises';
+import { writeFile, utimes } from 'fs/promises';
 import * as path from 'path';
 import { makeInMemoryFsAdapter } from '../in-memory-adapters';
 import { makeTempTree, type TempTree } from '../../__tests__/kit';
@@ -68,8 +68,14 @@ describe('Node FsAdapter — glob (picomatch)', () => {
     });
 
     it('returns newest-first by mtime', async () => {
-        // Touch one file last so it has the newest mtime.
-        await writeFile(path.join(tree.dir, 'workspaces/hr/INDEX.md'), '# hr v2\n');
+        // Pin hr's INDEX.md to a strictly-newer mtime. A plain re-write isn't
+        // enough: on a fast filesystem (CI tmpfs) every fixture write can land
+        // in the same mtime tick, so "newest-first" breaks the tie arbitrarily
+        // and the assertion flakes. An explicit future mtime is deterministic.
+        const target = path.join(tree.dir, 'workspaces/hr/INDEX.md');
+        await writeFile(target, '# hr v2\n');
+        const newest = new Date(Date.now() + 60_000);
+        await utimes(target, newest, newest);
         const out = await fs.glob('workspaces/**/INDEX.md');
         expect(out[0]).toBe('workspaces/hr/INDEX.md');
     });
