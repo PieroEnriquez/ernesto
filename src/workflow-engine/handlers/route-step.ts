@@ -118,6 +118,7 @@ export function makeRouteStepHandler(deps: RouteStepHandlerDeps): StepKindHandle
             // `by.runId` reads it as the authoritative, engine-attested value).
             ...(ctx.runId ? { runId: ctx.runId } : {}),
             ...(ctx.workdirRoot ? { workdirRoot: ctx.workdirRoot } : {}),
+            ...(ctx.workspaceView ? { workspaceView: ctx.workspaceView } : {}),
             ...(emitComponent ? { emitComponent } : {}),
         } as RouteContext;
 

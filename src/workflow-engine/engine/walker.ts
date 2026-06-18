@@ -17,6 +17,7 @@ import type { EngineLogger, HandlerRouting } from '../types/handler';
 import type { DispatchOpts, KindRef } from '../types/runner';
 import type { Principal } from '../principal';
 import type { FactEvent } from '../types/event';
+import type { WorkspaceView } from '../../route/define-route';
 import { runGraph, type RunGraphDeps, type GraphSeed } from './run-graph';
 
 export interface WalkerDeps {
@@ -63,6 +64,8 @@ export interface WalkInput {
     opts: DispatchOpts;
     /** Workdir root set by the workspace-allocator middleware. */
     workdirRoot?: string;
+    /** Bound overlay-backed view (Wave 0, parallel to workdirRoot). */
+    workspaceView?: WorkspaceView;
     /** Middleware-written per-dispatch annotations. */
     annotations?: Readonly<Record<string, unknown>>;
     /** Set when re-entering a paused run via `resumeRun`. The seed
@@ -135,6 +138,7 @@ export async function walk(runId: string, declaration: WorkflowDeclaration, inpu
         storeRouting,
         ...(input.resume !== undefined ? { seed: input.resume.seed } : {}),
         ...(input.workdirRoot !== undefined ? { workdirRoot: input.workdirRoot } : {}),
+        ...(input.workspaceView !== undefined ? { workspaceView: input.workspaceView } : {}),
         // Pre-bind the recursive-dispatch closure for step handlers
         // (`ctx.dispatch(uri, inputs)`). Parent identity (runId,
         // principal, routing) is captured here so handlers don't

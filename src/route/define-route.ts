@@ -23,6 +23,39 @@ import type { Logger, Principal } from '../shared/types';
 
 export type RouteScope = string;
 
+/**
+ * A bound, overlay-backed view of one principal's `master-FS ⊕ draft`.
+ * Read/glob/grep/exists resolve over the merged overlay; writeDraft/deleteDraft
+ * mutate the durable per-user draft. `projectPhysical()` is the LAZY escape
+ * hatch that materializes (and memoizes) a real on-disk workdir — only the
+ * still-workdir-bound routes (attach/detach/materialize) ever call it; pure
+ * readers (e.g. `_ernesto://guidance`) must NEVER project.
+ *
+ * The concrete implementation lives in the backend (wrapping OverlayReader +
+ * PatchStore + a lazy openWorkdir); this interface is the structural contract
+ * route handlers consume. All members are async so a physical-backed adapter
+ * can satisfy it identically.
+ */
+export interface WorkspaceView {
+    /** Merged-view file read, scope-gated. `null` when out-of-scope, absent, or
+     *  deleted (no scope-bit leak) — mirrors OverlayReader.readFile. */
+    read(rel: string): Promise<string | null>;
+    /** Bash-style glob over readable boundaries, newest-first. */
+    glob(pattern: string, opts?: { path?: string }): Promise<string[]>;
+    /** Ripgrep over readable boundaries. Shape is intentionally loose (the
+     *  backend OverlayGrepResult) so lib need not depend on backend types. */
+    grep(opts: { pattern: string; glob?: string; caseInsensitive?: boolean; path?: string }): Promise<unknown>;
+    /** True iff the path resolves to readable content in the merged view. */
+    exists(rel: string): Promise<boolean>;
+    /** Write `content` into the per-user draft at `rel` (ensures base sha first). */
+    writeDraft(rel: string, content: string): Promise<void>;
+    /** Tombstone `rel` in the per-user draft (ensures base sha first). */
+    deleteDraft(rel: string): Promise<void>;
+    /** LAZY + memoized: materialize a real on-disk workdir and return its root.
+     *  Only workdir-bound routes call this; pure readers must not. */
+    projectPhysical(): Promise<{ workdirRoot: string }>;
+}
+
 export interface RouteContext {
     user: Principal;
     scopes: ReadonlySet<RouteScope>;
@@ -32,6 +65,12 @@ export interface RouteContext {
      *  tests). Handlers that require it must assert and surface a clear
      *  error — there is no implicit fallback. */
     workdirRoot?: string;
+    /** Bound overlay-backed view of `master-FS ⊕ draft` for this dispatch.
+     *  Additive (Wave 0): present on transports that construct it; absent
+     *  elsewhere. Routes that read/write through the view assert it the same
+     *  way they assert `workdirRoot`. The physical workdir is a LAZY projection
+     *  of this view (`projectPhysical()`). */
+    workspaceView?: WorkspaceView;
     log: Logger;
     /**
      * Slug of the agent currently running this dispatch — populated by

@@ -22,6 +22,7 @@ import type { EngineLogger, EmitFactEvent, HandlerContext, HandlerResult, Handle
 import type { FactEvent } from '../types/event';
 import type { Principal } from '../principal';
 import type { ParkedPause } from '../store/port';
+import type { WorkspaceView } from '../../route/define-route';
 import { projectStepOutput } from './render-projection';
 
 /** Resume seed — supplied by the runner when re-entering a paused run.
@@ -72,6 +73,7 @@ export interface RunGraphDeps {
     runInputs: Record<string, unknown>;
     annotations: Readonly<Record<string, unknown>>;
     workdirRoot?: string;
+    workspaceView?: WorkspaceView;
     /** Low-level fact emit (bus + store append). The scheduler wraps
      *  it per-node to inject the path-qualified stepId. */
     emitFact: (event: FactEvent) => void;
@@ -271,6 +273,7 @@ export async function runGraph(graph: GraphSpec, deps: RunGraphDeps, pathPrefix 
                     log: deps.log,
                     emit: stepEmit,
                     ...(deps.workdirRoot !== undefined ? { workdirRoot: deps.workdirRoot } : {}),
+                    ...(deps.workspaceView !== undefined ? { workspaceView: deps.workspaceView } : {}),
                     ...(deps.dispatch !== undefined ? { dispatch: deps.dispatch } : {}),
                 };
                 result = await handler(resolved, ctx);

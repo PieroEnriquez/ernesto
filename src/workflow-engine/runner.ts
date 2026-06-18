@@ -194,6 +194,7 @@ class Runner implements WorkflowRunner {
                         principal: postPreCtx.principal,
                         opts: { ...postPreCtx.opts, abortSignal: ac.signal },
                         ...(postPreCtx.workdirRoot !== undefined ? { workdirRoot: postPreCtx.workdirRoot } : {}),
+                        ...(postPreCtx.workspaceView !== undefined ? { workspaceView: postPreCtx.workspaceView } : {}),
                         ...(Object.keys(postPreCtx.annotations).length > 0 ? { annotations: postPreCtx.annotations } : {}),
                     },
                     this.walkerDeps(),

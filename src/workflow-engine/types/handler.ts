@@ -13,6 +13,7 @@ import type { WorkflowStep } from '../../workflows/types';
 import type { UiComponent } from '../../components/types';
 import type { TypedFactEvent } from './event';
 import type { Principal } from '../principal';
+import type { WorkspaceView } from '../../route/define-route';
 
 /** Logger surface — matches the backend's `RouteLogger`. */
 export interface EngineLogger {
@@ -126,6 +127,9 @@ export interface HandlerContext {
     /** Working tree pinned for this run (route + agent handlers thread
      *  it into ernesto's route ctx). */
     workdirRoot?: string;
+    /** Bound overlay-backed view threaded from the engine onto the route ctx
+     *  (Wave 0, parallel to workdirRoot). Optional/additive. */
+    workspaceView?: WorkspaceView;
     /**
      * Per-dispatch annotations set by middleware. The agent step
      * handler reads `annotations.mcpServers` (set by

@@ -27,6 +27,7 @@
 import type { Principal } from './principal';
 import type { DispatchOpts, KindRef, Run } from './types/runner';
 import type { KindDecl } from './kind-registry';
+import type { WorkspaceView } from '../route/define-route';
 
 /** Mutable per-dispatch context the middleware chain reads/writes. */
 export interface DispatchPreContext {
@@ -44,6 +45,10 @@ export interface DispatchPreContext {
     decl?: KindDecl;
     /** Workdir root — middleware (workspace-allocator) sets this. */
     workdirRoot?: string;
+    /** Bound overlay-backed view (Wave 0, parallel to workdirRoot). Set by the
+     *  transport/composer via `opts.context.workspaceView` and threaded onto the
+     *  walker/handler ctx. Optional/additive. */
+    workspaceView?: WorkspaceView;
     /** Conversation-scope id — the tool-surface-compose middleware
      *  sets/reuses this. Keyed by `conversationKey` for persistent
      *  conversations, else the run id. Scopes the composed MCP

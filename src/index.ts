@@ -104,6 +104,7 @@ export type { WorkflowDeclaration, WorkflowStep, InputStep, AgentStep, DynamicWo
 // `ernesto/route` for tests + advanced internal use.
 export { defineRoute, RouteRegistry } from './route';
 export type { DispatchResult, DispatchErrorCode, RenderEntry } from './route';
+export type { WorkspaceView, RouteContext } from './route/define-route';
 
 // ─── Managed agents (declaration + composition) ──────────────────────────
 export {
