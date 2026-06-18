@@ -30,15 +30,21 @@ import type { WorkflowDeclaration } from '../workflows/types';
 
 /** Cross-cutting policy a kind declares — read by middleware. */
 export interface KindPolicy {
-    /** Where this kind expects its workdir:
-     *  - `workspace-workdir` → workspace-allocator middleware allocates
-     *    a per-conversation workdir, hardlinks master-fs in.
-     *  - `ephemeral` → middleware allocates a temp dir scoped to the
-     *    run; cleaned up on terminal.
-     *  - `none` → no cwd (route handlers, expression kinds). */
-    cwd?: 'workspace-workdir' | 'ephemeral' | 'none';
+    /** Physical-tree projection intent — WHEN this kind needs a real
+     *  on-disk working tree (the master-FS ⊕ draft overlay is the default
+     *  read/write substrate; the physical tree is a projection of it):
+     *  - `eager` → the workspace-allocator middleware allocates (or reuses)
+     *    a per-conversation workdir up front and binds `ctx.workdirRoot`,
+     *    hardlinking master-fs in. Required by the eager-projection consumers:
+     *    the SDK agent harness cwd, the dynamic-workflow node subprocess, and
+     *    `code://materialize`'s hardlink target.
+     *  - `lazy` (default) → no up-front allocation. The handler reads/writes
+     *    through the bound `workspaceView` and calls
+     *    `workspaceView.projectPhysical()` if/when it actually needs bytes on
+     *    disk (attach/detach). Pure readers (most routes) never project. */
+    physicalTree?: 'eager' | 'lazy';
     /** Workspace identifier — used by the allocator middleware when
-     *  `cwd === 'workspace-workdir'`. Falls back to the workspace
+     *  `physicalTree === 'eager'`. Falls back to the workspace
      *  prefix of the kind URI when absent. */
     workspace?: string;
     /** Tool policy for the harness:
@@ -109,7 +115,7 @@ export class KindRegistry {
     }
 
     /** Convenience: register a route kind. The policy defaults to
-     *  `{ cwd: 'none', tools: { native: 'disallowed' }, hitl: 'never' }`
+     *  `{ physicalTree: 'lazy', tools: { native: 'disallowed' }, hitl: 'never' }`
      *  — the natural shape for server-side MCP-only route handlers. */
     registerRoute(route: Route, policy?: KindPolicy): void {
         this.register({
@@ -124,12 +130,12 @@ export class KindRegistry {
      *  declaration's frontmatter today; the caller can override.
      *
      *  Safe default: when the main step is `kind: 'agent'` and the
-     *  caller didn't pin `policy.cwd`, default to `'workspace-workdir'`.
+     *  caller didn't pin `policy.physicalTree`, default to `'eager'`.
      *  Agent steps without a sandboxed workdir would let the SDK's
      *  native Read/Write/Edit/Glob/Grep escape to the process CWD with
      *  no path-guard — never the intent. Callers that explicitly want
-     *  `cwd: 'none'` for an agent step have to set it themselves and
-     *  accept the risk. */
+     *  `physicalTree: 'lazy'` for an agent step have to set it themselves
+     *  and accept the risk. */
     registerWorkflow(declaration: WorkflowDeclaration, policy?: KindPolicy): void {
         const merged = mergeWorkflowPolicyDefaults(declaration, policy);
         this.register({
@@ -187,7 +193,7 @@ function extractWorkspaceFromUri(uri: string): string | undefined {
 }
 
 /** Apply safe defaults to a workflow's policy. The only default
- *  applied today is `cwd: 'workspace-workdir'` when ANY step in the
+ *  applied today is `physicalTree: 'eager'` when ANY step in the
  *  workflow is an agent kind and the caller didn't pin `cwd` — see
  *  the comment on `registerWorkflow` for why this is a safety
  *  invariant, not just an ergonomic shortcut.
@@ -213,18 +219,18 @@ export function mergeWorkflowPolicyDefaults(declaration: WorkflowDeclaration, po
         return k === 'agent' || k === 'dynamic-workflow';
     });
     if (!needsWorkspaceWorkdir) return policy;
-    // Agent workflows MUST run sandboxed inside a workspace workdir.
-    // Default BOTH `cwd` (so the workspace-allocator allocates the
-    // workdir) AND `tools.native` (so sandbox-bind installs the
-    // PreToolUse file-guard). Defaulting only `cwd` left the agent's
-    // native Read/Write/Edit unguarded: `tools.native === undefined`
-    // makes sandbox-bind a no-op, a silent sandbox escape. Explicit
+    // Agent workflows MUST run sandboxed inside an eagerly-allocated workdir.
+    // Default BOTH `physicalTree: 'eager'` (so the workspace-allocator
+    // allocates the workdir up front) AND `tools.native` (so sandbox-bind
+    // installs the PreToolUse file-guard). Defaulting only `physicalTree`
+    // left the agent's native Read/Write/Edit unguarded: `tools.native ===
+    // undefined` makes sandbox-bind a no-op, a silent sandbox escape. Explicit
     // author values win (e.g. `native: 'allowed'` / `'disallowed'`).
-    const cwd = policy?.cwd ?? 'workspace-workdir';
+    const physicalTree = policy?.physicalTree ?? 'eager';
     const native = policy?.tools?.native ?? 'sandboxed';
     return {
         ...(policy ?? {}),
-        cwd,
+        physicalTree,
         tools: { ...(policy?.tools ?? {}), native },
     };
 }

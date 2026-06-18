@@ -1,6 +1,6 @@
 /**
  * `workspaceAllocatorMiddleware` — allocate a per-conversation workdir
- * for kinds declaring `policy.cwd === 'workspace-workdir'`.
+ * for kinds declaring `policy.physicalTree === 'eager'`.
  *
  * Filesystem operations (`hardlink master-fs into workdir`,
  * `materialize sparse files on Read`, etc.) are backend-specific and
@@ -23,7 +23,7 @@
  *       },
  *   }));
  *
- * The middleware reads `kind.policy.cwd`, calls `allocate`, stashes
+ * The middleware reads `kind.policy.physicalTree`, calls `allocate`, stashes
  * `workdirRoot` on the ctx (consumed by step handlers via
  * `ctx.workdirRoot`), and calls `release()` in the `after` hook.
  *
@@ -68,24 +68,23 @@ export function workspaceAllocatorMiddleware(opts: WorkspaceAllocatorMiddlewareO
     return {
         name: 'workspace-allocator',
         async before(ctx: DispatchPreContext): Promise<DispatchPreContext> {
-            const cwd = ctx.decl?.policy?.cwd;
-            if (cwd !== 'workspace-workdir') return ctx;
+            // Eager physical-tree intent: allocate (or reuse) a real on-disk
+            // workdir up front. `lazy` kinds project from the bound
+            // `workspaceView` on demand and never allocate here.
+            if (ctx.decl?.policy?.physicalTree !== 'eager') return ctx;
 
             // A ROUTE kind invoked as a child of an agent operates on the
             // PARENT agent's workdir, which the parent threads down via
-            // `opts.context.workdirRoot` (the backend tool-surface composer;
-            // also read by `inheritWorkdirRootMiddleware`). Such routes —
-            // e.g. `code://materialize`, which hard-links bytes INTO the
-            // caller's workdir for the agent to Read back — must REUSE that
-            // workdir, not allocate a fresh throwaway one the agent can't
-            // see. Workflow/agent kinds always get their own workdir
-            // (subagent isolation), so this carve-out is route-only.
-            if (ctx.decl?.kind === 'route') {
-                const inherited = ctx.opts.context?.workdirRoot;
-                if (typeof inherited === 'string' && inherited.length > 0) {
-                    ctx.workdirRoot = inherited;
-                    return ctx;
-                }
+            // `opts.context.workdirRoot` (the backend tool-surface composer).
+            // `buildPreContext` already seeded `ctx.workdirRoot` from it, so an
+            // eager route reached through a child dispatch — e.g.
+            // `code://materialize`, which hard-links bytes INTO the caller's
+            // workdir for the agent to Read back — REUSES that workdir rather
+            // than allocating a fresh throwaway one the agent can't see.
+            // Workflow/agent kinds always get their own workdir (subagent
+            // isolation), so this reuse is route-only.
+            if (ctx.decl?.kind === 'route' && typeof ctx.workdirRoot === 'string' && ctx.workdirRoot.length > 0) {
+                return ctx;
             }
 
             const allocation = await opts.allocate(ctx);

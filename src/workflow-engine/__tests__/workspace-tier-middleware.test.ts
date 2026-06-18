@@ -62,7 +62,7 @@ const DECL: WorkflowDeclaration = {
 };
 
 describe('workspaceAllocatorMiddleware', () => {
-    it('allocates a workdir when policy.cwd === workspace-workdir, releases on after', async () => {
+    it('allocates a workdir when policy.physicalTree === eager, releases on after', async () => {
         const runner = createRunner();
         let releaseCalled = 0;
         const allocate = vi.fn(async (_ctx) => ({
@@ -77,7 +77,7 @@ describe('workspaceAllocatorMiddleware', () => {
             return { kind: 'completed', output: {} };
         });
         runner.registerWorkflowReader(readerOf(DECL));
-        runner.kindRegistry.registerWorkflow(DECL, { cwd: 'workspace-workdir' });
+        runner.kindRegistry.registerWorkflow(DECL, { physicalTree: 'eager' });
         runner.use(workspaceAllocatorMiddleware({ allocate }));
 
         const run = await runner.dispatch('wf', {}, userPrincipal('u', []), {});
@@ -100,7 +100,7 @@ describe('workspaceAllocatorMiddleware', () => {
             observed = ctx.workdirRoot;
             return { kind: 'completed', output: {} };
         });
-        runner.kindRegistry.registerRoute(WORKDIR_ROUTE, { cwd: 'workspace-workdir' });
+        runner.kindRegistry.registerRoute(WORKDIR_ROUTE, { physicalTree: 'eager' });
         runner.use(workspaceAllocatorMiddleware({ allocate }));
 
         const run = await runner.dispatch('code://fake-materialize', {}, userPrincipal('u', []), {
@@ -122,7 +122,7 @@ describe('workspaceAllocatorMiddleware', () => {
             return { kind: 'completed', output: {} };
         });
         runner.registerWorkflowReader(readerOf(DECL));
-        runner.kindRegistry.registerWorkflow(DECL, { cwd: 'workspace-workdir' });
+        runner.kindRegistry.registerWorkflow(DECL, { physicalTree: 'eager' });
         runner.use(workspaceAllocatorMiddleware({ allocate }));
 
         const run = await runner.dispatch('wf', {}, userPrincipal('u', []), {
@@ -151,7 +151,7 @@ describe('workspaceAllocatorMiddleware', () => {
             return { kind: 'completed', output: {} };
         });
         runner.registerWorkflowReader(readerOf(DECL));
-        runner.kindRegistry.registerWorkflow(DECL, { cwd: 'workspace-workdir' });
+        runner.kindRegistry.registerWorkflow(DECL, { physicalTree: 'eager' });
         runner.use(workspaceAllocatorMiddleware({ allocate }));
 
         const run = await runner.dispatch('wf', {}, userPrincipal('u', []), {
@@ -165,7 +165,7 @@ describe('workspaceAllocatorMiddleware', () => {
         expect(observed).toBe('/tmp/fresh-child-workdir');
     });
 
-    it('skips allocation when policy.cwd is ephemeral or none', async () => {
+    it('skips allocation when policy.physicalTree is lazy', async () => {
         const runner = createRunner();
         const allocate = vi.fn();
         runner.registerStepKind('route', async () => ({
@@ -173,7 +173,7 @@ describe('workspaceAllocatorMiddleware', () => {
             output: {},
         }));
         runner.registerWorkflowReader(readerOf(DECL));
-        runner.kindRegistry.registerWorkflow(DECL, { cwd: 'ephemeral' });
+        runner.kindRegistry.registerWorkflow(DECL, { physicalTree: 'lazy' });
         runner.use(workspaceAllocatorMiddleware({ allocate }));
 
         await runner.dispatch('wf', {}, userPrincipal('u', []), {});
@@ -195,7 +195,7 @@ describe('workspaceAllocatorMiddleware', () => {
         }));
         runner.registerWorkflowReader(readerOf(DECL));
         runner.kindRegistry.registerWorkflow(DECL, {
-            cwd: 'workspace-workdir',
+            physicalTree: 'eager',
             continuity: 'persistent',
         });
         runner.use(workspaceAllocatorMiddleware({ allocate }));
@@ -211,7 +211,7 @@ describe('workspaceAllocatorMiddleware', () => {
             output: {},
         }));
         runner.registerWorkflowReader(readerOf(DECL));
-        runner.kindRegistry.registerWorkflow(DECL, { cwd: 'workspace-workdir' });
+        runner.kindRegistry.registerWorkflow(DECL, { physicalTree: 'eager' });
         runner.use(
             workspaceAllocatorMiddleware({
                 allocate: async () => ({ workdirRoot: '/tmp/no-release' }),
@@ -222,13 +222,13 @@ describe('workspaceAllocatorMiddleware', () => {
         expect(run.status).toBe('completed');
     });
 
-    it('applies workspace-workdir default to reader-loaded agent-main workflows (no registerWorkflow call)', async () => {
+    it('applies eager default to reader-loaded agent-main workflows (no registerWorkflow call)', async () => {
         // Regression: managed-agent .md files load via the reader path
         // and bypass `kindRegistry.registerWorkflow`, which is where
         // `mergeWorkflowPolicyDefaults` used to be the only injection
         // point. The runner now synthesizes the same default for
         // reader-loaded workflows so workspace-tier middleware sees
-        // `cwd: 'workspace-workdir'` for agent-main steps.
+        // `physicalTree: 'eager'` for agent-main steps.
         const AGENT_DECL: WorkflowDeclaration = {
             name: 'reader-agent-wf',
             description: 'd',
@@ -276,7 +276,7 @@ describe('sandboxBindMiddleware', () => {
         }));
         runner.registerWorkflowReader(readerOf(DECL));
         runner.kindRegistry.registerWorkflow(DECL, {
-            cwd: 'workspace-workdir',
+            physicalTree: 'eager',
             tools: { native: 'sandboxed' },
         });
         runner.use(
@@ -325,7 +325,7 @@ describe('sandboxBindMiddleware', () => {
         }));
         runner.registerWorkflowReader(readerOf(DECL));
         runner.kindRegistry.registerWorkflow(DECL, {
-            // sandboxed native tools requested but NO workspace-workdir cwd
+            // sandboxed native tools requested but NO eager physicalTree
             // → no workdirRoot will be allocated. The PreToolUse path-guard
             // hooks cannot be installed; per fail-closed doctrine the
             // middleware must REFUSE, not silently pass through and let the
@@ -380,7 +380,7 @@ describe('sandboxBindMiddleware', () => {
             return { kind: 'completed', output: {} };
         });
         runner.registerWorkflowReader(readerOf(DECL));
-        // sandboxed native tools requested, but NO workspace-workdir cwd and
+        // sandboxed native tools requested, but NO eager physicalTree and
         // (below) NO allocator middleware wired → no workdirRoot will exist.
         runner.kindRegistry.registerWorkflow(DECL, {
             tools: { native: 'sandboxed' },
@@ -637,7 +637,7 @@ describe('workspace-tier middleware composition', () => {
         });
         runner.registerWorkflowReader(readerOf(wf));
         runner.kindRegistry.registerWorkflow(wf, {
-            cwd: 'workspace-workdir',
+            physicalTree: 'eager',
             tools: { native: 'sandboxed' },
         });
         runner.use(workspaceAllocatorMiddleware({ allocate }));

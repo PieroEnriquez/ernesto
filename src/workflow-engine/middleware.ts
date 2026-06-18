@@ -109,7 +109,17 @@ export async function runAfter(
 }
 
 /** Build a fresh DispatchPreContext snapshot. Used by the runner at
- *  the top of every dispatch. */
+ *  the top of every dispatch.
+ *
+ *  A child dispatch issued from an agent step's tool surface carries the
+ *  parent's bound `workspaceView` (and, for the eager-projection routes, its
+ *  `workdirRoot`) on `opts.context` — the tool-surface composer threads them
+ *  there. Seed them onto the precontext up front so they reach the walker even
+ *  for `physicalTree: 'lazy'` route kinds the workspace allocator skips. The
+ *  allocator's `before` hook runs afterward and overwrites `workdirRoot` when
+ *  it allocates an eager workdir; the seeded view is never clobbered (no
+ *  middleware writes it). This is the lib-native replacement for the backend's
+ *  former `inheritWorkdirRootMiddleware`. */
 export function buildPreContext(
     kind: KindRef,
     inputs: Record<string, unknown>,
@@ -117,6 +127,8 @@ export function buildPreContext(
     opts: DispatchOpts,
     runId: string,
 ): DispatchPreContext {
+    const inheritedView = opts.context?.workspaceView as WorkspaceView | undefined;
+    const inheritedWorkdirRoot = opts.context?.workdirRoot;
     return {
         kind,
         inputs,
@@ -124,5 +136,9 @@ export function buildPreContext(
         opts,
         runId,
         annotations: {},
+        ...(inheritedView !== undefined ? { workspaceView: inheritedView } : {}),
+        ...(typeof inheritedWorkdirRoot === 'string' && inheritedWorkdirRoot.length > 0
+            ? { workdirRoot: inheritedWorkdirRoot }
+            : {}),
     };
 }

@@ -66,11 +66,13 @@ export interface RouteContext {
      *  error — there is no implicit fallback. */
     workdirRoot?: string;
     /** Bound overlay-backed view of `master-FS ⊕ draft` for this dispatch.
-     *  Additive (Wave 0): present on transports that construct it; absent
-     *  elsewhere. Routes that read/write through the view assert it the same
-     *  way they assert `workdirRoot`. The physical workdir is a LAZY projection
-     *  of this view (`projectPhysical()`). */
-    workspaceView?: WorkspaceView;
+     *  REQUIRED (Wave 2): every dispatch carries a bound view. The route-step
+     *  engine builder asserts it before constructing this context, and every
+     *  transport ctx-site (MCP, laptop, in-process child dispatch, direct HTTP,
+     *  Slack) mints one. Routes read/write THROUGH the view; the physical
+     *  workdir is a LAZY projection (`projectPhysical()`) used only by the
+     *  eager-projection routes. */
+    workspaceView: WorkspaceView;
     log: Logger;
     /**
      * Slug of the agent currently running this dispatch — populated by

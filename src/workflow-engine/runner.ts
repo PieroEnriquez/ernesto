@@ -148,7 +148,7 @@ class Runner implements WorkflowRunner {
             // Reader-loaded workflow: synthesize a KindDecl with the same
             // safety defaults `registerWorkflow` applies, so workspace-bound
             // middleware (notably `workspaceAllocatorMiddleware`) sees the
-            // `cwd: 'workspace-workdir'` invariant for agent-main workflows
+            // `physicalTree: 'eager'` invariant for agent-main workflows
             // that arrive via the reader without going through the registry.
             const synthesizedPolicy = mergeWorkflowPolicyDefaults(workflowDecl.declaration, undefined);
             preCtx.decl = {

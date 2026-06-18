@@ -76,17 +76,17 @@ describe('KindRegistry', () => {
     it('carries optional KindPolicy through registration', () => {
         const r = new KindRegistry();
         r.registerWorkflow(wfDecl, {
-            cwd: 'workspace-workdir',
+            physicalTree: 'eager',
             workspace: 'product-enablement',
             hitl: 'available-if-user',
             idempotent: { key: '${{ inputs.productId }}', scope: 'per-key' },
         });
         const wf = r.resolve('product-enablement://pipeline');
-        expect(wf?.policy?.cwd).toBe('workspace-workdir');
+        expect(wf?.policy?.physicalTree).toBe('eager');
         expect(wf?.policy?.idempotent?.key).toBe('${{ inputs.productId }}');
     });
 
-    it('defaults policy.cwd to workspace-workdir for agent-main workflows', () => {
+    it('defaults policy.physicalTree to eager for agent-main workflows', () => {
         const r = new KindRegistry();
         const agentWf: WorkflowDeclaration = {
             name: 'managed-agents://example',
@@ -103,13 +103,13 @@ describe('KindRegistry', () => {
         };
         r.registerWorkflow(agentWf);
         const wf = r.resolve('managed-agents://example');
-        // Safety default — agent kinds without an explicit cwd land on
-        // workspace-workdir so the workspace-allocator middleware fires.
-        // Without this, agent steps would run unsandboxed.
-        expect(wf?.policy?.cwd).toBe('workspace-workdir');
+        // Safety default — agent kinds without an explicit physicalTree land
+        // on eager so the workspace-allocator middleware fires. Without this,
+        // agent steps would run unsandboxed.
+        expect(wf?.policy?.physicalTree).toBe('eager');
     });
 
-    it('defaults policy.cwd to workspace-workdir for multi-step DAG workflows with any agent step', () => {
+    it('defaults policy.physicalTree to eager for multi-step DAG workflows with any agent step', () => {
         // Composed-turns YAML workflows (e.g. marketing-dashboard-author,
         // recruiting-author) declare named steps — `research`, `draft`,
         // `understand`, etc. — none named `main`. The default still
@@ -138,10 +138,10 @@ describe('KindRegistry', () => {
         };
         r.registerWorkflow(dagWf);
         const wf = r.resolve('workflows://composed-author');
-        expect(wf?.policy?.cwd).toBe('workspace-workdir');
+        expect(wf?.policy?.physicalTree).toBe('eager');
     });
 
-    it('does NOT apply the workspace-workdir default to pure-route DAG workflows', () => {
+    it('does NOT apply the eager default to pure-route DAG workflows', () => {
         // A workflow that chains only `route` steps doesn't need a
         // workdir — routes execute server-tier with their own ctx, no
         // SDK file tools in play. Default should NOT fire.
@@ -161,10 +161,10 @@ describe('KindRegistry', () => {
         };
         r.registerWorkflow(routeWf);
         const wf = r.resolve('workflows://route-only');
-        expect(wf?.policy?.cwd).toBeUndefined();
+        expect(wf?.policy?.physicalTree).toBeUndefined();
     });
 
-    it('does NOT override an explicitly-pinned policy.cwd on an agent workflow', () => {
+    it('does NOT override an explicitly-pinned policy.physicalTree on an agent workflow', () => {
         const r = new KindRegistry();
         const agentWf: WorkflowDeclaration = {
             name: 'managed-agents://opt-out',
@@ -179,13 +179,13 @@ describe('KindRegistry', () => {
                 } as WorkflowDeclaration['steps'][string],
             },
         };
-        r.registerWorkflow(agentWf, { cwd: 'ephemeral', hitl: 'never' });
+        r.registerWorkflow(agentWf, { physicalTree: 'lazy', hitl: 'never' });
         const wf = r.resolve('managed-agents://opt-out');
-        expect(wf?.policy?.cwd).toBe('ephemeral');
+        expect(wf?.policy?.physicalTree).toBe('lazy');
         expect(wf?.policy?.hitl).toBe('never');
     });
 
-    it('does NOT default cwd for non-agent-main workflows', () => {
+    it('does NOT default physicalTree for non-agent-main workflows', () => {
         const r = new KindRegistry();
         const routeWf: WorkflowDeclaration = {
             name: 'cron://warmer',
@@ -195,7 +195,7 @@ describe('KindRegistry', () => {
         };
         r.registerWorkflow(routeWf);
         const wf = r.resolve('cron://warmer');
-        expect(wf?.policy?.cwd).toBeUndefined();
+        expect(wf?.policy?.physicalTree).toBeUndefined();
     });
 
     it('unregister + clear + size', () => {

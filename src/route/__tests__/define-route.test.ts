@@ -46,6 +46,17 @@ describe('defineRoute', () => {
         const ctx: RouteContext = {
             user: { id: 'u1' },
             scopes: new Set(['x:read']),
+            workspaceView: {
+                read: async () => null,
+                glob: async () => [],
+                grep: async () => null,
+                exists: async () => false,
+                writeDraft: async () => {},
+                deleteDraft: async () => {},
+                projectPhysical: async () => {
+                    throw new Error('stub view');
+                },
+            },
             log: { info: () => {}, warn: () => {}, error: () => {} },
         };
 

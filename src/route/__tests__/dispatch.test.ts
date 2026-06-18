@@ -1,13 +1,29 @@
 import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
 import { defineRoute } from '../define-route';
-import type { RouteContext } from '../define-route';
+import type { RouteContext, WorkspaceView } from '../define-route';
 import { RouteRegistry } from '../route-registry';
 import { dispatchRoute } from '../dispatch';
+
+/** Inert view: these dispatch tests exercise scope/validation/output plumbing,
+ *  not overlay reads. The field is required (Wave 2) so supply a stub whose
+ *  members reject — any test that actually read the view would fail loudly. */
+const stubView: WorkspaceView = {
+    read: async () => null,
+    glob: async () => [],
+    grep: async () => null,
+    exists: async () => false,
+    writeDraft: async () => {},
+    deleteDraft: async () => {},
+    projectPhysical: async () => {
+        throw new Error('stub view: projectPhysical not available');
+    },
+};
 
 const makeCtx = (scopes: Iterable<string>): RouteContext => ({
     user: { id: 'u1' },
     scopes: new Set(scopes),
+    workspaceView: stubView,
     log: { info: () => {}, warn: () => {}, error: () => {} },
 });
 

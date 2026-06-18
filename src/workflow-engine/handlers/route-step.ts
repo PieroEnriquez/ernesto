@@ -94,13 +94,28 @@ export function makeRouteStepHandler(deps: RouteStepHandlerDeps): StepKindHandle
             };
         }
 
+        // RouteContext.workspaceView is REQUIRED (Wave 2): every route runs
+        // with a bound overlay view, the physical workdir is its lazy
+        // projection. The engine threads the view from the transport/composer
+        // via `opts.context.workspaceView` → buildPreContext → here. If it is
+        // missing the dispatch reached us without a bound view — a wiring bug,
+        // not a caller fault. Surface it loudly rather than constructing a
+        // view-less context (which the type now forbids).
+        if (!ctx.workspaceView) {
+            return {
+                kind: 'error',
+                code: 'no_workspace_view_bound',
+                message: 'route step requires a bound workspace view',
+            };
+        }
+
         // Bridge route-level render manifests to the walker's step
         // emit channel. Routes that declare `render: [...]` project
         // `fact.component` events from inside workflow steps, same as
         // they do from agent-issued `execute(...)` tool calls.
         const emit: EmitFactEvent | undefined = ctx.emit;
-        const emitComponent = emit
-            ? (c: { kind: string; props: Record<string, unknown> }): void => {
+        const emitComponent: RouteContext['emitComponent'] = emit
+            ? (c): void => {
                   emit({
                       type: 'fact.component',
                       component: c as unknown as UiComponent,
@@ -112,15 +127,15 @@ export function makeRouteStepHandler(deps: RouteStepHandlerDeps): StepKindHandle
             user: ctx.principal.email ? { id: ctx.principal.userId, email: ctx.principal.email } : { id: ctx.principal.userId },
             scopes: ctx.principal.scopes,
             log: deps.log,
+            workspaceView: ctx.workspaceView,
             // Thread the engine's run id into the route context so route
             // handlers can attest WHICH run invoked them (`RouteContext.runId`
             // existed but was never populated on this path — enrichment-cards'
             // `by.runId` reads it as the authoritative, engine-attested value).
             ...(ctx.runId ? { runId: ctx.runId } : {}),
             ...(ctx.workdirRoot ? { workdirRoot: ctx.workdirRoot } : {}),
-            ...(ctx.workspaceView ? { workspaceView: ctx.workspaceView } : {}),
             ...(emitComponent ? { emitComponent } : {}),
-        } as RouteContext;
+        };
 
         const result = await dispatchResolvedRoute(decl.route, step.params ?? {}, routeCtx);
 
