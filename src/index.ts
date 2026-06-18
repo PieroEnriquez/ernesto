@@ -102,9 +102,10 @@ export type { WorkflowDeclaration, WorkflowStep, InputStep, AgentStep, DynamicWo
 // point for routes (it goes through the kind registry + middleware
 // chain + event store); the sync route primitive lives at
 // `ernesto/route` for tests + advanced internal use.
-export { defineRoute, RouteRegistry } from './route';
+export { defineRoute, RouteRegistry, selectPhysicalProjector } from './route';
 export type { DispatchResult, DispatchErrorCode, RenderEntry } from './route';
 export type { WorkspaceView, RouteContext } from './route/define-route';
+export type { PhysicalProjector, WriteThroughEngine, SelectPhysicalProjectorOpts } from './route';
 
 // ─── Managed agents (declaration + composition) ──────────────────────────
 export {
