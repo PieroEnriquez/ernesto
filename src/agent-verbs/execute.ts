@@ -83,11 +83,13 @@ export const executeOutputSchema = z.discriminatedUnion('ok', [
     }),
 ]);
 
-export const EXECUTE_DESCRIPTION = `Run a typed backend route by URI. Routes are content-addressed actions like \`redshift://run-query\`, \`code://list-prs-backend\`, \`app-logs://invoice-investigation\`. Use this when you need to query data, run analytics, or interact with backend systems. List of available routes for this workspace is in \`routes/_index.md\`.
+export const EXECUTE_DESCRIPTION = `Run a typed backend route by URI. Routes are content-addressed actions like \`redshift://run-query\`, \`code://list-prs-backend\`, \`app-logs://invoice-investigation\`. Use this when you need to query data, run analytics, or interact with backend systems. Every callable route is inlined — with its full input/output schema and required scope — in its owning workspace's \`WORKSPACE.md\` (the routes section). **Read that workspace's \`WORKSPACE.md\` before calling a route you haven't already read this session**, and call \`execute({ uri: "_ernesto://search", params: { query } })\` to find the right route or document.
 
 Input: \`{ uri: string, params: object, previewLimit?: number | "all", ui?: UiComponent[] }\`. \`previewLimit\` controls the inline \`preview\` size in the tool_result (default 5; \`0\` → suppress preview entirely, leaving only the \`file\` pointer; \`"all"\` → inline the full data, eats tokens). Optionally pass \`ui:\` to emit components (e.g. a \`status\` pill or \`thinking\` trace) alongside the action — saves an extra \`ui([…])\` SDK round-trip.
 
-Output: \`{ ok: true, data: { ..., preview?, file? } }\` on success — \`preview\` is a compact shape-preserving slice (arrays become \`{ total, limit, items }\`), \`file\` is a workdir-relative path to the full archived JSON (Read it on follow-up turns to avoid re-querying); \`{ ok: false, error, details? }\` on failure (route_not_found / scope_denied / invalid_input / invalid_output / handler_failed).`;
+Output: \`{ ok: true, data: { ..., preview?, file? } }\` on success — \`preview\` is a compact shape-preserving slice (arrays become \`{ total, limit, items }\`), \`file\` is a workdir-relative path to the full archived JSON (Read it on follow-up turns to avoid re-querying); \`{ ok: false, error, details? }\` on failure (route_not_found / scope_denied / invalid_input / invalid_output / handler_failed).
+
+There is also a PARKED-FOR-HUMAN outcome: \`{ ok: true, data: { paused: true, runId, status: "awaiting_user_input" } }\`. The URI dispatched a workflow that paused on a human step (e.g. a confirmation form posted to the thread). This is NOT completion — the action has not run yet, and its real result (including any link or id) arrives when the user acts. Do NOT announce success, and never invent, guess, or repeat a result/link for a paused outcome: reply in one short, natural sentence pointing the user to the form/button just posted, then end your turn.`;
 
 export type ExecuteVerbLogger = VerbLogger;
 

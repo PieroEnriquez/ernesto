@@ -113,6 +113,50 @@ describe('lintWorkspace (scope-less)', () => {
         expect(result).toEqual({ ok: true });
     });
 
+    it('flags trigger_ignored_on_managed_agent when a managed-agent .md declares a cron trigger', async () => {
+        const body = [
+            '---',
+            'slug: scheduled-agent',
+            'name: Scheduled Agent',
+            'description: Wrongly declares a cron trigger on a managed agent.',
+            'model: claude-sonnet-4-6',
+            'trigger:',
+            '  cron: "0 9 * * 1"',
+            '---',
+            '',
+            'Do the scheduled thing.',
+        ].join('\n');
+        const p = 'workspaces/hr/managed-agents/scheduled-agent.md';
+        await writeStagedFile(root, p, body);
+        const diff = diffAdd(p, body);
+        const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
+        const { errors } = expectErrors(result);
+        expect(
+            errors.some(
+                (e) => e.code === 'trigger_ignored_on_managed_agent' && e.path === p && e.workspace === 'hr',
+            ),
+        ).toBe(true);
+    });
+
+    it('does not flag a managed-agent .md without a trigger', async () => {
+        const body = [
+            '---',
+            'slug: on-demand-agent',
+            'name: On Demand Agent',
+            'description: A normal callable managed agent, no trigger.',
+            'model: claude-sonnet-4-6',
+            '---',
+            '',
+            'Do the thing on demand.',
+        ].join('\n');
+        const p = 'workspaces/hr/managed-agents/on-demand-agent.md';
+        await writeStagedFile(root, p, body);
+        const diff = diffAdd(p, body);
+        const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
+        const codes = result.ok ? [] : (result as unknown as FailedLint).errors.map((e) => e.code);
+        expect(codes).not.toContain('trigger_ignored_on_managed_agent');
+    });
+
     // ── single-code flag fixtures (one staged setup → one expected code) ──────
     //
     // Each row prepares a working tree + synthetic diff and asserts the failing
