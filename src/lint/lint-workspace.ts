@@ -1138,11 +1138,7 @@ export function makeLintWorkspace(principal: LintPrincipal, options: MakeLintWor
  *  `trigger:`. Shared by the `workflows/<slug>.md` shorthand path (in
  *  `lintWorkflowFile`) and the `managed-agents/<slug>.md` pass (in
  *  `lintWorkspace`), so both locations emit the identical error. */
-function managedAgentTriggerError(
-    frontMatter: Record<string, unknown>,
-    filepath: string,
-    workspace: string | undefined,
-): LintError | null {
+function managedAgentTriggerError(frontMatter: Record<string, unknown>, filepath: string, workspace: string | undefined): LintError | null {
     if (frontMatter.trigger === undefined) return null;
     return {
         code: TRIGGER_IGNORED_ON_MANAGED_AGENT,

@@ -131,11 +131,7 @@ describe('lintWorkspace (scope-less)', () => {
         const diff = diffAdd(p, body);
         const result = await lintWorkspace({ diff, workspaces: ['hr'], workingTreeRoot: root });
         const { errors } = expectErrors(result);
-        expect(
-            errors.some(
-                (e) => e.code === 'trigger_ignored_on_managed_agent' && e.path === p && e.workspace === 'hr',
-            ),
-        ).toBe(true);
+        expect(errors.some((e) => e.code === 'trigger_ignored_on_managed_agent' && e.path === p && e.workspace === 'hr')).toBe(true);
     });
 
     it('does not flag a managed-agent .md without a trigger', async () => {
