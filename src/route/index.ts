@@ -13,8 +13,4 @@ export { sketchComponents } from './stage-sketch';
 export type { StagedSketch } from './stage-sketch';
 
 export { selectPhysicalProjector } from './physical-projector';
-export type {
-    PhysicalProjector,
-    WriteThroughEngine,
-    SelectPhysicalProjectorOpts,
-} from './physical-projector';
+export type { PhysicalProjector, WriteThroughEngine, SelectPhysicalProjectorOpts } from './physical-projector';

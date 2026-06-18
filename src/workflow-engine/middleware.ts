@@ -137,8 +137,6 @@ export function buildPreContext(
         runId,
         annotations: {},
         ...(inheritedView !== undefined ? { workspaceView: inheritedView } : {}),
-        ...(typeof inheritedWorkdirRoot === 'string' && inheritedWorkdirRoot.length > 0
-            ? { workdirRoot: inheritedWorkdirRoot }
-            : {}),
+        ...(typeof inheritedWorkdirRoot === 'string' && inheritedWorkdirRoot.length > 0 ? { workdirRoot: inheritedWorkdirRoot } : {}),
     };
 }

@@ -111,7 +111,10 @@ describe('makeRouteStepHandler', () => {
                 },
             }),
         );
-        const run = await runner.dispatch('cards://real-runid', {}, userPrincipal('u-1', ['ws:read']), { transport: 'in-process', context: { workspaceView: stubView } });
+        const run = await runner.dispatch('cards://real-runid', {}, userPrincipal('u-1', ['ws:read']), {
+            transport: 'in-process',
+            context: { workspaceView: stubView },
+        });
         expect(run.status).toBe('completed');
         expect(seenRunId).toBe(run.runId);
     });
@@ -406,14 +409,20 @@ describe('tagged handler throws through the REAL engine (createRunner + run-grap
     it('run.error.message carries the tagged throw text', async () => {
         const msg = "not_found: no room 'room_nope'";
         const runner = makeRealRunner('rooms://real-nf', msg);
-        const run = await runner.dispatch('rooms://real-nf', {}, userPrincipal('u-1', ['ws:read']), { transport: 'in-process', context: { workspaceView: stubView } });
+        const run = await runner.dispatch('rooms://real-nf', {}, userPrincipal('u-1', ['ws:read']), {
+            transport: 'in-process',
+            context: { workspaceView: stubView },
+        });
         expect(run.status).toBe('errored');
         expect(run.error).toMatchObject({ stepId: 'main', code: 'handler_failed', message: msg });
     });
 
     it('run.error.message keeps the flattened form for untagged throws', async () => {
         const runner = makeRealRunner('rooms://real-boom', 'ECONNREFUSED 10.0.0.7:5432 — internal text');
-        const run = await runner.dispatch('rooms://real-boom', {}, userPrincipal('u-1', ['ws:read']), { transport: 'in-process', context: { workspaceView: stubView } });
+        const run = await runner.dispatch('rooms://real-boom', {}, userPrincipal('u-1', ['ws:read']), {
+            transport: 'in-process',
+            context: { workspaceView: stubView },
+        });
         expect(run.status).toBe('errored');
         expect(run.error).toMatchObject({
             stepId: 'main',

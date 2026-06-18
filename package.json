@@ -1,6 +1,6 @@
 {
   "name": "ernesto",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A Context System for Agent-Assisted Organizations",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
