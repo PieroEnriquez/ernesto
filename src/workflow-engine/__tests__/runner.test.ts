@@ -180,6 +180,74 @@ describe('createRunner.dispatch', () => {
         expect(finalState?.status).toBe('completed');
     });
 
+    it('re-seeds workspaceView via beforeResume so a route step after a HITL input has a bound view', async () => {
+        const store = new InMemoryStore();
+        const runner = createRunner({ store });
+
+        // A `beforeResume` hook re-mints the view on resume; the `before`
+        // counter proves dispatch-phase middleware do NOT re-fire on resume.
+        const sentinelView: any = { __sentinel: true };
+        let beforeCalls = 0;
+        let beforeResumeCalls = 0;
+        runner.use({
+            name: 'test-view-seed',
+            before: (ctx) => {
+                beforeCalls++;
+                return ctx;
+            },
+            beforeResume: (ctx) => {
+                beforeResumeCalls++;
+                if (!ctx.workspaceView) ctx.workspaceView = sentinelView;
+                return ctx;
+            },
+        });
+
+        runner.registerStepKind('input', async () => ({
+            kind: 'paused_human',
+            prompt: 'Pick',
+            routes: ['a'],
+            schema: {
+                type: 'object',
+                properties: { choice: { type: 'string', enum: ['a'] } },
+                required: ['choice'],
+            },
+        }));
+        let routeSawView: unknown;
+        runner.registerStepKind('route', async (_step, ctx) => {
+            routeSawView = ctx.workspaceView;
+            return { kind: 'completed', output: { ok: true } };
+        });
+        runner.registerWorkflowReader(
+            readerOf({
+                name: 'wf-hitl-route',
+                description: 'd',
+                version: 1,
+                steps: {
+                    s1: { kind: 'input', schema: {} as any, prompt: 'pick' },
+                    s2: { kind: 'route', uri: 'x://y', depends: ['s1'] },
+                },
+            }),
+        );
+
+        const run = await runner.dispatch('wf-hitl-route', {}, userPrincipal('u', ['x']), {});
+        expect(run.status).toBe('awaiting_input');
+        // beforeResume must NOT fire on the initial dispatch.
+        expect(beforeCalls).toBe(1);
+        expect(beforeResumeCalls).toBe(0);
+
+        const parked = await store.getRunState(run.runId);
+        const promptId = parked!.resume!.paused[0]!.promptId;
+        await runner.resumeRun({ runId: run.runId, promptId, value: { choice: 'a' } });
+
+        // The post-resume route step ran WITH the re-seeded view, and the
+        // dispatch-only `before` hook did NOT re-fire on resume.
+        expect(beforeResumeCalls).toBe(1);
+        expect(beforeCalls).toBe(1);
+        expect(routeSawView).toBe(sentinelView);
+        const finalState = await store.getRunState(run.runId);
+        expect(finalState?.status).toBe('completed');
+    });
+
     it('resumeRun on an unknown/terminal run rejects (no pending HITL)', async () => {
         const runner = createRunner();
         await expect(runner.resumeRun({ runId: 'ghost', promptId: 'p', value: 1 })).rejects.toThrow(/no pending HITL/);

@@ -70,6 +70,16 @@ export interface DispatchMiddleware {
      *  ctx or throw to abort dispatch. Returning the same ctx object
      *  is fine — mutate in place or return a fresh one. */
     before?(ctx: DispatchPreContext): Promise<DispatchPreContext> | DispatchPreContext;
+    /** Resume hook. Runs in registration order on HITL resume ONLY (via
+     *  `runBeforeResume`), never on the initial dispatch. A middleware
+     *  implements this to re-establish resume-relevant context that its
+     *  `before` hook set at dispatch but that is NOT persisted across the
+     *  pause — notably the overlay `workspaceView`, which a route step
+     *  after a HITL `input` step requires. Dispatch-only middleware
+     *  (logging, scope-check, idempotency, event-log claim, timeout,
+     *  tool-surface compose) deliberately OMIT this so they do not
+     *  re-fire — and re-acquire/conflict — on resume. */
+    beforeResume?(ctx: DispatchPreContext): Promise<DispatchPreContext> | DispatchPreContext;
     /** Post-dispatch hook. Runs in REVERSE order (LIFO) so resource
      *  acquisition + release nest correctly. Errors here are logged
      *  but don't override the dispatch result. */
@@ -84,6 +94,23 @@ export async function runBefore(middlewares: ReadonlyArray<DispatchMiddleware>, 
     for (const mw of middlewares) {
         if (!mw.before) continue;
         cur = await mw.before(cur);
+    }
+    return cur;
+}
+
+/** Run the middleware chain's `beforeResume` hooks, in registration
+ *  order. The resume-safe counterpart to `runBefore`: ONLY middleware
+ *  that opt in (implement `beforeResume`) run, so dispatch-only side
+ *  effects — idempotency claim, durable event-log init, "dispatch start"
+ *  logging, tool-surface composition — are skipped because their
+ *  middleware omit the hook. Used by the runner when re-entering a paused
+ *  run, to re-seed context (notably `workspaceView`) that is not
+ *  persisted across the pause. Errors propagate, as in `runBefore`. */
+export async function runBeforeResume(middlewares: ReadonlyArray<DispatchMiddleware>, ctx: DispatchPreContext): Promise<DispatchPreContext> {
+    let cur = ctx;
+    for (const mw of middlewares) {
+        if (!mw.beforeResume) continue;
+        cur = await mw.beforeResume(cur);
     }
     return cur;
 }

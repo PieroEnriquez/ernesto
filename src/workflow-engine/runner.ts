@@ -38,7 +38,7 @@ import { HitlController, validateAgainstSchema, type HitlPauseInput } from './hi
 import { walk, type WalkResult, type WalkerDeps } from './engine/walker';
 import type { GraphSeed } from './engine/run-graph';
 import { KindRegistry, mergeWorkflowPolicyDefaults } from './kind-registry';
-import { type DispatchMiddleware, type DispatchPreContext, buildPreContext, runBefore, runAfter } from './middleware';
+import { type DispatchMiddleware, type DispatchPreContext, buildPreContext, runBefore, runBeforeResume, runAfter } from './middleware';
 
 const NULL_LOG: EngineLogger = {
     info: () => undefined,
@@ -301,15 +301,35 @@ class Runner implements WorkflowRunner {
         this.inflightAborts.set(input.runId, ac);
         if (!this.seqByRun.has(input.runId)) this.seqByRun.set(input.runId, 0);
         try {
+            const principal = principalFromRouting(state.routing);
+            const opts = { ...optsFromRouting(state.routing), abortSignal: ac.signal };
+
+            // Re-establish resume-relevant context before re-walking. The
+            // `before` middleware chain ran on the original dispatch but its
+            // output (notably the overlay `workspaceView`) is NOT persisted
+            // across a HITL pause, so a route step after the parked `input`
+            // step would otherwise re-enter with `workspaceView` undefined and
+            // fail closed (`no_workspace_view_bound`). `runBeforeResume` runs
+            // ONLY opt-in `beforeResume` hooks (the view/workdir seeders), so
+            // dispatch-only middleware (idempotency claim, event-log init,
+            // logging, tool-surface compose) do NOT re-fire on resume.
+            const resumeCtx = await runBeforeResume(
+                this.middlewares,
+                buildPreContext(state.workflow, state.inputs, principal, opts, input.runId),
+            );
+
             await walk(
                 input.runId,
                 workflowDecl.declaration,
                 {
                     kind: state.workflow,
                     inputs: state.inputs,
-                    principal: principalFromRouting(state.routing),
-                    opts: { ...optsFromRouting(state.routing), abortSignal: ac.signal },
+                    principal,
+                    opts,
                     resume: { seed, promptId: input.promptId },
+                    ...(resumeCtx.workdirRoot !== undefined ? { workdirRoot: resumeCtx.workdirRoot } : {}),
+                    ...(resumeCtx.workspaceView !== undefined ? { workspaceView: resumeCtx.workspaceView } : {}),
+                    ...(Object.keys(resumeCtx.annotations).length > 0 ? { annotations: resumeCtx.annotations } : {}),
                 },
                 this.walkerDeps(),
             );
