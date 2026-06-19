@@ -124,6 +124,18 @@ export interface RouteStep extends BaseStep {
     render?: 'chart' | 'table' | 'value' | 'markdown' | 'json' | 'none' | 'narrative' | ReadonlyArray<RenderEntry>;
     timeoutMs?: number;
     retries?: number;
+    /**
+     * Internal: this step is a DIRECT route dispatch (the runner synthesized a
+     * one-step `route` workflow from a bare route URI — `execute(route)` /
+     * `ctx.dispatch(route)`), NOT a route step authored inside a multi-step
+     * workflow. For a direct dispatch the route's OWN `render: [...]` manifest
+     * IS the user-facing answer, so the handler wires `emitComponent` and the
+     * components surface. For an authored workflow step the route's output is
+     * intermediate data (feeds downstream / the HITL prompt), so its manifest
+     * stays private and only an author-declared step-level `render` surfaces.
+     * Set by `runner.resolveKind`; never authored in YAML.
+     */
+    surfaceRender?: boolean;
 }
 
 export interface InputStep extends BaseStep {

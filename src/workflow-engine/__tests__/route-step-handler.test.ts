@@ -132,15 +132,16 @@ describe('makeRouteStepHandler', () => {
         }
     });
 
-    it("does NOT auto-fire a route step's OWN render manifest (intermediate data stays private)", async () => {
-        const renderingRoute = defineRoute({
-            uri: 'reports://daily',
-            scope: 'ws:read',
-            input: z.object({}),
-            output: z.object({ rows: z.array(z.any()) }),
-            render: [{ path: 'rows', ui: 'table' as const, columns: [{ id: 'x', label: 'X' }] }],
-            handler: async () => ({ rows: [{ x: 1 }, { x: 2 }] }),
-        });
+    const renderingRoute = defineRoute({
+        uri: 'reports://daily',
+        scope: 'ws:read',
+        input: z.object({}),
+        output: z.object({ rows: z.array(z.any()) }),
+        render: [{ path: 'rows', ui: 'table' as const, columns: [{ id: 'x', label: 'X' }] }],
+        handler: async () => ({ rows: [{ x: 1 }, { x: 2 }] }),
+    });
+
+    it("an AUTHORED workflow step does NOT fire the route's OWN render manifest (intermediate data stays private)", async () => {
         const kindRegistry = new KindRegistry();
         kindRegistry.registerRoute(renderingRoute);
         const handler = makeRouteStepHandler({
@@ -148,17 +149,34 @@ describe('makeRouteStepHandler', () => {
             log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
         });
         const emit = vi.fn();
+        // No `surfaceRender` → an authored workflow step. Its output feeds
+        // downstream / the HITL prompt; the route manifest must NOT surface.
         const result = await handler({ kind: 'route', uri: 'reports://daily', params: {} } as RouteStep, makeCtx({ emit }));
-        // Inside a workflow a route's output is intermediate data — its
-        // own render manifest must NOT surface to the thread. The data is
-        // still returned for downstream steps; only `step.render` (author-
-        // defined) or the HITL prompt / workflow outputs render.
         const componentEmits = emit.mock.calls.filter(([ev]) => ev?.type === 'fact.component');
         expect(componentEmits).toHaveLength(0);
         expect(result.kind).toBe('completed');
         if (result.kind === 'completed') {
             expect((result.output as { rows: unknown[] }).rows).toEqual([{ x: 1 }, { x: 2 }]);
         }
+    });
+
+    it("a DIRECT dispatch (surfaceRender) DOES fire the route's render manifest — the route is the answer", async () => {
+        const kindRegistry = new KindRegistry();
+        kindRegistry.registerRoute(renderingRoute);
+        const handler = makeRouteStepHandler({
+            kindRegistry,
+            log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        });
+        const emit = vi.fn();
+        // `surfaceRender: true` is set by runner.resolveKind for a bare
+        // `execute(route)` — the route's own manifest IS the user's answer.
+        const result = await handler(
+            { kind: 'route', uri: 'reports://daily', params: {}, surfaceRender: true } as RouteStep,
+            makeCtx({ emit }),
+        );
+        const componentEmits = emit.mock.calls.filter(([ev]) => ev?.type === 'fact.component');
+        expect(componentEmits.length).toBeGreaterThanOrEqual(1);
+        expect(result.kind).toBe('completed');
     });
 
     it('attaches step-level render manifest to output for the walker projector', async () => {

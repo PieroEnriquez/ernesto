@@ -357,6 +357,10 @@ class Runner implements WorkflowRunner {
                             kind: 'route' as const,
                             uri: declFromRegistry.uri,
                             params: inputs,
+                            // Direct dispatch: the route's own render manifest
+                            // IS the answer here (vs an authored workflow step,
+                            // where it's intermediate data) — surface it.
+                            surfaceRender: true,
                         },
                     },
                 },
