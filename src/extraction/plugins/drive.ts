@@ -6,13 +6,15 @@
  *   - `sheet:<fileId>`   — Google Sheet, exported as CSV.
  *   - `folder:<folderId>` — Folder, recursively walked; each child doc, sheet,
  *     PDF, DOCX, or raw CSV becomes an entry. Nested folders are traversed.
- *   - `pdf:<fileId>`     — PDF binary fetched via `files/{id}?alt=media`.
- *     No in-process PDF parser is bundled (keeps deps light); the raw bytes
- *     are returned as a base64 string with `contentType: 'application/pdf'`
- *     so downstream consumers can decode and parse with whatever PDF library
- *     they choose.
- *   - `docx:<fileId>`    — DOCX exported as Markdown via Drive's `export`
- *     endpoint (`mimeType=text/markdown`). Drive handles conversion server-side.
+ *   - `pdf:<fileId>`     — PDF fetched raw via `files/{id}?alt=media`, then its
+ *     text layer is extracted with `pdf-parse` and returned as Markdown
+ *     (`contentType: 'text/markdown'`). Extraction MUST resolve to a language
+ *     the agent can read — a base64 blob is useless in `extracted/`. PDFs with
+ *     no text layer (scanned/image-only) yield no entry (logged + skipped).
+ *   - `docx:<fileId>`    — uploaded `.docx` fetched raw via `files/{id}?alt=media`,
+ *     then converted to Markdown locally with `mammoth`. Drive's `export`
+ *     endpoint only converts Google-NATIVE Docs, not uploaded `.docx` binaries
+ *     (it 4xx's on them), so we parse the bytes ourselves.
  *
  * Auth model (two paths — pass `getAccessToken` OR `accessToken`):
  *   - `getAccessToken` (service-account path): the plugin calls it to mint the
@@ -34,6 +36,8 @@
  * Tokens are never logged.
  */
 
+import pdfParse from 'pdf-parse/lib/pdf-parse.js';
+import { convertToMarkdown as docxToMarkdown } from 'mammoth';
 import {
     defineExtraction,
     type ExtractionContext,
@@ -253,19 +257,39 @@ async function fetchPdfEntry(fileId: string, tokens: TokenState, ctx: Extraction
     if (!meta) return null;
 
     // alt=media downloads the raw bytes for binary files (PDFs uploaded to Drive,
-    // not Google-native types). We don't bundle a PDF parser to keep the lib light;
-    // callers receive base64-encoded bytes and can decode/parse with whatever
-    // library suits their pipeline.
+    // not Google-native types). Extraction MUST land agent-readable text, so we
+    // extract the PDF's text layer here rather than punting a base64 blob into
+    // `extracted/`.
     const url = `${DRIVE_FILES_API}/${encodeURIComponent(fileId)}?alt=media`;
     const res = await driveRequest<ArrayBuffer>(url, tokens, ctx, { asBinary: true });
     if (!res.ok) return null;
 
-    const base64 = Buffer.from(res.data).toString('base64');
+    let text: string;
+    try {
+        const parsed = await pdfParse(Buffer.from(res.data));
+        text = parsed.text;
+    } catch (err) {
+        ctx.log.warn('drive: PDF text extraction failed; skipping entry', {
+            fileId,
+            name: meta.name,
+            errorMessage: (err as Error).message,
+        });
+        return null;
+    }
+    if (text.trim().length === 0) {
+        // No text layer — a scanned/image-only PDF. OCR is out of scope; a
+        // blank entry would only pollute the knowledge base, so skip it.
+        ctx.log.warn('drive: PDF has no extractable text (scanned/image?); skipping entry', {
+            fileId,
+            name: meta.name,
+        });
+        return null;
+    }
 
     return {
-        path: `pdfs/${slugify(meta.name)}.pdf`,
-        content: base64,
-        contentType: 'application/pdf',
+        path: `pdfs/${slugify(meta.name)}.md`,
+        content: text,
+        contentType: 'text/markdown',
     };
 }
 
@@ -273,15 +297,36 @@ async function fetchDocxEntry(fileId: string, tokens: TokenState, ctx: Extractio
     const meta = await fetchMeta(fileId, tokens, ctx);
     if (!meta) return null;
 
-    // Drive's `export` endpoint converts DOCX → markdown server-side, so we
-    // avoid pulling mammoth (or any docx parser) into the lib dep tree.
-    const url = `${DRIVE_FILES_API}/${encodeURIComponent(fileId)}/export?mimeType=${encodeURIComponent('text/markdown')}`;
-    const res = await driveRequest<string>(url, tokens, ctx, { asText: true });
+    // An uploaded `.docx` is NOT a Google-native Doc, so Drive's `/export`
+    // does not apply (it 4xx's). Download the raw bytes and convert to markdown
+    // locally with mammoth — extraction must resolve to agent-readable text.
+    const url = `${DRIVE_FILES_API}/${encodeURIComponent(fileId)}?alt=media`;
+    const res = await driveRequest<ArrayBuffer>(url, tokens, ctx, { asBinary: true });
     if (!res.ok) return null;
+
+    let markdown: string;
+    try {
+        const out = await docxToMarkdown({ buffer: Buffer.from(res.data) });
+        markdown = out.value;
+    } catch (err) {
+        ctx.log.warn('drive: DOCX→markdown conversion failed; skipping entry', {
+            fileId,
+            name: meta.name,
+            errorMessage: (err as Error).message,
+        });
+        return null;
+    }
+    if (markdown.trim().length === 0) {
+        ctx.log.warn('drive: DOCX produced empty markdown; skipping entry', {
+            fileId,
+            name: meta.name,
+        });
+        return null;
+    }
 
     return {
         path: `docs/${slugify(meta.name)}.md`,
-        content: res.data,
+        content: markdown,
         contentType: 'text/markdown',
     };
 }

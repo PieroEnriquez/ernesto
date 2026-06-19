@@ -41,6 +41,10 @@ export default {
         if (id === '@mariozechner/pi-ai') return true;
         if (id.startsWith('@mariozechner/pi-ai/')) return true;
         if (id === 'typebox') return true;
+        // Binary-document parsers used by the Drive extraction plugin
+        // (uploaded PDF / DOCX → markdown). Real runtime deps, never bundled.
+        if (id === 'pdf-parse' || id.startsWith('pdf-parse/')) return true;
+        if (id === 'mammoth' || id.startsWith('mammoth/')) return true;
         return false;
     },
     output: [

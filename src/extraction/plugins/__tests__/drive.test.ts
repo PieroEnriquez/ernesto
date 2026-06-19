@@ -1,6 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { drivePlugin } from '../drive';
 import type { ExtractionContext } from '../../define-extraction';
+import pdfParse from 'pdf-parse/lib/pdf-parse.js';
+import { convertToMarkdown } from 'mammoth';
+
+// The Drive plugin converts uploaded PDF/DOCX binaries to markdown via these
+// parsers. Mock them so tests never load the real (heavy) modules and can drive
+// the parsed output directly.
+vi.mock('pdf-parse/lib/pdf-parse.js', () => ({ default: vi.fn() }));
+vi.mock('mammoth', () => ({ convertToMarkdown: vi.fn() }));
+
+const PDF_RESULT = { numpages: 1, numrender: 1, info: {}, metadata: {}, version: '1.0' };
 
 const makeCtx = (): ExtractionContext => ({
     user: { id: 'u1' },
@@ -29,6 +39,12 @@ const driveUrl = (path: string) => `https://www.googleapis.com/drive/v3/files${p
 
 beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    // Module-level mocks accumulate call history across tests in this file —
+    // clear it so per-test call-count assertions start from zero.
+    vi.mocked(pdfParse).mockClear();
+    vi.mocked(convertToMarkdown).mockClear();
+    vi.mocked(pdfParse).mockResolvedValue({ text: 'EXTRACTED PDF TEXT', ...PDF_RESULT } as never);
+    vi.mocked(convertToMarkdown).mockResolvedValue({ value: '# CONVERTED DOCX\n\nbody', messages: [] } as never);
 });
 
 afterEach(() => {
@@ -170,13 +186,19 @@ describe('drivePlugin', () => {
                     },
                 });
             }
-            if (url.includes('/files/pdf-1?') && !url.includes('alt=media')) {
-                return jsonResponse({ body: { id: 'pdf-1', name: 'Open Ports', mimeType: 'application/pdf' } });
-            }
             if (url.includes('/files/pdf-1?alt=media')) {
                 return new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { 'Content-Type': 'application/pdf' } });
             }
-            if (url.includes('/files/docx-1?') && !url.includes('export')) {
+            if (url.includes('/files/pdf-1?')) {
+                return jsonResponse({ body: { id: 'pdf-1', name: 'Open Ports', mimeType: 'application/pdf' } });
+            }
+            if (url.includes('/files/docx-1?alt=media')) {
+                return new Response(new Uint8Array([0x50, 0x4b, 0x03, 0x04]), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/octet-stream' },
+                });
+            }
+            if (url.includes('/files/docx-1?')) {
                 return jsonResponse({
                     body: {
                         id: 'docx-1',
@@ -185,14 +207,11 @@ describe('drivePlugin', () => {
                     },
                 });
             }
-            if (url.includes('/files/docx-1/export')) {
-                return textResponse('# Rule Guide');
-            }
-            if (url.includes('/files/csv-1?') && !url.includes('alt=media')) {
-                return jsonResponse({ body: { id: 'csv-1', name: 'Fraud Rules', mimeType: 'text/csv' } });
-            }
             if (url.includes('/files/csv-1?alt=media')) {
                 return textResponse('rule_id,name\n101,velocity\n');
+            }
+            if (url.includes('/files/csv-1?')) {
+                return jsonResponse({ body: { id: 'csv-1', name: 'Fraud Rules', mimeType: 'text/csv' } });
             }
             throw new Error(`unexpected url: ${url}`);
         });
@@ -201,10 +220,18 @@ describe('drivePlugin', () => {
         const result = await plugin.fetch({ target: 'folder:kb' }, makeCtx());
 
         const paths = result.entries.map((e) => e.path).sort();
-        // PDF + DOCX + raw CSV all extracted; the image is ignored.
-        expect(paths).toEqual(['csv/fraud-rules.csv', 'docs/rule-guide.md', 'pdfs/open-ports.pdf']);
+        // PDF (→text) + DOCX (→markdown) + raw CSV all extracted; image ignored.
+        // No Drive /export call for the uploaded .docx — we parse it locally.
+        expect(paths).toEqual(['csv/fraud-rules.csv', 'docs/rule-guide.md', 'pdfs/open-ports.md']);
+        for (const [input] of fetchMock.mock.calls) {
+            expect(String(input)).not.toContain('/export');
+        }
         const csv = result.entries.find((e) => e.path === 'csv/fraud-rules.csv');
         expect(csv?.content).toBe('rule_id,name\n101,velocity\n');
+        const pdf = result.entries.find((e) => e.path === 'pdfs/open-ports.md');
+        expect(pdf).toMatchObject({ content: 'EXTRACTED PDF TEXT', contentType: 'text/markdown' });
+        const docx = result.entries.find((e) => e.path === 'docs/rule-guide.md');
+        expect(docx).toMatchObject({ content: '# CONVERTED DOCX\n\nbody', contentType: 'text/markdown' });
     });
 
     it('refreshes the access token on 401 when a refresh token is provided', async () => {
@@ -337,34 +364,53 @@ describe('drivePlugin', () => {
         expect(result.entries).toEqual([]);
     });
 
-    it('fetches a PDF as base64 binary via alt=media', async () => {
+    it('fetches a PDF and extracts its text layer as markdown via alt=media', async () => {
         const plugin = drivePlugin({ accessToken: 'tok' });
-        // Arbitrary binary bytes (not valid PDF — we only check passthrough)
-        const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34, 0x00, 0xff, 0xfe]);
-        const expectedBase64 = Buffer.from(bytes).toString('base64');
+        const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]);
 
         const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
             const url = String(input);
-            if (url.includes('/files/pdf-1?') && !url.includes('alt=media')) {
-                return jsonResponse({ body: { id: 'pdf-1', name: 'Quarterly Report', mimeType: 'application/pdf' } });
-            }
             if (url.includes('/files/pdf-1?alt=media')) {
-                // ArrayBuffer body
                 return new Response(bytes, { status: 200, headers: { 'Content-Type': 'application/pdf' } });
+            }
+            if (url.includes('/files/pdf-1?')) {
+                return jsonResponse({ body: { id: 'pdf-1', name: 'Quarterly Report', mimeType: 'application/pdf' } });
             }
             throw new Error(`unexpected url: ${url}`);
         });
         vi.stubGlobal('fetch', fetchMock);
+        vi.mocked(pdfParse).mockResolvedValueOnce({ text: 'Q3 revenue up 12%.', ...PDF_RESULT } as never);
 
         const result = await plugin.fetch({ target: 'pdf:pdf-1' }, makeCtx());
 
         expect(result.entries).toEqual([
             {
-                path: 'pdfs/quarterly-report.pdf',
-                content: expectedBase64,
-                contentType: 'application/pdf',
+                path: 'pdfs/quarterly-report.md',
+                content: 'Q3 revenue up 12%.',
+                contentType: 'text/markdown',
             },
         ]);
+        // The raw bytes were handed to the parser, not stored as base64.
+        expect(vi.mocked(pdfParse)).toHaveBeenCalledOnce();
+    });
+
+    it('skips a PDF with no extractable text layer (scanned/image-only)', async () => {
+        const plugin = drivePlugin({ accessToken: 'tok' });
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.includes('/files/pdf-1?alt=media')) {
+                return new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { 'Content-Type': 'application/pdf' } });
+            }
+            if (url.includes('/files/pdf-1?')) {
+                return jsonResponse({ body: { id: 'pdf-1', name: 'Scanned', mimeType: 'application/pdf' } });
+            }
+            throw new Error(`unexpected url: ${url}`);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        vi.mocked(pdfParse).mockResolvedValueOnce({ text: '   \n  \t', ...PDF_RESULT } as never);
+
+        const result = await plugin.fetch({ target: 'pdf:pdf-1' }, makeCtx());
+        expect(result.entries).toEqual([]);
     });
 
     it('returns empty entries when the PDF target 404s', async () => {
@@ -377,11 +423,17 @@ describe('drivePlugin', () => {
         expect(typeof result.fetchedAt).toBe('string');
     });
 
-    it('fetches a DOCX exported as markdown via Drive', async () => {
+    it('fetches an uploaded DOCX and converts it to markdown locally (mammoth, not Drive /export)', async () => {
         const plugin = drivePlugin({ accessToken: 'tok' });
         const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
             const url = String(input);
-            if (url.includes('/files/docx-1?') && !url.includes('export')) {
+            if (url.includes('/files/docx-1?alt=media')) {
+                return new Response(new Uint8Array([0x50, 0x4b, 0x03, 0x04]), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/octet-stream' },
+                });
+            }
+            if (url.includes('/files/docx-1?')) {
                 return jsonResponse({
                     body: {
                         id: 'docx-1',
@@ -390,12 +442,10 @@ describe('drivePlugin', () => {
                     },
                 });
             }
-            if (url.includes('/files/docx-1/export') && url.includes('text%2Fmarkdown')) {
-                return textResponse('# Meeting Notes\n\n- item 1\n- item 2');
-            }
             throw new Error(`unexpected url: ${url}`);
         });
         vi.stubGlobal('fetch', fetchMock);
+        vi.mocked(convertToMarkdown).mockResolvedValueOnce({ value: '# Meeting Notes\n\n- item 1\n- item 2', messages: [] } as never);
 
         const result = await plugin.fetch({ target: 'docx:docx-1' }, makeCtx());
 
@@ -406,6 +456,11 @@ describe('drivePlugin', () => {
                 contentType: 'text/markdown',
             },
         ]);
+        // Uploaded .docx must NOT use Drive's /export (only Google-native Docs).
+        for (const [input] of fetchMock.mock.calls) {
+            expect(String(input)).not.toContain('/export');
+        }
+        expect(vi.mocked(convertToMarkdown)).toHaveBeenCalledOnce();
     });
 
     it('returns empty entries when the DOCX target 404s', async () => {

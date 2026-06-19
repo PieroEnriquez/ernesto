@@ -1,6 +1,6 @@
 {
   "name": "ernesto",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "A Context System for Agent-Assisted Organizations",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
@@ -148,6 +148,8 @@
     "@toon-format/toon": "^2.1.0",
     "debug": "^4",
     "js-yaml": "^4.1.0",
+    "mammoth": "^1.8.0",
+    "pdf-parse": "^1.1.1",
     "picomatch": "^4.0.4"
   },
   "pnpm": {
