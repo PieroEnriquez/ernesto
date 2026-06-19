@@ -128,7 +128,13 @@ class Runner implements WorkflowRunner {
         // workflow reader. Shared with the resume path (`resumeDurable`).
         const { workflowDecl, declFromRegistry } = await this.resolveKind(kind, inputs);
 
-        const runId = opts.preallocatedRunId ?? `run-${kind}-${randomUUID()}`;
+        // The runId is embedded verbatim into downstream identifiers that
+        // require a `[A-Za-z0-9_-]` charset — notably the Slack HITL button's
+        // `action_id` (`ui_input_<runId>__…`). A `kind` that is a route URI
+        // (`<ws>://<name>`) would otherwise inject `:` and `/` into the runId
+        // and break the button → resume round-trip. Sanitize the kind to that
+        // charset here; the `randomUUID()` suffix keeps it unique regardless.
+        const runId = opts.preallocatedRunId ?? `run-${kind.replace(/[^A-Za-z0-9_-]/g, '_')}-${randomUUID()}`;
         this.seqByRun.set(runId, 0);
 
         const startedAt = Date.now();
