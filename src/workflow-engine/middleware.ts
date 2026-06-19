@@ -106,7 +106,10 @@ export async function runBefore(middlewares: ReadonlyArray<DispatchMiddleware>, 
  *  middleware omit the hook. Used by the runner when re-entering a paused
  *  run, to re-seed context (notably `workspaceView`) that is not
  *  persisted across the pause. Errors propagate, as in `runBefore`. */
-export async function runBeforeResume(middlewares: ReadonlyArray<DispatchMiddleware>, ctx: DispatchPreContext): Promise<DispatchPreContext> {
+export async function runBeforeResume(
+    middlewares: ReadonlyArray<DispatchMiddleware>,
+    ctx: DispatchPreContext,
+): Promise<DispatchPreContext> {
     let cur = ctx;
     for (const mw of middlewares) {
         if (!mw.beforeResume) continue;
