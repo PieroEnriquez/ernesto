@@ -973,7 +973,15 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
             // block actually changed vs HEAD, so it never blocks unrelated edits
             // to a workspace that already declares extractions. Principal-
             // dependent — skipped in scope-less mode.
-            if (principal && !isBypassed(EXTRACTION_CHANGE_REQUIRES_AGENT_OPS)) {
+            //
+            // Gate on the workspace's OWN WORKSPACE.md being in the patch:
+            // extractions live in its frontmatter, so an untouched WORKSPACE.md
+            // cannot have changed them. This also avoids a false positive on
+            // non-git materialized trees (e.g. the editor preview), where the
+            // `readOldFrontmatter` HEAD read misses and every declared extraction
+            // would otherwise look newly-added.
+            const wsMdTouched = touchedWorkspaceMds.has(`${wsDir}/WORKSPACE.md`);
+            if (principal && wsMdTouched && !isBypassed(EXTRACTION_CHANGE_REQUIRES_AGENT_OPS)) {
                 const oldExtractions = oldFmRead.exists ? oldFmRead.frontmatter?.extractions : undefined;
                 const extractionsChanged =
                     JSON.stringify(canonicalize(oldExtractions ?? null)) !== JSON.stringify(canonicalize(fm.extractions ?? null));

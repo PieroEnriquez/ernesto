@@ -658,6 +658,25 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
             const lint = makeLintWorkspace({ scopes: new Set([]), email: 'random@example.com' });
             expect(await lint({ diff, workspaces: ['hr'], workingTreeRoot: root })).toEqual({ ok: true });
         });
+
+        it('does NOT fire when WORKSPACE.md is untouched — even on a non-git tree where the HEAD read misses (editor-preview parity)', async () => {
+            // Reproduces the editor/settle materialized-tree path: the tree is
+            // NOT a git repo, so `readOldFrontmatter` (git show HEAD:…) misses.
+            // The patch edits a PROSE file; WORKSPACE.md is untouched. The rule
+            // must stay silent — extractions can't have changed — rather than
+            // treating the (unreadable-at-HEAD) declared extractions as new.
+            const nonGitRoot = await mkdtemp(path.join(tmpdir(), 'lint-nogit-'));
+            try {
+                await mkdir(path.join(nonGitRoot, 'workspaces/hr'), { recursive: true });
+                await writeFile(path.join(nonGitRoot, 'workspaces/hr/WORKSPACE.md'), HR_WITH_EXTRACT);
+                await writeFile(path.join(nonGitRoot, 'workspaces/hr/notes.md'), 'edited notes\n');
+                const diff = diffAdd('workspaces/hr/notes.md', 'edited notes\n');
+                const lint = makeLintWorkspace({ scopes: new Set(['hr-admin']), email: 'x@example.com' });
+                expect(await lint({ diff, workspaces: ['hr'], workingTreeRoot: nonGitRoot })).toEqual({ ok: true });
+            } finally {
+                await rm(nonGitRoot, { recursive: true, force: true });
+            }
+        });
     }
 
     it('creating a new workspace requires the principal to hold the declared admin scope', async () => {
