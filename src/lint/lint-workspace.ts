@@ -117,6 +117,16 @@ export const INVALID_ATTACHMENTS_YAML = 'invalid_attachments_yaml';
  *  duplicates. */
 export const TRIGGER_IGNORED_ON_MANAGED_AGENT = 'trigger_ignored_on_managed_agent';
 
+/** Lint error key emitted when a settle adds, modifies, or removes a
+ *  workspace's `extractions:` block without holding `ernesto:agent-ops`.
+ *  Declaring an extraction makes the worker pull source content via broad
+ *  shared service credentials into `extracted/` (readable by everyone with the
+ *  workspace's read scope), regardless of whether the editor can access that
+ *  source — so the ingestion surface is privileged, stricter than the
+ *  workspace's own admin scope. Exported so callers/tests reference the key
+ *  without stringly-typed duplicates. */
+export const EXTRACTION_CHANGE_REQUIRES_AGENT_OPS = 'extraction_change_requires_agent_ops';
+
 const MAX_FILE_BYTES = 1024 * 1024;
 const WORKSPACE_NAME_REGEX = /^[a-z][a-z0-9-]{0,39}$/;
 const ERNESTO_WORKSPACE = '_ernesto';
@@ -952,6 +962,33 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
 
             const fm = ws.frontmatter ?? {};
             const oldFmRead = await readOldFrontmatter(workingTreeRoot, wsDir);
+
+            // extraction_change_requires_agent_ops — an `extractions:` entry
+            // makes the extraction worker pull source content with broad shared
+            // service credentials into `extracted/` (readable by everyone with
+            // the workspace's read scope), regardless of whether the editor can
+            // access that source. That ingestion surface is privileged:
+            // changing it (add / modify / remove) requires `ernesto:agent-ops`,
+            // stricter than the workspace's own admin scope. Fires only when the
+            // block actually changed vs HEAD, so it never blocks unrelated edits
+            // to a workspace that already declares extractions. Principal-
+            // dependent — skipped in scope-less mode.
+            if (principal && !isBypassed(EXTRACTION_CHANGE_REQUIRES_AGENT_OPS)) {
+                const oldExtractions = oldFmRead.exists ? oldFmRead.frontmatter?.extractions : undefined;
+                const extractionsChanged =
+                    JSON.stringify(canonicalize(oldExtractions ?? null)) !==
+                    JSON.stringify(canonicalize(fm.extractions ?? null));
+                if (extractionsChanged && !hasAgentOps(principal)) {
+                    errors.push({
+                        code: EXTRACTION_CHANGE_REQUIRES_AGENT_OPS,
+                        workspace: w,
+                        message:
+                            `Changing the 'extractions:' block of workspace '${w}' requires the '${AGENT_OPS_SCOPE}' scope: ` +
+                            `extractions ingest source data via shared service credentials into extracted/, readable by ` +
+                            `everyone with the workspace's read scope. Ask Agent Ops to add or change extractions.`,
+                    });
+                }
+            }
 
             // archived_workspace_edit — a workspace that was ALREADY archived
             // at HEAD is frozen: only the unarchive flip (archived:false,

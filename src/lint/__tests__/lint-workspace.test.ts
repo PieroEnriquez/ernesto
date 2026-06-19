@@ -14,7 +14,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm, mkdir, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import * as path from 'path';
-import { lintWorkspace, makeLintWorkspace, UNREGISTERED_EXTRACTION_SOURCE } from '../lint-workspace';
+import { lintWorkspace, makeLintWorkspace, UNREGISTERED_EXTRACTION_SOURCE, EXTRACTION_CHANGE_REQUIRES_AGENT_OPS } from '../lint-workspace';
 import { buildWorkdir, seedWorkspace } from '../../__tests__/kit';
 import { runGit } from '../../workdir/run-git';
 
@@ -594,6 +594,62 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
         const result = await lint({ diff, workspaces: ['hr'], workingTreeRoot: root });
         expect(result).toEqual({ ok: true });
     });
+
+    // ── extraction_change_requires_agent_ops ────────────────────────────
+    // Adding/modifying/removing an `extractions:` entry ingests source data
+    // via shared service credentials into extracted/ (readable by everyone
+    // with the workspace's read scope) — privileged beyond the workspace's own
+    // admin scope. Only `ernesto:agent-ops` may change it.
+    {
+        const HR_NO_EXTRACT = ['---', 'name: hr', 'description: HR', 'admin: hr-admin', '---', '', '# HR', '', 'body'].join('\n');
+        const HR_WITH_EXTRACT = [
+            '---', 'name: hr', 'description: HR', 'admin: hr-admin',
+            'extractions:', '  - source: slack', '    target: channel:C04UQH21M5H',
+            '---', '', '# HR', '', 'body',
+        ].join('\n');
+
+        it('adding extractions WITHOUT agent-ops is denied (even for a workspace admin)', async () => {
+            await seedWorkspace(root, 'hr', HR_NO_EXTRACT);
+            await commitAll(root, 'seed');
+            await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', HR_WITH_EXTRACT);
+            const diff = diffModify('workspaces/hr/WORKSPACE.md', HR_NO_EXTRACT, HR_WITH_EXTRACT);
+            // hr-admin clears admin_denied, isolating the new rule.
+            const lint = makeLintWorkspace({ scopes: new Set(['hr-admin']), email: 'x@example.com' });
+            const failed = expectErrors(await lint({ diff, workspaces: ['hr'], workingTreeRoot: root }));
+            expect(failed.errors.some((e) => e.code === EXTRACTION_CHANGE_REQUIRES_AGENT_OPS && e.workspace === 'hr')).toBe(true);
+        });
+
+        it('adding extractions WITH agent-ops is allowed', async () => {
+            await seedWorkspace(root, 'hr', HR_NO_EXTRACT);
+            await commitAll(root, 'seed');
+            await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', HR_WITH_EXTRACT);
+            const diff = diffModify('workspaces/hr/WORKSPACE.md', HR_NO_EXTRACT, HR_WITH_EXTRACT);
+            const lint = makeLintWorkspace({ scopes: new Set(['ernesto:agent-ops']), email: 'ops@example.com' });
+            expect(await lint({ diff, workspaces: ['hr'], workingTreeRoot: root })).toEqual({ ok: true });
+        });
+
+        it('removing extractions WITHOUT agent-ops is also denied', async () => {
+            await seedWorkspace(root, 'hr', HR_WITH_EXTRACT);
+            await commitAll(root, 'seed');
+            await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', HR_NO_EXTRACT);
+            const diff = diffModify('workspaces/hr/WORKSPACE.md', HR_WITH_EXTRACT, HR_NO_EXTRACT);
+            const lint = makeLintWorkspace({ scopes: new Set(['hr-admin']), email: 'x@example.com' });
+            const failed = expectErrors(await lint({ diff, workspaces: ['hr'], workingTreeRoot: root }));
+            expect(failed.errors.some((e) => e.code === EXTRACTION_CHANGE_REQUIRES_AGENT_OPS)).toBe(true);
+        });
+
+        it('does NOT fire on an unrelated body edit when extractions are unchanged', async () => {
+            await seedWorkspace(root, 'hr', HR_WITH_EXTRACT);
+            await commitAll(root, 'seed');
+            const edited = HR_WITH_EXTRACT.replace('body', 'body — updated');
+            await writeStagedFile(root, 'workspaces/hr/WORKSPACE.md', edited);
+            const diff = diffModify('workspaces/hr/WORKSPACE.md', HR_WITH_EXTRACT, edited);
+            // No scopes at all — body edits default to everyone; extractions
+            // unchanged ⇒ the rule must stay silent and the settle passes.
+            const lint = makeLintWorkspace({ scopes: new Set([]), email: 'random@example.com' });
+            expect(await lint({ diff, workspaces: ['hr'], workingTreeRoot: root })).toEqual({ ok: true });
+        });
+    }
 
     it('creating a new workspace requires the principal to hold the declared admin scope', async () => {
         const newWs = ['---', 'name: newthing', 'description: a new workspace', 'admin: newthing-admin', '---'].join('\n');
