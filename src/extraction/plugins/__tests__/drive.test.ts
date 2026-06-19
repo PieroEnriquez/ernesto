@@ -149,6 +149,54 @@ describe('drivePlugin', () => {
         expect(paths).toEqual(['docs/doc-a.md', 'sheets/sheet-b.csv']);
     });
 
+    it('extracts raw PDF / DOCX / CSV uploads during a folder walk (knowledge-base folders like SEON)', async () => {
+        const plugin = drivePlugin({ accessToken: 'tok' });
+
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.includes('%27kb%27+in+parents')) {
+                return jsonResponse({
+                    body: {
+                        files: [
+                            { id: 'pdf-1', name: 'Open Ports', mimeType: 'application/pdf' },
+                            { id: 'docx-1', name: 'Rule Guide', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+                            { id: 'csv-1', name: 'Fraud Rules', mimeType: 'text/csv' },
+                            { id: 'img', name: 'Logo', mimeType: 'image/png' },
+                        ],
+                    },
+                });
+            }
+            if (url.includes('/files/pdf-1?') && !url.includes('alt=media')) {
+                return jsonResponse({ body: { id: 'pdf-1', name: 'Open Ports', mimeType: 'application/pdf' } });
+            }
+            if (url.includes('/files/pdf-1?alt=media')) {
+                return new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { 'Content-Type': 'application/pdf' } });
+            }
+            if (url.includes('/files/docx-1?') && !url.includes('export')) {
+                return jsonResponse({ body: { id: 'docx-1', name: 'Rule Guide', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' } });
+            }
+            if (url.includes('/files/docx-1/export')) {
+                return textResponse('# Rule Guide');
+            }
+            if (url.includes('/files/csv-1?') && !url.includes('alt=media')) {
+                return jsonResponse({ body: { id: 'csv-1', name: 'Fraud Rules', mimeType: 'text/csv' } });
+            }
+            if (url.includes('/files/csv-1?alt=media')) {
+                return textResponse('rule_id,name\n101,velocity\n');
+            }
+            throw new Error(`unexpected url: ${url}`);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        const result = await plugin.fetch({ target: 'folder:kb' }, makeCtx());
+
+        const paths = result.entries.map((e) => e.path).sort();
+        // PDF + DOCX + raw CSV all extracted; the image is ignored.
+        expect(paths).toEqual(['csv/fraud-rules.csv', 'docs/rule-guide.md', 'pdfs/open-ports.pdf']);
+        const csv = result.entries.find((e) => e.path === 'csv/fraud-rules.csv');
+        expect(csv?.content).toBe('rule_id,name\n101,velocity\n');
+    });
+
     it('refreshes the access token on 401 when a refresh token is provided', async () => {
         const plugin = drivePlugin({
             accessToken: 'old',

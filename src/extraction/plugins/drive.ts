@@ -4,8 +4,8 @@
  * Targets:
  *   - `doc:<fileId>`     — Google Doc, exported as Markdown.
  *   - `sheet:<fileId>`   — Google Sheet, exported as CSV.
- *   - `folder:<folderId>` — Folder, recursively walked; each child doc/sheet
- *     becomes an entry. Nested folders are traversed.
+ *   - `folder:<folderId>` — Folder, recursively walked; each child doc, sheet,
+ *     PDF, DOCX, or raw CSV becomes an entry. Nested folders are traversed.
  *   - `pdf:<fileId>`     — PDF binary fetched via `files/{id}?alt=media`.
  *     No in-process PDF parser is bundled (keeps deps light); the raw bytes
  *     are returned as a base64 string with `contentType: 'application/pdf'`
@@ -54,6 +54,7 @@ const MIME_DOC = 'application/vnd.google-apps.document';
 const MIME_SHEET = 'application/vnd.google-apps.spreadsheet';
 const MIME_PDF = 'application/pdf';
 const MIME_DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const MIME_CSV = 'text/csv';
 
 interface DriveFileMeta {
     id: string;
@@ -264,6 +265,23 @@ async function fetchDocxEntry(fileId: string, tokens: TokenState, ctx: Extractio
     };
 }
 
+async function fetchRawCsvEntry(fileId: string, tokens: TokenState, ctx: ExtractionContext): Promise<ExtractionEntry | null> {
+    const meta = await fetchMeta(fileId, tokens, ctx);
+    if (!meta) return null;
+
+    // A raw .csv UPLOAD (mimeType text/csv) is not a Google-native Sheet, so
+    // `export` doesn't apply — download the bytes verbatim via `alt=media`.
+    const url = `${DRIVE_FILES_API}/${encodeURIComponent(fileId)}?alt=media`;
+    const res = await driveRequest<string>(url, tokens, ctx, { asText: true });
+    if (!res.ok) return null;
+
+    return {
+        path: `csv/${slugify(meta.name)}.csv`,
+        content: res.data,
+        contentType: 'text/csv',
+    };
+}
+
 async function walkFolder(
     folderId: string,
     tokens: TokenState,
@@ -289,8 +307,23 @@ async function walkFolder(
             seen.add(child.id);
             const entry = await fetchSheetEntry(child.id, tokens, ctx);
             if (entry) out.push(entry);
+        } else if (child.mimeType === MIME_PDF) {
+            seen.add(child.id);
+            const entry = await fetchPdfEntry(child.id, tokens, ctx);
+            if (entry) out.push(entry);
+        } else if (child.mimeType === MIME_DOCX) {
+            seen.add(child.id);
+            const entry = await fetchDocxEntry(child.id, tokens, ctx);
+            if (entry) out.push(entry);
+        } else if (child.mimeType === MIME_CSV) {
+            seen.add(child.id);
+            const entry = await fetchRawCsvEntry(child.id, tokens, ctx);
+            if (entry) out.push(entry);
         }
-        // other mime types are ignored — drive plugin is doc/sheet/folder only
+        // Other mime types are ignored. A folder walk extracts the same types
+        // the single-target handlers support: Google Docs + Sheets, plus raw
+        // PDF / DOCX / CSV uploads (the shape of knowledge-base folders like
+        // the SEON Compliance Rules drive).
     }
 }
 
