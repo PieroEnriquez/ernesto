@@ -603,9 +603,18 @@ describe('makeLintWorkspace(principal) — read/write/admin scopes', () => {
     {
         const HR_NO_EXTRACT = ['---', 'name: hr', 'description: HR', 'admin: hr-admin', '---', '', '# HR', '', 'body'].join('\n');
         const HR_WITH_EXTRACT = [
-            '---', 'name: hr', 'description: HR', 'admin: hr-admin',
-            'extractions:', '  - source: slack', '    target: channel:C04UQH21M5H',
-            '---', '', '# HR', '', 'body',
+            '---',
+            'name: hr',
+            'description: HR',
+            'admin: hr-admin',
+            'extractions:',
+            '  - source: slack',
+            '    target: channel:C04UQH21M5H',
+            '---',
+            '',
+            '# HR',
+            '',
+            'body',
         ].join('\n');
 
         it('adding extractions WITHOUT agent-ops is denied (even for a workspace admin)', async () => {

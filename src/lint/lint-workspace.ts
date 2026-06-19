@@ -976,8 +976,7 @@ function build({ principal, bypass, getRegisteredSources }: BuildOptions): LintF
             if (principal && !isBypassed(EXTRACTION_CHANGE_REQUIRES_AGENT_OPS)) {
                 const oldExtractions = oldFmRead.exists ? oldFmRead.frontmatter?.extractions : undefined;
                 const extractionsChanged =
-                    JSON.stringify(canonicalize(oldExtractions ?? null)) !==
-                    JSON.stringify(canonicalize(fm.extractions ?? null));
+                    JSON.stringify(canonicalize(oldExtractions ?? null)) !== JSON.stringify(canonicalize(fm.extractions ?? null));
                 if (extractionsChanged && !hasAgentOps(principal)) {
                     errors.push({
                         code: EXTRACTION_CHANGE_REQUIRES_AGENT_OPS,
