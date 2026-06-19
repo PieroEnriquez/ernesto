@@ -132,7 +132,7 @@ describe('makeRouteStepHandler', () => {
         }
     });
 
-    it('bridges ctx.emit → emitComponent so route-level manifests fire', async () => {
+    it("does NOT auto-fire a route step's OWN render manifest (intermediate data stays private)", async () => {
         const renderingRoute = defineRoute({
             uri: 'reports://daily',
             scope: 'ws:read',
@@ -148,12 +148,17 @@ describe('makeRouteStepHandler', () => {
             log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
         });
         const emit = vi.fn();
-        await handler({ kind: 'route', uri: 'reports://daily', params: {} } as RouteStep, makeCtx({ emit }));
-        // The route's render manifest matched its output; emitComponent
-        // was wired to ctx.emit → bus and at least one fact.component
-        // event landed.
+        const result = await handler({ kind: 'route', uri: 'reports://daily', params: {} } as RouteStep, makeCtx({ emit }));
+        // Inside a workflow a route's output is intermediate data — its
+        // own render manifest must NOT surface to the thread. The data is
+        // still returned for downstream steps; only `step.render` (author-
+        // defined) or the HITL prompt / workflow outputs render.
         const componentEmits = emit.mock.calls.filter(([ev]) => ev?.type === 'fact.component');
-        expect(componentEmits.length).toBeGreaterThanOrEqual(1);
+        expect(componentEmits).toHaveLength(0);
+        expect(result.kind).toBe('completed');
+        if (result.kind === 'completed') {
+            expect((result.output as { rows: unknown[] }).rows).toEqual([{ x: 1 }, { x: 2 }]);
+        }
     });
 
     it('attaches step-level render manifest to output for the walker projector', async () => {

@@ -19,8 +19,7 @@
  */
 
 import type { RouteStep } from '../../workflows/types';
-import type { StepKindHandler, EngineLogger, EmitFactEvent } from '../types/handler';
-import type { UiComponent } from '../../components/types';
+import type { StepKindHandler, EngineLogger } from '../types/handler';
 import type { KindRegistry } from '../kind-registry';
 import { dispatchResolvedRoute } from '../../route/dispatch';
 import type { RouteContext } from '../../route/define-route';
@@ -109,20 +108,20 @@ export function makeRouteStepHandler(deps: RouteStepHandlerDeps): StepKindHandle
             };
         }
 
-        // Bridge route-level render manifests to the walker's step
-        // emit channel. Routes that declare `render: [...]` project
-        // `fact.component` events from inside workflow steps, same as
-        // they do from agent-issued `execute(...)` tool calls.
-        const emit: EmitFactEvent | undefined = ctx.emit;
-        const emitComponent: RouteContext['emitComponent'] = emit
-            ? (c): void => {
-                  emit({
-                      type: 'fact.component',
-                      component: c as unknown as UiComponent,
-                  });
-              }
-            : undefined;
-
+        // A route step does NOT auto-surface its OWN `render: [...]`
+        // manifest. Inside a workflow a route's output is intermediate
+        // data — it feeds downstream steps (`${{ steps.X.outputs }}`),
+        // seeds a HITL `prompt`, or rolls up into the workflow `outputs`.
+        // Auto-firing the route's render manifest dumps that raw result
+        // into the surface (e.g. the full warehouse report above a Create-
+        // CMT-Case HITL), which the workflow author never asked for. The
+        // surface shows only what the WORKFLOW defines: the HITL prompt,
+        // the workflow outputs, and any STEP-level `step.render` (handled
+        // below via `projectStepOutput`). So we deliberately leave
+        // `emitComponent` unset on the route context — the route still
+        // computes and returns its data; it just stays private. (Direct
+        // `execute(route)` tool calls keep their render: they go through
+        // the transport's own dispatch, not this workflow step handler.)
         const routeCtx: RouteContext = {
             user: ctx.principal.email ? { id: ctx.principal.userId, email: ctx.principal.email } : { id: ctx.principal.userId },
             scopes: ctx.principal.scopes,
@@ -134,7 +133,6 @@ export function makeRouteStepHandler(deps: RouteStepHandlerDeps): StepKindHandle
             // `by.runId` reads it as the authoritative, engine-attested value).
             ...(ctx.runId ? { runId: ctx.runId } : {}),
             ...(ctx.workdirRoot ? { workdirRoot: ctx.workdirRoot } : {}),
-            ...(emitComponent ? { emitComponent } : {}),
         };
 
         const result = await dispatchResolvedRoute(decl.route, step.params ?? {}, routeCtx);
