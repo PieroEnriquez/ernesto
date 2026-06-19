@@ -14,12 +14,16 @@
  *   - `docx:<fileId>`    — DOCX exported as Markdown via Drive's `export`
  *     endpoint (`mimeType=text/markdown`). Drive handles conversion server-side.
  *
- * Auth model:
- *   - Authorization: Bearer <accessToken> on every request.
- *   - If a refreshToken is provided and a 401 is observed, the plugin attempts
- *     one refresh against `https://oauth2.googleapis.com/token` and retries the
- *     same request once. Any subsequent 401 (or 401 without a refresh token)
- *     surfaces as a thrown error so the dispatcher reports `fetch_failed`.
+ * Auth model (two paths — pass `getAccessToken` OR `accessToken`):
+ *   - `getAccessToken` (service-account path): the plugin calls it to mint the
+ *     initial Bearer and again on any 401 (SA tokens expire ~1h; the
+ *     google-auth-library client re-mints transparently). No expiring token in
+ *     the environment.
+ *   - `accessToken` (+ optional `refreshToken`/`clientId`/`clientSecret`,
+ *     user-OAuth path): Bearer on every request; on a 401 with a refreshToken,
+ *     one refresh against `https://oauth2.googleapis.com/token`, then retry once.
+ *   - A 401 with neither a refresh token nor a provider surfaces as a thrown
+ *     error so the dispatcher reports `fetch_failed`.
  *
  * Network:
  *   - 30s timeout per HTTP call.
@@ -88,15 +92,27 @@ interface TokenState {
     refreshToken?: string;
     clientId?: string;
     clientSecret?: string;
+    getAccessToken?: () => Promise<string>;
     driveId?: string;
 }
 
 export interface DrivePluginOptions {
-    accessToken: string;
+    /** A long-lived OAuth access token (the user-OAuth path). Either this OR
+     *  `getAccessToken` must be provided. */
+    accessToken?: string;
     refreshToken?: string;
     /** Used together with refreshToken for the refresh request body. */
     clientId?: string;
     clientSecret?: string;
+    /**
+     * Token provider — mint/refresh the bearer on demand. Use this for SERVICE
+     * ACCOUNT auth: pass `() => serviceAccountClient.getAccessToken()` (the
+     * google-auth-library client re-mints transparently). The plugin calls it
+     * for the initial token and again on any 401, since SA access tokens expire
+     * (~1h). Takes precedence over the static `accessToken` + OAuth refresh
+     * flow, so no expiring token has to be configured in the environment.
+     */
+    getAccessToken?: () => Promise<string>;
     /**
      * Shared Drive ID. When set, list queries scope to this Shared Drive
      * (`corpora=drive&driveId=<id>&includeItemsFromAllDrives=true`) and every
@@ -108,8 +124,9 @@ export interface DrivePluginOptions {
 }
 
 export function drivePlugin(opts: DrivePluginOptions) {
-    if (!opts || typeof opts.accessToken !== 'string' || opts.accessToken.length === 0) {
-        throw new Error('drivePlugin: accessToken is required');
+    const hasStaticToken = typeof opts?.accessToken === 'string' && opts.accessToken.length > 0;
+    if (!opts || (!hasStaticToken && typeof opts.getAccessToken !== 'function')) {
+        throw new Error('drivePlugin: accessToken or getAccessToken is required');
     }
 
     return defineExtraction({
@@ -146,11 +163,15 @@ function withSharedDriveParams(url: string, driveId: string | undefined): string
 
 async function fetchDrive(req: ExtractionRequest, ctx: ExtractionContext, opts: DrivePluginOptions): Promise<ExtractionResult> {
     const target = parseTarget(req.target);
+    // Mint the initial bearer from the provider (service-account path) when
+    // given; otherwise use the static OAuth access token.
+    const accessToken = opts.getAccessToken ? await opts.getAccessToken() : (opts.accessToken ?? '');
     const tokens: TokenState = {
-        accessToken: opts.accessToken,
+        accessToken,
         refreshToken: opts.refreshToken,
         clientId: opts.clientId,
         clientSecret: opts.clientSecret,
+        getAccessToken: opts.getAccessToken,
         driveId: opts.driveId,
     };
 
@@ -376,11 +397,17 @@ async function driveRequest<T>(
         }
 
         if (response.status === 401) {
-            if (refreshed || !tokens.refreshToken) {
+            if (refreshed || (!tokens.refreshToken && !tokens.getAccessToken)) {
                 throw new Error('drive: unauthorized (401)');
             }
             refreshed = true;
-            await refreshAccessToken(tokens, ctx);
+            // Provider path (service account) re-mints; OAuth path runs the
+            // refresh-token grant.
+            if (tokens.getAccessToken) {
+                tokens.accessToken = await tokens.getAccessToken();
+            } else {
+                await refreshAccessToken(tokens, ctx);
+            }
             continue;
         }
 

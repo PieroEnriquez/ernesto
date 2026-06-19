@@ -159,7 +159,11 @@ describe('drivePlugin', () => {
                     body: {
                         files: [
                             { id: 'pdf-1', name: 'Open Ports', mimeType: 'application/pdf' },
-                            { id: 'docx-1', name: 'Rule Guide', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+                            {
+                                id: 'docx-1',
+                                name: 'Rule Guide',
+                                mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                            },
                             { id: 'csv-1', name: 'Fraud Rules', mimeType: 'text/csv' },
                             { id: 'img', name: 'Logo', mimeType: 'image/png' },
                         ],
@@ -173,7 +177,13 @@ describe('drivePlugin', () => {
                 return new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { 'Content-Type': 'application/pdf' } });
             }
             if (url.includes('/files/docx-1?') && !url.includes('export')) {
-                return jsonResponse({ body: { id: 'docx-1', name: 'Rule Guide', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' } });
+                return jsonResponse({
+                    body: {
+                        id: 'docx-1',
+                        name: 'Rule Guide',
+                        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    },
+                });
             }
             if (url.includes('/files/docx-1/export')) {
                 return textResponse('# Rule Guide');
@@ -244,6 +254,43 @@ describe('drivePlugin', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         await expect(plugin.fetch({ target: 'doc:doc-1' }, makeCtx())).rejects.toThrow(/unauthorized/i);
+    });
+
+    it('mints + re-mints the bearer via getAccessToken (service-account path, no static token)', async () => {
+        let minted = 0;
+        const plugin = drivePlugin({
+            getAccessToken: async () => `sa-token-${++minted}`,
+        });
+
+        let metaCalls = 0;
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            // No OAuth token endpoint should ever be hit on the provider path.
+            if (url.includes('oauth2.googleapis.com')) throw new Error('OAuth refresh must not run for the SA path');
+            if (url.includes('/files/doc-1?')) {
+                metaCalls += 1;
+                const auth = (init?.headers as Record<string, string> | undefined)?.Authorization;
+                if (metaCalls === 1) {
+                    expect(auth).toBe('Bearer sa-token-1'); // minted up-front
+                    return jsonResponse({ status: 401, body: { error: 'unauthorized' } });
+                }
+                expect(auth).toBe('Bearer sa-token-2'); // re-minted on 401
+                return jsonResponse({ body: { id: 'doc-1', name: 'SA Doc', mimeType: 'application/vnd.google-apps.document' } });
+            }
+            if (url.includes('/files/doc-1/export')) {
+                return textResponse('# sa');
+            }
+            throw new Error(`unexpected url: ${url}`);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        const result = await plugin.fetch({ target: 'doc:doc-1' }, makeCtx());
+        expect(result.entries).toEqual([{ path: 'docs/sa-doc.md', content: '# sa', contentType: 'text/markdown' }]);
+        expect(minted).toBe(2);
+    });
+
+    it('drivePlugin requires accessToken OR getAccessToken', () => {
+        expect(() => drivePlugin({} as never)).toThrow(/accessToken or getAccessToken/);
     });
 
     it('retries with exponential backoff on 429', async () => {
