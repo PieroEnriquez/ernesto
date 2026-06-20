@@ -56,6 +56,9 @@ describe('defineRoute', () => {
                 projectPhysical: async () => {
                     throw new Error('stub view');
                 },
+                settleStaging: async () => {
+                    throw new Error('stub view: settleStaging');
+                },
             },
             log: { info: () => {}, warn: () => {}, error: () => {} },
         };

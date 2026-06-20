@@ -105,7 +105,13 @@ export type { WorkflowDeclaration, WorkflowStep, InputStep, AgentStep, DynamicWo
 // `ernesto/route` for tests + advanced internal use.
 export { defineRoute, RouteRegistry, selectPhysicalProjector } from './route';
 export type { DispatchResult, DispatchErrorCode, RenderEntry } from './route';
-export type { WorkspaceView, RouteContext } from './route/define-route';
+export type {
+    WorkspaceView,
+    RouteContext,
+    SettleStaging,
+    SettleDraftStore,
+    ReconcileResult,
+} from './route/define-route';
 export type { PhysicalProjector, WriteThroughEngine, SelectPhysicalProjectorOpts } from './route';
 
 // ─── Managed agents (declaration + composition) ──────────────────────────

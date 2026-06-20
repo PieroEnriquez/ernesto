@@ -20,8 +20,76 @@
 import type { z } from 'zod';
 import type { RenderEntry } from './render';
 import type { Logger, Principal } from '../shared/types';
+import type { Transport } from '../managed-agents/types';
+import type { WorkspacePatch } from '../workspaces/overlay';
+import type { Workdir } from '../workdir/types';
 
 export type RouteScope = string;
+
+/**
+ * Result of one `PatchStore.reconcileToMasterHead` — the subset the settle
+ * tail reads. `held` (with its reason) means the base did NOT advance (stale
+ * clone / overlapping conflicts); the settle tail logs it. The full backend
+ * result carries far more diagnostics; the route never needs them.
+ */
+export interface ReconcileResult {
+    held: boolean;
+    heldReason?: string;
+    headSha: string;
+}
+
+/**
+ * The narrow, principal-bound slice of the durable per-user draft store that a
+ * settle needs — pre-bound to the caller's user id by the backend
+ * `settleStaging()` impl, so the route hosts the settle tail WITHOUT reaching
+ * for an ambient `PatchStore`. Each method maps 1:1 to the backend PatchStore
+ * (minus the userId arg, which the view closed over).
+ */
+export interface SettleDraftStore {
+    /** Clobber-safe per-file merge of the draft onto `headSha`; the settle's
+     *  pre-3-way reconcile AND the post-settle base re-pin (the add/add
+     *  deadlock fix) both call it. */
+    reconcileToMasterHead(headSha: string): Promise<ReconcileResult>;
+    /** Project the (now-reconciled) durable draft for this user. */
+    forUser(): Promise<WorkspacePatch>;
+    /** Forget exactly the settled subset (content-keyed compare-and-forget). */
+    forgetSettled(committedPaths: readonly string[], settledPatch: WorkspacePatch): Promise<void>;
+    /** Draft paths under the given workspace prefixes — feeds the guiding
+     *  selection-error lists (`selection_required` / `invalid_path`). */
+    listDraftPaths(workspaces: readonly string[]): Promise<string[]>;
+}
+
+/**
+ * Everything the shared settle-core needs to commit one principal's draft,
+ * handed back by `WorkspaceView.settleStaging()` so the route never constructs
+ * an ambient `PatchStore` or opens a workdir itself. The draft has already been
+ * reconciled onto `masterHeadSha` and re-projected into `patch` (cheap); the
+ * disposable staging tree is opened + prepared PRISTINE LAZILY via
+ * `openWorkdir()` — the core forces it only when it is actually about to commit,
+ * so a pre-commit selection refusal (`selection_required` / `invalid_path` /
+ * `empty_patch`) never materializes a workdir (parity with the pre-collapse
+ * tails, which short-circuited those before opening their staging tree).
+ */
+export interface SettleStaging {
+    /** Open (refresh to current main + reset PRISTINE for `read-tree -m -u`) the
+     *  disposable on-disk git staging tree `settleFromOverlay` shells git
+     *  through, returning the `Workdir` (carrying the per-user `lock` so
+     *  concurrent same-user settles serialize, and `workingTreeRoot` for the
+     *  post-settle master-FS propagate). LAZY: the core calls this only on the
+     *  commit path, AFTER every cheap selection/empty refusal has passed — so a
+     *  refused settle opens nothing. Memoized by the impl. */
+    openWorkdir(): Promise<Workdir>;
+    /** The caller's durable draft, AFTER the pre-settle reconcile onto
+     *  `masterHeadSha`. */
+    patch: WorkspacePatch;
+    /** `patch.baseSha` lifted out for the settle input (the merge base). */
+    baseSha: string;
+    /** Master-FS HEAD the draft was reconciled onto — the settle's `ours`. */
+    masterHeadSha: string;
+    /** Principal-bound draft store for the forget / re-pin / list ops the
+     *  tail runs after the commit. */
+    draft: SettleDraftStore;
+}
 
 /**
  * A bound, overlay-backed view of one principal's `master-FS ⊕ draft`.
@@ -54,6 +122,18 @@ export interface WorkspaceView {
     /** LAZY + memoized: materialize a real on-disk workdir and return its root.
      *  Only workdir-bound routes call this; pure readers must not. */
     projectPhysical(): Promise<{ workdirRoot: string }>;
+    /**
+     * Open a DISPOSABLE git staging tree + the caller's reconciled draft +
+     * base — everything `_ernesto://settle` needs to commit, without the route
+     * reaching for an ambient `PatchStore` or opening a workdir itself. The
+     * impl (backend `makeOverlayWorkspaceView`) opens a per-user staging
+     * workdir, resets it pristine, reconciles the durable draft onto current
+     * master HEAD, and re-projects it.
+     *
+     * Pure-reader views (guidance, search, tests) leave this unimplemented:
+     * the default throws, so a non-settle dispatch never pays the cost and a
+     * mis-wired settle fails loudly rather than corrupting the repo. */
+    settleStaging(): Promise<SettleStaging>;
 }
 
 export interface RouteContext {
@@ -74,6 +154,25 @@ export interface RouteContext {
      *  eager-projection routes. */
     workspaceView: WorkspaceView;
     log: Logger;
+    /**
+     * Transport that originated this dispatch chain (`in-process` | `mcp` |
+     * `laptop` | `vm`). Populated by the route-step handler from the run's
+     * `routing.transport`. The settle route reads it to stamp the commit's
+     * `Transport`/`Isolation` trailers — the one place a route's behavior is
+     * (cosmetically) transport-aware. Absent for legacy/test dispatches that
+     * don't set a transport (settle then defaults the trailer to `in-process`).
+     *
+     * Promotes the prior backend `ctx as { transport? }` cast at the settle
+     * route into a typed field (Raptor-3 W0). */
+    transport?: Transport;
+    /**
+     * Id of the bound workdir for this dispatch, when one was resolved
+     * (in-process session workdir). Populated by the route-step handler from
+     * `routing.context.workdirId`. The settle route stamps it as the commit's
+     * `Workdir-Id` trailer. Absent on transports that hold no durable workdir
+     * (mcp/laptop/vm use a per-user disposable staging tree). Promotes the
+     * prior backend cast (Raptor-3 W0). */
+    workdirId?: string;
     /**
      * Slug of the agent currently running this dispatch — populated by
      * the backend MCP server adapter at agent-dispatch creation time. Absent

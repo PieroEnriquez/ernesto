@@ -131,6 +131,18 @@ export function makeRouteStepHandler(deps: RouteStepHandlerDeps): StepKindHandle
                   }
                 : undefined;
 
+        // Transport + bound workdir id flow from the run's routing onto the
+        // route ctx as TYPED fields (Raptor-3 W0) — promoting the backend's
+        // prior `ctx as { transport?, workdirId? }` cast at `_ernesto://settle`.
+        // `transport` lives on routing directly; `workdirId` rides the
+        // transport's free-form `routing.context` blob (set by the in-process
+        // session adapter). The settle route reads both for its commit trailers.
+        const transport = ctx.routing.transport;
+        const workdirId =
+            typeof ctx.routing.context?.workdirId === 'string'
+                ? ctx.routing.context.workdirId
+                : undefined;
+
         const routeCtx: RouteContext = {
             user: ctx.principal.email ? { id: ctx.principal.userId, email: ctx.principal.email } : { id: ctx.principal.userId },
             scopes: ctx.principal.scopes,
@@ -142,6 +154,8 @@ export function makeRouteStepHandler(deps: RouteStepHandlerDeps): StepKindHandle
             // `by.runId` reads it as the authoritative, engine-attested value).
             ...(ctx.runId ? { runId: ctx.runId } : {}),
             ...(ctx.workdirRoot ? { workdirRoot: ctx.workdirRoot } : {}),
+            ...(transport ? { transport } : {}),
+            ...(workdirId ? { workdirId } : {}),
             ...(emitComponent ? { emitComponent } : {}),
         };
 

@@ -18,6 +18,9 @@ const stubView: WorkspaceView = {
     projectPhysical: async () => {
         throw new Error('stub view: projectPhysical not available');
     },
+    settleStaging: async () => {
+        throw new Error('stub view: settleStaging not available');
+    },
 };
 
 const makeCtx = (scopes: Iterable<string>): RouteContext => ({

@@ -29,6 +29,9 @@ const stubView: WorkspaceView = {
     projectPhysical: async () => {
         throw new Error('stub view');
     },
+    settleStaging: async () => {
+        throw new Error('stub view: settleStaging');
+    },
 };
 
 function makeCtx(overrides: Partial<HandlerContext> = {}): HandlerContext {
