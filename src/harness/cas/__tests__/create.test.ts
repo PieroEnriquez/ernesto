@@ -308,6 +308,59 @@ describe('casCreateAgent tool-allowlist enforcement (negative)', () => {
         ).rejects.toThrow(/tools|unsupported|cannot enforce/i);
     });
 
+    // boundary: cas-native-off-switch
+    // `disableNativeTools` is the HARD off-switch: it must lower the SDK's
+    // `Options.tools` to `[]` ("disable all built-ins"), so NO native tool
+    // (Read/Write/Edit/MultiEdit/Bash/Glob/Grep/Task/WebFetch/WebSearch/…)
+    // reaches the model — categorically, not by enumerating a denylist.
+    // It WINS over any `tools` allowlist.
+    it('disableNativeTools lowers Options.tools to [] (all native built-ins off)', async () => {
+        querySpy.mockReturnValue(makeAsyncIterable([{ type: 'result', subtype: 'success', result: 'ok' }]));
+
+        const agent = await casCreateAgent(
+            {
+                systemPrompt: 'be terse',
+                model: 'claude-haiku-4-5',
+                maxTurns: 5,
+                disableNativeTools: true,
+            },
+            { agentId: 'native-off-1' },
+        );
+        await (await agent.send('hi')).wait();
+
+        const call = querySpy.mock.calls[0][0] as { options: { tools?: string[] } };
+        // EXACTLY the empty allowlist — present, and empty.
+        expect(call.options.tools).toEqual([]);
+        // Pin the dangerous natives specifically as unreachable.
+        for (const banned of ['Write', 'Edit', 'MultiEdit', 'Bash', 'Read', 'Glob', 'Grep', 'Task', 'WebFetch', 'WebSearch', 'NotebookEdit', 'TodoWrite']) {
+            expect(call.options.tools).not.toContain(banned);
+        }
+    });
+
+    // disableNativeTools wins even when a (would-be permissive) tools
+    // allowlist is also declared — the off-switch is absolute.
+    it('disableNativeTools overrides a declared tools allowlist (still [])', async () => {
+        querySpy.mockReturnValue(makeAsyncIterable([{ type: 'result', subtype: 'success', result: 'ok' }]));
+
+        const agent = await casCreateAgent(
+            {
+                systemPrompt: 'be terse',
+                model: 'claude-haiku-4-5',
+                maxTurns: 5,
+                disableNativeTools: true,
+                tools: [
+                    { kind: 'builtin', name: 'Read' },
+                    { kind: 'builtin', name: 'Bash' },
+                ],
+            },
+            { agentId: 'native-off-2' },
+        );
+        await (await agent.send('hi')).wait();
+
+        const call = querySpy.mock.calls[0][0] as { options: { tools?: string[] } };
+        expect(call.options.tools).toEqual([]);
+    });
+
     // boundary: cas-disallowed-tools-denied (expected to HOLD)
     // The one tool restriction CAS DOES honor: an explicit disallowedTools
     // deny-list must reach Options.disallowedTools.

@@ -178,10 +178,19 @@ export async function casCreateAgent(def: AgentDefinition, opts: CasCreateOption
  * engine can't enforce must refuse.
  */
 function coerceToCompiledAgent(def: AgentDefinition, opts: CasCreateOptions): CompiledAgent {
-    // Lower the declared allowlist first. Fails closed on any
+    // Hard native off-switch wins over any allowlist. `disableNativeTools`
+    // forces the SDK's documented `Options.tools: []` ("disable all
+    // built-ins"), so NO native tool reaches the model — categorically, not
+    // by enumerating a denylist. An empty allowlist is the real off-switch
+    // (vs. `undefined`, which lets the SDK's full preset through). MCP tools
+    // are unaffected (`tools: []` governs the built-in preset only).
+    //
+    // Lower the declared allowlist otherwise. Fails closed on any
     // unenforceable spec, so an untranslatable restriction never reaches
     // either branch as a silently-dropped allowlist.
-    const toolAllowlist = toBuiltinAllowlist(def.tools);
+    const toolAllowlist = def.disableNativeTools
+        ? []
+        : toBuiltinAllowlist(def.tools);
 
     // Pass-through only when the caller hasn't asked for transport
     // composition. When `opts.transport` is set we must run
@@ -203,7 +212,10 @@ function coerceToCompiledAgent(def: AgentDefinition, opts: CasCreateOptions): Co
             mcpServers: def.mcpServers ?? [],
             outputFormat: def.outputFormat,
             disallowedTools: def.disallowedTools,
-            ...(toolAllowlist ? { tools: toolAllowlist } : {}),
+            // `!== undefined` (not truthiness) so an EMPTY allowlist (`[]`,
+            // from `disableNativeTools`) survives as a real "disable all
+            // built-ins" rather than being dropped to the SDK default surface.
+            ...(toolAllowlist !== undefined ? { tools: toolAllowlist } : {}),
         };
     }
 
@@ -232,7 +244,11 @@ function coerceToCompiledAgent(def: AgentDefinition, opts: CasCreateOptions): Co
     // `compileAgent`'s input (`AgentDeclaration`) carries no `tools`, so
     // it can't forward the allowlist itself — attach the lowered
     // allowlist onto its result so the restriction survives this branch.
-    return toolAllowlist ? { ...compiled, tools: toolAllowlist } : compiled;
+    // `!== undefined` so an EMPTY allowlist (`disableNativeTools` → `[]`)
+    // survives as the SDK's "disable all built-ins", not a dropped restriction.
+    return toolAllowlist !== undefined
+        ? { ...compiled, tools: toolAllowlist }
+        : compiled;
 }
 
 /**

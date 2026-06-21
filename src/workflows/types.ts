@@ -214,6 +214,15 @@ export interface AgentStep extends BaseStep {
     tools?: string[];
     /** Built-in tool deny-list; complements `tools`. */
     disallowedTools?: string[];
+    /**
+     * Hard off-switch for ALL native SDK built-in tools (Read/Write/Edit/
+     * MultiEdit/Bash/Glob/Grep/Task/WebFetch/WebSearch/…). When `true`, the
+     * harness lowers the SDK's `Options.tools` to `[]` ("disable all
+     * built-ins") — no native tool reaches the model, regardless of `tools`.
+     * MCP tools survive. Used by the backend read-only turn so a write-free
+     * surface cannot fall back to the SDK's full built-in preset.
+     */
+    disableNativeTools?: boolean;
     /** Optional structured output schema. */
     outputFormat?: JsonSchemaOutputFormat;
     /** User-turn prompt body; supports `{{ }}` string templating. */

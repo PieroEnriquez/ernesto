@@ -72,6 +72,19 @@ export interface AgentDefinition {
     maxTurns?: number;
     outputFormat?: JsonSchemaOutputFormat;
     disallowedTools?: string[];
+    /**
+     * Hard off-switch for ALL native SDK built-in tools (Read/Write/Edit/
+     * MultiEdit/Bash/Glob/Grep/Task/WebFetch/WebSearch/NotebookEdit/
+     * TodoWrite/…). When `true`, the harness lowers the SDK's `Options.tools`
+     * to `[]` — the SDK's documented "disable all built-ins" — so NO native
+     * tool reaches the model regardless of what (if anything) `tools`
+     * declares. MCP tools are unaffected (`tools: []` only governs the
+     * built-in preset). This is categorically complete: a native tool the
+     * host never enumerated still cannot leak, because the allowlist is
+     * empty rather than a hand-maintained denylist. Defaults to absent
+     * (the SDK's default surface / any declared allowlist applies).
+     */
+    disableNativeTools?: boolean;
     /** Backend-specific MCP server ids. The CAS adapter resolves these
      *  through a backend-private registry; other harnesses ignore. */
     mcpServers?: string[];

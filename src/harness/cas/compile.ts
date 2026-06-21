@@ -104,7 +104,13 @@ export function compileAgentToSdkOptions(compiled: CompiledAgent, ctx: CompileCo
         permissionMode: 'bypassPermissions',
         disallowedTools,
         includePartialMessages: true,
-        ...(ctx.tools ? { tools: ctx.tools } : {}),
+        // `!== undefined` (not truthiness): an EMPTY allowlist (`[]`) is the
+        // SDK's documented "disable all built-in tools" and MUST reach the
+        // SDK as `tools: []`. Truthiness happens to keep `[]` (it's truthy),
+        // but pinning the contract to "present ⇒ forward" guards against a
+        // future refactor silently dropping the off-switch back to the
+        // full-preset default.
+        ...(ctx.tools !== undefined ? { tools: ctx.tools } : {}),
         // SDK isolation — do not auto-load `cwd/CLAUDE.md`. The
         // platform body is composed through `compileAgent` and lives in
         // `systemPrompt`. (Isolation here is the SDK setting-load mode,

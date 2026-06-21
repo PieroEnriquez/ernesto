@@ -169,4 +169,12 @@ export interface CompiledAgent {
      * Absent ≡ no allowlist (the SDK's full default surface applies).
      */
     tools?: string[];
+    /**
+     * Hard off-switch for ALL native SDK built-in tools. When `true`, the
+     * SDK-options compiler emits `Options.tools: []` (the SDK's documented
+     * "disable all built-ins"), overriding any `tools` allowlist — no native
+     * tool reaches the model; MCP tools survive. Carried from
+     * `AgentDefinition.disableNativeTools` through `coerceToCompiledAgent`.
+     */
+    disableNativeTools?: boolean;
 }
