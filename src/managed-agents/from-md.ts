@@ -127,6 +127,7 @@ export function toAgentDeclaration(md: ManagedAgentMd): AgentDeclaration {
 
     const provider = providerField(fm, slug);
     const harness = harnessField(fm, slug);
+    const execution = executionField(fm, slug);
     const systemPrompt = composeSystemPrompt(fm.systemPrompt, md.body, slug);
     const outputFormat = outputFormatField(fm, slug);
     const scope = strArrayField(fm, 'scope');
@@ -138,6 +139,7 @@ export function toAgentDeclaration(md: ManagedAgentMd): AgentDeclaration {
         name: strField(fm, 'name'),
         description: strField(fm, 'description'),
         ...(harness !== undefined ? { harness } : {}),
+        ...(execution !== undefined ? { execution } : {}),
         provider,
         model: strField(fm, 'model'),
         systemPrompt,
@@ -234,11 +236,23 @@ function providerField(fm: Record<string, unknown>, slug: string): 'ANTHROPIC' |
     throw new Error(`managed-agents/${slug}.md: provider must be "ANTHROPIC" or "OPEN_ROUTER"`);
 }
 
-function harnessField(fm: Record<string, unknown>, slug: string): 'cas' | 'cursor' | 'fragua-pi' | 'remote-vm' | undefined {
+function harnessField(fm: Record<string, unknown>, slug: string): 'cas' | 'cursor' | 'fragua-pi' | undefined {
     const v = fm.harness;
     if (v === undefined) return undefined;
-    if (v === 'cas' || v === 'cursor' || v === 'fragua-pi' || v === 'remote-vm') return v;
-    throw new Error(`managed-agents/${slug}.md: harness must be "cas" | "cursor" | "fragua-pi" | "remote-vm"`);
+    if (v === 'remote-vm') {
+        throw new Error(
+            `managed-agents/${slug}.md: harness 'remote-vm' is no longer a harness — set 'execution: vm' instead`,
+        );
+    }
+    if (v === 'cas' || v === 'cursor' || v === 'fragua-pi') return v;
+    throw new Error(`managed-agents/${slug}.md: harness must be "cas" | "cursor" | "fragua-pi"`);
+}
+
+function executionField(fm: Record<string, unknown>, slug: string): 'in-process' | 'vm' | undefined {
+    const v = fm.execution;
+    if (v === undefined) return undefined;
+    if (v === 'in-process' || v === 'vm') return v;
+    throw new Error(`managed-agents/${slug}.md: execution must be "in-process" | "vm"`);
 }
 
 function outputFormatField(fm: Record<string, unknown>, slug: string): JsonSchemaOutputFormat | undefined {

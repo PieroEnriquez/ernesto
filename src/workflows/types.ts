@@ -153,11 +153,25 @@ export interface InputStep extends BaseStep {
 }
 
 /**
- * Runtime backend that executes an agent step. The choice belongs to
- * the agent declaration (`AgentDeclaration.harness`), not to the step
- * kind — every agent step is `kind: 'agent'`. Defaults to `'cas'`.
+ * The DRIVER that executes an agent turn — orthogonal to WHERE it runs
+ * (see {@link AgentExecution}). The choice belongs to the agent
+ * declaration (`AgentDeclaration.harness`), not to the step kind —
+ * every agent step is `kind: 'agent'`. Defaults to `'cas'` (the
+ * in-process Claude driver).
+ *
+ * `'remote-vm'` is NOT a harness — it was "the cas driver running in a
+ * VM". That is now expressed as `harness: 'cas' + execution: 'vm'`.
  */
-export type AgentHarness = 'cas' | 'cursor' | 'fragua-pi' | 'remote-vm';
+export type AgentHarness = 'cas' | 'cursor' | 'fragua-pi';
+
+/**
+ * WHERE an agent turn runs — orthogonal to the {@link AgentHarness}
+ * driver. `'in-process'` runs inside the backend process; `'vm'` runs
+ * inside an isolated microVM (the former "remote-vm"). Absent ⇒ the
+ * runtime chooses (VM when the step uses tools and the VM tier is
+ * wired, in-process otherwise).
+ */
+export type AgentExecution = 'in-process' | 'vm';
 
 /**
  * Single agent step. Two forms:
@@ -183,6 +197,13 @@ export interface AgentStep extends BaseStep {
     inputs?: Record<string, unknown>;
     /** Per-call harness override (rarely needed when `ref` is set). */
     harness?: AgentHarness;
+    /**
+     * WHERE this turn runs — orthogonal to `harness`. Absent ⇒ the
+     * runtime decides ('vm' when the step uses tools and the VM tier
+     * is wired, else 'in-process'). Set `'vm'` to force the microVM
+     * (the former `harness: 'remote-vm'`).
+     */
+    execution?: AgentExecution;
     /** Per-call model override; required in inline form. */
     model?: string;
     /** Required in inline form; optional override in ref form. */

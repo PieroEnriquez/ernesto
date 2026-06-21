@@ -93,7 +93,7 @@ export {
     parseDynamicWorkflowJs,
     DynamicWorkflowParseError,
 } from './workflows';
-export type { WorkflowDeclaration, WorkflowStep, InputStep, AgentStep, DynamicWorkflowStep, StepKind } from './workflows';
+export type { WorkflowDeclaration, WorkflowStep, InputStep, AgentStep, AgentHarness, AgentExecution, DynamicWorkflowStep, StepKind } from './workflows';
 
 // ─── Routes ──────────────────────────────────────────────────────────────
 //

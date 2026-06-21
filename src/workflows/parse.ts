@@ -12,6 +12,7 @@ import type {
     WorkflowStep,
     AgentStep,
     AgentHarness,
+    AgentExecution,
     RouteStep,
     ConveneStep,
     WorkbenchRef,
@@ -206,6 +207,7 @@ function projectStep(stepId: string, v: unknown, filename: string): WorkflowStep
             // (model + systemPrompt + prompt) share the same shape;
             // validate.ts enforces "ref XOR required inline fields".
             const harness = projectHarness(raw.harness, stepId, filename);
+            const execution = projectExecution(raw.execution, stepId, filename);
             const ref = raw.ref === undefined ? undefined : requireString(raw, 'ref', `${filename}: agent step "${stepId}"`);
             const model = raw.model === undefined ? undefined : requireString(raw, 'model', `${filename}: agent step "${stepId}"`);
             const prompt = raw.prompt === undefined ? undefined : requireString(raw, 'prompt', `${filename}: agent step "${stepId}"`);
@@ -244,6 +246,7 @@ function projectStep(stepId: string, v: unknown, filename: string): WorkflowStep
                 ...(ref !== undefined ? { ref } : {}),
                 ...(raw.inputs !== undefined ? { inputs: asRecord(raw.inputs, `step "${stepId}".inputs`, filename) } : {}),
                 ...(harness !== undefined ? { harness } : {}),
+                ...(execution !== undefined ? { execution } : {}),
                 ...(model !== undefined ? { model } : {}),
                 ...(systemPrompt !== undefined ? { systemPrompt } : {}),
                 ...(raw.maxTurns !== undefined ? { maxTurns: asInt(raw.maxTurns, `step "${stepId}".maxTurns`, filename) } : {}),
@@ -456,10 +459,23 @@ function projectSubagents(v: unknown, stepId: string, filename: string): Record<
 
 function projectHarness(v: unknown, stepId: string, filename: string): AgentHarness | undefined {
     if (v === undefined) return undefined;
-    if (v === 'cas' || v === 'cursor' || v === 'fragua-pi' || v === 'remote-vm') {
+    if (v === 'remote-vm') {
+        throw new Error(
+            `${filename}: agent step "${stepId}".harness: 'remote-vm' is no longer a harness — set 'execution: vm' instead`,
+        );
+    }
+    if (v === 'cas' || v === 'cursor' || v === 'fragua-pi') {
         return v;
     }
-    throw new Error(`${filename}: agent step "${stepId}".harness must be "cas" | "cursor" | "fragua-pi" | "remote-vm"`);
+    throw new Error(`${filename}: agent step "${stepId}".harness must be "cas" | "cursor" | "fragua-pi"`);
+}
+
+function projectExecution(v: unknown, stepId: string, filename: string): AgentExecution | undefined {
+    if (v === undefined) return undefined;
+    if (v === 'in-process' || v === 'vm') {
+        return v;
+    }
+    throw new Error(`${filename}: agent step "${stepId}".execution must be "in-process" | "vm"`);
 }
 
 const PROVIDER_OVERRIDES = new Set(['anthropic', 'openai', 'google', 'ollama', 'openrouter']);

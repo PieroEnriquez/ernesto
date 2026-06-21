@@ -25,6 +25,7 @@ export type {
     InputStep,
     AgentStep,
     AgentHarness,
+    AgentExecution,
     GroupStep,
     DynamicWorkflowStep,
     MonitorStep,

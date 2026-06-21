@@ -50,13 +50,21 @@ export interface AgentDeclaration {
     name: string;
     description: string;
     /**
-     * Runtime backend. Defaults to `'cas'` when absent. The legacy
-     * `provider` field (ANTHROPIC | OPEN_ROUTER) maps to harness at
-     * compile time: ANTHROPIC → cas, OPEN_ROUTER → fragua-pi (the
-     * multi-provider harness). Authors writing new agents should set
-     * `harness:` directly.
+     * The DRIVER (harness) — orthogonal to WHERE it runs (`execution`).
+     * Defaults to `'cas'` when absent. The legacy `provider` field
+     * (ANTHROPIC | OPEN_ROUTER) maps to harness at compile time:
+     * ANTHROPIC → cas, OPEN_ROUTER → fragua-pi (the multi-provider
+     * harness). Authors writing new agents should set `harness:`
+     * directly. `'remote-vm'` is no longer a harness — set
+     * `execution: 'vm'` instead.
      */
-    harness?: 'cas' | 'cursor' | 'fragua-pi' | 'remote-vm';
+    harness?: 'cas' | 'cursor' | 'fragua-pi';
+    /**
+     * WHERE this agent runs — orthogonal to `harness`. `'in-process'`
+     * runs inside the backend; `'vm'` runs in an isolated microVM (the
+     * former `harness: 'remote-vm'`). Absent ⇒ the runtime decides.
+     */
+    execution?: 'in-process' | 'vm';
     provider?: 'ANTHROPIC' | 'OPEN_ROUTER';
     model: string;
     systemPrompt: SystemPromptConfig;
