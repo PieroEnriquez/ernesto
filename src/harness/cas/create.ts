@@ -188,9 +188,7 @@ function coerceToCompiledAgent(def: AgentDefinition, opts: CasCreateOptions): Co
     // Lower the declared allowlist otherwise. Fails closed on any
     // unenforceable spec, so an untranslatable restriction never reaches
     // either branch as a silently-dropped allowlist.
-    const toolAllowlist = def.disableNativeTools
-        ? []
-        : toBuiltinAllowlist(def.tools);
+    const toolAllowlist = def.disableNativeTools ? [] : toBuiltinAllowlist(def.tools);
 
     // Pass-through only when the caller hasn't asked for transport
     // composition. When `opts.transport` is set we must run
@@ -246,9 +244,7 @@ function coerceToCompiledAgent(def: AgentDefinition, opts: CasCreateOptions): Co
     // allowlist onto its result so the restriction survives this branch.
     // `!== undefined` so an EMPTY allowlist (`disableNativeTools` → `[]`)
     // survives as the SDK's "disable all built-ins", not a dropped restriction.
-    return toolAllowlist !== undefined
-        ? { ...compiled, tools: toolAllowlist }
-        : compiled;
+    return toolAllowlist !== undefined ? { ...compiled, tools: toolAllowlist } : compiled;
 }
 
 /**

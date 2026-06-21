@@ -240,9 +240,7 @@ function harnessField(fm: Record<string, unknown>, slug: string): 'cas' | 'curso
     const v = fm.harness;
     if (v === undefined) return undefined;
     if (v === 'remote-vm') {
-        throw new Error(
-            `managed-agents/${slug}.md: harness 'remote-vm' is no longer a harness — set 'execution: vm' instead`,
-        );
+        throw new Error(`managed-agents/${slug}.md: harness 'remote-vm' is no longer a harness — set 'execution: vm' instead`);
     }
     if (v === 'cas' || v === 'cursor' || v === 'fragua-pi') return v;
     throw new Error(`managed-agents/${slug}.md: harness must be "cas" | "cursor" | "fragua-pi"`);

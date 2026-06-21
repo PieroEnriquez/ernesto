@@ -93,7 +93,16 @@ export {
     parseDynamicWorkflowJs,
     DynamicWorkflowParseError,
 } from './workflows';
-export type { WorkflowDeclaration, WorkflowStep, InputStep, AgentStep, AgentHarness, AgentExecution, DynamicWorkflowStep, StepKind } from './workflows';
+export type {
+    WorkflowDeclaration,
+    WorkflowStep,
+    InputStep,
+    AgentStep,
+    AgentHarness,
+    AgentExecution,
+    DynamicWorkflowStep,
+    StepKind,
+} from './workflows';
 
 // ─── Routes ──────────────────────────────────────────────────────────────
 //
@@ -105,13 +114,7 @@ export type { WorkflowDeclaration, WorkflowStep, InputStep, AgentStep, AgentHarn
 // `ernesto/route` for tests + advanced internal use.
 export { defineRoute, RouteRegistry, selectPhysicalProjector } from './route';
 export type { DispatchResult, DispatchErrorCode, RenderEntry } from './route';
-export type {
-    WorkspaceView,
-    RouteContext,
-    SettleStaging,
-    SettleDraftStore,
-    ReconcileResult,
-} from './route/define-route';
+export type { WorkspaceView, RouteContext, SettleStaging, SettleDraftStore, ReconcileResult } from './route/define-route';
 export type { PhysicalProjector, WriteThroughEngine, SelectPhysicalProjectorOpts } from './route';
 
 // ─── Managed agents (declaration + composition) ──────────────────────────

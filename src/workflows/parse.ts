@@ -460,9 +460,7 @@ function projectSubagents(v: unknown, stepId: string, filename: string): Record<
 function projectHarness(v: unknown, stepId: string, filename: string): AgentHarness | undefined {
     if (v === undefined) return undefined;
     if (v === 'remote-vm') {
-        throw new Error(
-            `${filename}: agent step "${stepId}".harness: 'remote-vm' is no longer a harness — set 'execution: vm' instead`,
-        );
+        throw new Error(`${filename}: agent step "${stepId}".harness: 'remote-vm' is no longer a harness — set 'execution: vm' instead`);
     }
     if (v === 'cas' || v === 'cursor' || v === 'fragua-pi') {
         return v;

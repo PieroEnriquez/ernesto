@@ -332,7 +332,20 @@ describe('casCreateAgent tool-allowlist enforcement (negative)', () => {
         // EXACTLY the empty allowlist — present, and empty.
         expect(call.options.tools).toEqual([]);
         // Pin the dangerous natives specifically as unreachable.
-        for (const banned of ['Write', 'Edit', 'MultiEdit', 'Bash', 'Read', 'Glob', 'Grep', 'Task', 'WebFetch', 'WebSearch', 'NotebookEdit', 'TodoWrite']) {
+        for (const banned of [
+            'Write',
+            'Edit',
+            'MultiEdit',
+            'Bash',
+            'Read',
+            'Glob',
+            'Grep',
+            'Task',
+            'WebFetch',
+            'WebSearch',
+            'NotebookEdit',
+            'TodoWrite',
+        ]) {
             expect(call.options.tools).not.toContain(banned);
         }
     });

@@ -138,10 +138,7 @@ export function makeRouteStepHandler(deps: RouteStepHandlerDeps): StepKindHandle
         // transport's free-form `routing.context` blob (set by the in-process
         // session adapter). The settle route reads both for its commit trailers.
         const transport = ctx.routing.transport;
-        const workdirId =
-            typeof ctx.routing.context?.workdirId === 'string'
-                ? ctx.routing.context.workdirId
-                : undefined;
+        const workdirId = typeof ctx.routing.context?.workdirId === 'string' ? ctx.routing.context.workdirId : undefined;
 
         const routeCtx: RouteContext = {
             user: ctx.principal.email ? { id: ctx.principal.userId, email: ctx.principal.email } : { id: ctx.principal.userId },
