@@ -126,7 +126,7 @@ class Runner implements WorkflowRunner {
     ): Promise<Run<TOut>> {
         // M5: resolve via the kind registry first, falling back to the
         // workflow reader. Shared with the resume path (`resumeDurable`).
-        const { workflowDecl, declFromRegistry } = await this.resolveKind(kind, inputs);
+        const { workflowDecl, declFromRegistry } = await this.resolveKind(kind, inputs, opts.surfaceRender);
 
         // The runId is embedded verbatim into downstream identifiers that
         // require a `[A-Za-z0-9_-]` charset — notably the Slack HITL button's
@@ -345,6 +345,7 @@ class Runner implements WorkflowRunner {
     private async resolveKind(
         kind: KindRef,
         inputs: Record<string, unknown>,
+        surfaceRenderDefault?: boolean,
     ): Promise<{
         workflowDecl: WorkflowDetail;
         declFromRegistry: ReturnType<KindRegistry['resolve']>;
@@ -377,10 +378,17 @@ class Runner implements WorkflowRunner {
                             kind: 'route' as const,
                             uri: declFromRegistry.uri,
                             params: inputs,
-                            // Direct dispatch: the route's own render manifest
-                            // IS the answer here (vs an authored workflow step,
-                            // where it's intermediate data) — surface it.
-                            surfaceRender: true,
+                            // Whether the route's render manifest surfaces:
+                            //   1. the route's own `surfaceRender` wins (a
+                            //      report opts IN even when agent-called);
+                            //   2. else the caller default (`surfaceRenderDefault`)
+                            //      — the agent `execute` surface passes `false`
+                            //      so an intermediate lookup doesn't leak;
+                            //   3. else `true` — a DIRECT dispatch is the answer.
+                            surfaceRender:
+                                declFromRegistry.route.surfaceRender
+                                ?? surfaceRenderDefault
+                                ?? true,
                         },
                     },
                 },

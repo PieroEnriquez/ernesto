@@ -72,6 +72,13 @@ export interface DispatchOpts {
      *  promoted to a typed field yet (slackThreadId, mcpConvId,
      *  cliPid, etc.). Middleware reads keys defensively. */
     context?: Readonly<Record<string, unknown>>;
+    /** Default render-manifest surfacing for a bare `execute(route)` whose
+     *  route does NOT declare its own `surfaceRender`. Unset → the route is
+     *  treated as the answer and surfaces (direct dispatch). The agent's
+     *  `execute` tool surface sets `false` so an intermediate single-route
+     *  lookup doesn't auto-dump its raw render to the thread; a route opts
+     *  back in with `surfaceRender: true` (define-route), which always wins. */
+    surfaceRender?: boolean;
 }
 
 /** Per-run cost rollup. Maintained from `fact.usage` events.

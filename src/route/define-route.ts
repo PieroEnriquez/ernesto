@@ -278,6 +278,20 @@ export interface RouteConfig<I extends z.ZodTypeAny, O extends z.ZodTypeAny> {
      * doc in `workspaces/agent-ops/workflows-unification/tool-manifest.md`.
      */
     render?: ReadonlyArray<RenderEntry>;
+    /**
+     * Whether this route's `render:` manifest SURFACES to the user when the
+     * route is the dispatched unit. Takes precedence over the caller's default
+     * (`DispatchOpts.surfaceRender`):
+     *   - `true`    → surface even when an agent calls it as a tool — the route
+     *                 IS a user-facing answer (a report / dashboard).
+     *   - `false`   → never auto-surface (pure data/lookup; the agent
+     *                 synthesizes from it).
+     *   - omitted   → fall back to the caller default: a DIRECT dispatch
+     *                 surfaces (the route is the answer); an agent `execute`
+     *                 does NOT (intermediate data) — so an unflagged lookup the
+     *                 agent calls can't leak its raw render to the thread.
+     */
+    surfaceRender?: boolean;
 }
 
 export interface Route<I extends z.ZodTypeAny = z.ZodTypeAny, O extends z.ZodTypeAny = z.ZodTypeAny> {
@@ -296,6 +310,9 @@ export interface Route<I extends z.ZodTypeAny = z.ZodTypeAny, O extends z.ZodTyp
     /** Frozen render manifest; absent for routes that opt out and let
      *  the agent author components manually. */
     readonly render?: ReadonlyArray<RenderEntry>;
+    /** See {@link RouteConfig.surfaceRender}. Drives whether a bare
+     *  `execute(route)`'s render manifest surfaces, via `runner.resolveKind`. */
+    readonly surfaceRender?: boolean;
 }
 
 export function defineRoute<I extends z.ZodTypeAny, O extends z.ZodTypeAny>(config: RouteConfig<I, O>): Route<I, O> {
@@ -313,6 +330,7 @@ export function defineRoute<I extends z.ZodTypeAny, O extends z.ZodTypeAny>(conf
         description: config.description,
         handler: config.handler,
         ...(config.render ? { render: Object.freeze([...config.render]) } : {}),
+        ...(config.surfaceRender !== undefined ? { surfaceRender: config.surfaceRender } : {}),
     });
 }
 
